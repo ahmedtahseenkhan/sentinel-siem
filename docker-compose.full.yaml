@@ -50,6 +50,7 @@ services:
       - WATCHTOWER_LOG_LEVEL=info
       - WATCHTOWER_WATCHVAULT_ADDRESS=watchvault:50052
       - WATCHTOWER_ENGINE_WORKERS=1
+      - WATCHTOWER_API_KEY=sentinel-dev-api-key
     volumes:
       - watchtower-data:/var/lib/watchtower
     depends_on:
@@ -122,6 +123,7 @@ services:
       - DASHBOARD_SUPER_ADMIN_PASSWORD=superadmin
       - DASHBOARD_ADMIN_USER=admin
       - DASHBOARD_ADMIN_PASSWORD=admin
+      - WATCHTOWER_API_KEY=sentinel-dev-api-key
     depends_on:
       - watchtower
       - opensearch
