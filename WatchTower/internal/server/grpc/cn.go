@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 
 	"google.golang.org/grpc/credentials"
@@ -28,7 +27,7 @@ func extractCNFromContext(ctx context.Context) (string, error) {
 	if !ok {
 		return "", nil
 	}
-	state := tlsInfo.State.(tls.ConnectionState)
+	state := tlsInfo.State
 	if len(state.PeerCertificates) == 0 {
 		return "", fmt.Errorf("no peer certificate presented")
 	}
