@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type Client struct {
@@ -27,17 +28,15 @@ func NewClient(cfg config.WatchVaultConfig, logger *zap.Logger) (*Client, error)
 	if cfg.Address == "" {
 		return nil, fmt.Errorf("watchvault address not configured")
 	}
-	if cfg.TLS.Cert == "" || cfg.TLS.Key == "" || cfg.TLS.CA == "" {
-		return nil, fmt.Errorf("watchvault tls requires cert, key, and ca")
-	}
-
-	tlsCfg, err := loadTLSConfig(cfg.TLS)
-	if err != nil {
-		return nil, fmt.Errorf("watchvault tls: %w", err)
-	}
-
-	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)),
+	var opts []grpc.DialOption
+	if cfg.TLS.Cert != "" && cfg.TLS.Key != "" && cfg.TLS.CA != "" {
+		tlsCfg, err := loadTLSConfig(cfg.TLS)
+		if err != nil {
+			return nil, fmt.Errorf("watchvault tls: %w", err)
+		}
+		opts = append(opts, grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)))
+	} else {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
