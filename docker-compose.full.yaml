@@ -36,6 +36,7 @@ services:
     environment:
       - WATCHVAULT_OPENSEARCH_URL=http://opensearch:9200
       - WATCHVAULT_LOG_LEVEL=info
+      - WATCHVAULT_API_KEY=sentinel-dev-api-key
     depends_on:
       opensearch:
         condition: service_healthy
@@ -113,10 +114,10 @@ services:
     ports:
       - "5050:5050"
     environment:
-      - SENTINEL_MANAGER_URL=http://watchtower:9400
-      - SENTINEL_INDEXER_URL=http://opensearch:9200
-      - SENTINEL_INDEXER_USER=admin
-      - SENTINEL_INDEXER_PASSWORD=admin
+      - WATCHTOWER_URL=http://watchtower:9400
+      - OPENSEARCH_URL=http://opensearch:9200
+      - OPENSEARCH_USER=admin
+      - OPENSEARCH_PASSWORD=admin
       - VERIFY_SSL=false
       - SECRET_KEY=sentinel-dev-key
       - DASHBOARD_SUPER_ADMIN_USER=superadmin
