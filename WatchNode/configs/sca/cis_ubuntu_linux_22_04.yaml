@@ -1,0 +1,245 @@
+policy:
+  id: "cis_ubuntu_22_04"
+  name: "CIS Ubuntu Linux 22.04 LTS Benchmark v1.0"
+  description: >
+    Center for Internet Security Ubuntu 22.04 LTS benchmark checks.
+    Covers filesystem, services, network, access controls, logging,
+    and system maintenance aligned to CIS Level 1 and Level 2.
+  references:
+    - "https://www.cisecurity.org/benchmark/ubuntu_linux"
+
+  checks:
+    # ── 1. Filesystem Configuration ───────────────────────────────────────
+
+    - id: 20001
+      title: "1.1.1 Ensure /tmp is a separate partition"
+      description: "/tmp should be mounted on a separate partition."
+      rationale: "A separate /tmp partition prevents /tmp filling the root filesystem and enables noexec mount options."
+      remediation: "Create a dedicated /tmp partition and add it to /etc/fstab."
+      compliance: "CIS Ubuntu 22.04 1.1.1 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:findmnt -n /tmp -> r:/tmp"
+
+    - id: 20002
+      title: "1.1.2 Ensure nodev option on /tmp partition"
+      description: "/tmp should be mounted with nodev."
+      rationale: "nodev prevents device files from being created in /tmp."
+      remediation: "Add nodev to /tmp mount options in /etc/fstab."
+      compliance: "CIS Ubuntu 22.04 1.1.2 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:findmnt -n /tmp -> r:nodev"
+
+    - id: 20003
+      title: "1.1.3 Ensure noexec option on /tmp partition"
+      description: "/tmp should be mounted with noexec."
+      rationale: "noexec prevents direct execution of binaries in /tmp, hindering exploitation."
+      remediation: "Add noexec to /tmp mount options."
+      compliance: "CIS Ubuntu 22.04 1.1.3 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:findmnt -n /tmp -> r:noexec"
+
+    - id: 20004
+      title: "1.1.4 Ensure nosuid option on /tmp partition"
+      description: "/tmp should be mounted with nosuid."
+      rationale: "nosuid prevents SUID binaries in /tmp from being exploited for privilege escalation."
+      remediation: "Add nosuid to /tmp mount options."
+      compliance: "CIS Ubuntu 22.04 1.1.4 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:findmnt -n /tmp -> r:nosuid"
+
+    # ── 2. Software Updates ────────────────────────────────────────────────
+
+    - id: 20005
+      title: "1.9 Ensure system is patched"
+      description: "No pending security upgrades should be outstanding."
+      rationale: "Unpatched systems are vulnerable to known exploits."
+      remediation: "Run: apt-get update && apt-get -y upgrade"
+      compliance: "CIS Ubuntu 22.04 1.9 | Level 1"
+      type: "command"
+      condition: "none"
+      rules:
+        - "c:apt-get -s upgrade 2>/dev/null -> r:[0-9]+ upgraded"
+
+    # ── 3. Services ────────────────────────────────────────────────────────
+
+    - id: 20006
+      title: "2.1.1 Ensure xinetd is not installed"
+      description: "xinetd should not be installed."
+      rationale: "xinetd is a superserver that increases attack surface."
+      remediation: "Run: apt-get purge xinetd"
+      compliance: "CIS Ubuntu 22.04 2.1.1 | Level 1"
+      type: "command"
+      condition: "none"
+      rules:
+        - "c:dpkg -l xinetd -> r:^ii"
+
+    - id: 20007
+      title: "2.2.1 Ensure Avahi Server is not enabled"
+      description: "avahi-daemon should not be running."
+      rationale: "Avahi enables mDNS service discovery, which is not needed on servers."
+      remediation: "Run: systemctl disable avahi-daemon && systemctl stop avahi-daemon"
+      compliance: "CIS Ubuntu 22.04 2.2.1 | Level 1"
+      type: "command"
+      condition: "none"
+      rules:
+        - "c:systemctl is-enabled avahi-daemon 2>/dev/null -> r:^enabled"
+
+    - id: 20008
+      title: "2.2.2 Ensure CUPS is not enabled"
+      description: "CUPS (printing service) should be disabled on servers."
+      rationale: "CUPS is not needed on servers and has historically had security vulnerabilities."
+      remediation: "Run: systemctl disable cups && systemctl stop cups"
+      compliance: "CIS Ubuntu 22.04 2.2.2 | Level 1"
+      type: "command"
+      condition: "none"
+      rules:
+        - "c:systemctl is-enabled cups 2>/dev/null -> r:^enabled"
+
+    - id: 20009
+      title: "2.2.3 Ensure rsync service is not enabled"
+      description: "rsync daemon should be disabled."
+      rationale: "rsync over the network without authentication allows unauthorized file transfer."
+      remediation: "Run: systemctl disable rsync"
+      compliance: "CIS Ubuntu 22.04 2.2.3 | Level 1"
+      type: "command"
+      condition: "none"
+      rules:
+        - "c:systemctl is-enabled rsync 2>/dev/null -> r:^enabled"
+
+    # ── 4. Network Configuration ──────────────────────────────────────────
+
+    - id: 20010
+      title: "3.1.1 Ensure IP forwarding is disabled (non-router)"
+      description: "IP forwarding should be disabled on non-router systems."
+      rationale: "IP forwarding enables traffic routing between interfaces, not needed on end-hosts."
+      remediation: "Set net.ipv4.ip_forward = 0 in /etc/sysctl.conf"
+      compliance: "CIS Ubuntu 22.04 3.1.1 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:sysctl net.ipv4.ip_forward -> r:net.ipv4.ip_forward\\s*=\\s*0"
+
+    - id: 20011
+      title: "3.2.1 Ensure source routed packets are not accepted"
+      description: "Source-routed packets (IPv4 and IPv6) should be rejected."
+      rationale: "Source routing allows packet paths to be specified by the sender, enabling spoofing."
+      remediation: "Set net.ipv4.conf.all.accept_source_route = 0 in /etc/sysctl.conf"
+      compliance: "CIS Ubuntu 22.04 3.2.1 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:sysctl net.ipv4.conf.all.accept_source_route -> r:= 0"
+
+    - id: 20012
+      title: "3.2.2 Ensure ICMP redirects are not accepted"
+      description: "ICMP redirect messages should be disabled."
+      rationale: "ICMP redirects can be used to route traffic through an attacker's system."
+      remediation: "Set net.ipv4.conf.all.accept_redirects = 0 in /etc/sysctl.conf"
+      compliance: "CIS Ubuntu 22.04 3.2.2 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:sysctl net.ipv4.conf.all.accept_redirects -> r:= 0"
+
+    # ── 5. Access, Authentication, Authorization ──────────────────────────
+
+    - id: 20013
+      title: "5.2.1 Ensure SSH Protocol is set to 2"
+      description: "SSH must use protocol version 2."
+      rationale: "SSHv1 has known vulnerabilities. SSHv2 should be enforced."
+      remediation: "Set Protocol 2 in /etc/ssh/sshd_config"
+      compliance: "CIS Ubuntu 22.04 5.2.1 | Level 1"
+      type: "file"
+      condition: "any"
+      rules:
+        - "not f:/etc/ssh/sshd_config -> r:^Protocol 1"
+
+    - id: 20014
+      title: "5.2.2 Ensure SSH root login is disabled"
+      description: "Direct SSH root login should be disabled."
+      rationale: "Root login via SSH bypasses sudo audit trails and enables brute-force of root."
+      remediation: "Set PermitRootLogin no in /etc/ssh/sshd_config"
+      compliance: "CIS Ubuntu 22.04 5.2.2 | Level 1"
+      type: "file"
+      condition: "all"
+      rules:
+        - "f:/etc/ssh/sshd_config -> r:^PermitRootLogin\\s+no"
+
+    - id: 20015
+      title: "5.2.3 Ensure SSH PermitEmptyPasswords is disabled"
+      description: "SSH must not permit empty passwords."
+      rationale: "Empty passwords allow unauthenticated access to accounts."
+      remediation: "Set PermitEmptyPasswords no in /etc/ssh/sshd_config"
+      compliance: "CIS Ubuntu 22.04 5.2.3 | Level 1"
+      type: "file"
+      condition: "all"
+      rules:
+        - "f:/etc/ssh/sshd_config -> r:^PermitEmptyPasswords\\s+no"
+
+    - id: 20016
+      title: "5.2.4 Ensure SSH MaxAuthTries is set to 4 or fewer"
+      description: "SSH should allow no more than 4 authentication attempts per connection."
+      rationale: "Limiting retries reduces the effectiveness of brute-force attacks."
+      remediation: "Set MaxAuthTries 4 in /etc/ssh/sshd_config"
+      compliance: "CIS Ubuntu 22.04 5.2.4 | Level 1"
+      type: "file"
+      condition: "all"
+      rules:
+        - "f:/etc/ssh/sshd_config -> r:^MaxAuthTries\\s+[1-4]$"
+
+    - id: 20017
+      title: "5.3.1 Ensure password hashing algorithm is SHA-512"
+      description: "Passwords should be hashed with SHA-512 in /etc/login.defs."
+      rationale: "SHA-512 is significantly stronger than MD5 or SHA-1 for password storage."
+      remediation: "Set ENCRYPT_METHOD SHA512 in /etc/login.defs"
+      compliance: "CIS Ubuntu 22.04 5.3.1 | Level 1"
+      type: "file"
+      condition: "all"
+      rules:
+        - "f:/etc/login.defs -> r:^ENCRYPT_METHOD\\s+SHA512"
+
+    # ── 6. Logging ────────────────────────────────────────────────────────
+
+    - id: 20018
+      title: "4.2.1 Ensure rsyslog or syslog-ng is installed"
+      description: "A system logging daemon must be installed and active."
+      rationale: "System logging is required for incident detection and forensics."
+      remediation: "Run: apt-get install rsyslog && systemctl enable rsyslog"
+      compliance: "CIS Ubuntu 22.04 4.2.1 | Level 1"
+      type: "command"
+      condition: "any"
+      rules:
+        - "c:systemctl is-enabled rsyslog 2>/dev/null -> r:^enabled"
+        - "c:systemctl is-enabled syslog-ng 2>/dev/null -> r:^enabled"
+
+    - id: 20019
+      title: "4.3 Ensure logrotate is configured"
+      description: "logrotate must be installed and configured."
+      rationale: "Without log rotation, logs grow unbounded and can exhaust disk space."
+      remediation: "Install logrotate and verify /etc/logrotate.conf is present."
+      compliance: "CIS Ubuntu 22.04 4.3 | Level 1"
+      type: "file"
+      condition: "all"
+      rules:
+        - "f:/etc/logrotate.conf"
+
+    # ── 7. System Hardening ────────────────────────────────────────────────
+
+    - id: 20020
+      title: "1.5.1 Ensure core dumps are restricted"
+      description: "Core dumps should be limited to prevent credential leakage."
+      rationale: "Core dumps can contain sensitive memory contents including keys and passwords."
+      remediation: "Set * hard core 0 in /etc/security/limits.conf and fs.suid_dumpable=0 in sysctl.conf"
+      compliance: "CIS Ubuntu 22.04 1.5.1 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:sysctl fs.suid_dumpable -> r:fs.suid_dumpable\\s*=\\s*0"

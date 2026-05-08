@@ -1,0 +1,7 @@
+server:
+  listen_address: "0.0.0.0:50051"
+  tls:
+    cert: "/etc/watchnode/certs/server.crt"
+    key: "/etc/watchnode/certs/server.key"
+    ca: "/etc/watchnode/certs/ca.crt"
+

@@ -1,0 +1,9 @@
+# WatchNode Manager - Example Configuration
+
+server:
+  listen_address: "0.0.0.0:50051"
+  tls:
+    cert: "scripts/certs/server.crt"
+    key: "scripts/certs/server.key"
+    ca: "scripts/certs/ca.crt"
+

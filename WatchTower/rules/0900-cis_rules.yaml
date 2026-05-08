@@ -1,0 +1,284 @@
+# WatchTower - CIS Controls v8 Compliance Rules
+# Rule IDs: 6300-6314
+# Maps controls from CIS Controls v8
+
+rules:
+  - id: 6300
+    level: 9
+    description: "Unauthorized software package installed (CIS Control 2: Inventory and Control of Software Assets)"
+    groups:
+      - "cis"
+      - "software_inventory"
+      - "cis_control_2"
+    match:
+      type: "process.new"
+      fields:
+        name:
+          regex: "^(apt|apt-get|yum|dnf|pip|pip3|npm|gem|cargo|pacman|zypper)$"
+    mitre:
+      - tactic_id: "TA0002"
+        tactic_name: "Execution"
+        technique_id: "T1072"
+        technique_name: "Software Deployment Tools"
+    alert:
+      title: "CIS: Unauthorized software installation detected"
+    enabled: true
+
+  - id: 6301
+    level: 8
+    description: "New network service or port opened (CIS Control 4: Secure Configuration of Assets)"
+    groups:
+      - "cis"
+      - "network_config"
+      - "cis_control_4"
+    match:
+      type: "syscollector.ports"
+      fields:
+        state:
+          regex: "^(LISTEN|LISTENING)$"
+    mitre:
+      - tactic_id: "TA0007"
+        tactic_name: "Discovery"
+        technique_id: "T1049"
+        technique_name: "System Network Connections Discovery"
+    alert:
+      title: "CIS: New listening port detected"
+    enabled: true
+
+  - id: 6302
+    level: 10
+    description: "Admin-level user account created without MFA indicator (CIS Control 5, 6)"
+    groups:
+      - "cis"
+      - "account_management"
+      - "cis_control_5"
+      - "cis_control_6"
+    match:
+      type: "log"
+      fields:
+        message:
+          regex: "(new user.*sudo|new user.*wheel|useradd.*-G.*(sudo|wheel|adm|admin))"
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1136.001"
+        technique_name: "Create Account: Local Account"
+    alert:
+      title: "CIS: Privileged account created"
+    enabled: true
+
+  - id: 6303
+    level: 9
+    description: "Email or browser client executed with scripting engine (CIS Control 9: Email and Web Browser Protections)"
+    groups:
+      - "cis"
+      - "browser_protection"
+      - "cis_control_9"
+    match:
+      type: "process.new"
+      fields:
+        name:
+          regex: "^(curl|wget|python|python3|perl|ruby|bash|sh|powershell|cscript|wscript)$"
+    mitre:
+      - tactic_id: "TA0002"
+        tactic_name: "Execution"
+        technique_id: "T1059"
+        technique_name: "Command and Scripting Interpreter"
+    alert:
+      title: "CIS: Scripting engine executed"
+    enabled: true
+
+  - id: 6304
+    level: 10
+    description: "Malware-associated process name detected (CIS Control 10: Malware Defenses)"
+    groups:
+      - "cis"
+      - "malware_defense"
+      - "cis_control_10"
+      - "critical"
+    match:
+      type: "process.new"
+      fields:
+        name:
+          regex: "^(xmrig|minerd|cpuminer|mimikatz|meterpreter|cobalt.strike|metasploit|nc|ncat|socat)$"
+    mitre:
+      - tactic_id: "TA0040"
+        tactic_name: "Impact"
+        technique_id: "T1496"
+        technique_name: "Resource Hijacking"
+    alert:
+      title: "CIS: Malware-associated process detected"
+    enabled: true
+
+  - id: 6305
+    level: 8
+    description: "Outbound connection on non-standard port - possible unauthorized data transfer (CIS Control 13)"
+    groups:
+      - "cis"
+      - "network_monitoring"
+      - "cis_control_13"
+    match:
+      type: "network.connection"
+      fields:
+        remote_port:
+          regex: "^[1-9][0-9]{4,}$"
+        status:
+          equals: "ESTABLISHED"
+    mitre:
+      - tactic_id: "TA0010"
+        tactic_name: "Exfiltration"
+        technique_id: "T1048"
+        technique_name: "Exfiltration Over Alternative Protocol"
+    alert:
+      title: "CIS: Outbound high-port connection"
+    enabled: true
+
+  - id: 6306
+    level: 9
+    description: "Security software or FIM configuration modified (CIS Control 10, Control 3)"
+    groups:
+      - "cis"
+      - "security_software"
+      - "cis_control_3"
+      - "cis_control_10"
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "/(aide|tripwire|ossec|wazuh|clamav|maldet|rkhunter|lynis)/"
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1562.001"
+        technique_name: "Impair Defenses: Disable or Modify Tools"
+    alert:
+      title: "CIS: Security monitoring tool configuration changed"
+    enabled: true
+
+  - id: 6307
+    level: 9
+    description: "Service enabled or started that is typically unnecessary (CIS Control 4)"
+    groups:
+      - "cis"
+      - "service_hardening"
+      - "cis_control_4"
+    match:
+      type: "log"
+      fields:
+        message:
+          regex: "(systemctl enable|systemctl start|service.*start|rc.conf.*enable).*(telnet|rsh|rlogin|tftp|finger|rexec|chargen|daytime|echo)"
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1543.002"
+        technique_name: "Create or Modify System Process: Systemd Service"
+    alert:
+      title: "CIS: Insecure legacy service enabled"
+    enabled: true
+
+  - id: 6308
+    level: 8
+    description: "Cron job or scheduled task added - potential persistence mechanism (CIS Control 4, Control 8)"
+    groups:
+      - "cis"
+      - "scheduled_tasks"
+      - "cis_control_4"
+      - "cis_control_8"
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "^/(etc/cron|var/spool/cron)"
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1053.003"
+        technique_name: "Scheduled Task/Job: Cron"
+    alert:
+      title: "CIS: Scheduled task added or modified"
+    enabled: true
+
+  - id: 6309
+    level: 7
+    description: "Critical vulnerability in deployed component (CIS Control 7: Continuous Vulnerability Management)"
+    groups:
+      - "cis"
+      - "vulnerability_management"
+      - "cis_control_7"
+    match:
+      type: "vulnerability"
+      fields:
+        severity:
+          regex: "^(HIGH|CRITICAL)$"
+    mitre:
+      - tactic_id: "TA0002"
+        tactic_name: "Execution"
+        technique_id: "T1203"
+        technique_name: "Exploitation for Client Execution"
+    alert:
+      title: "CIS: Critical or high vulnerability detected"
+    enabled: true
+
+  - id: 6310
+    level: 9
+    description: "Docker or container runtime privilege escalation pattern (CIS Control 4, Docker CIS)"
+    groups:
+      - "cis"
+      - "container_security"
+      - "cis_control_4"
+    match:
+      type: "process.new"
+      fields:
+        name:
+          regex: "^(docker|podman|kubectl|crictl)$"
+    mitre:
+      - tactic_id: "TA0004"
+        tactic_name: "Privilege Escalation"
+        technique_id: "T1611"
+        technique_name: "Escape to Host"
+    alert:
+      title: "CIS: Container runtime privileged action"
+    enabled: true
+
+  - id: 6311
+    level: 8
+    description: "SSH host key or authorized_keys file modified (CIS Control 4, SSH hardening)"
+    groups:
+      - "cis"
+      - "ssh_hardening"
+      - "cis_control_4"
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "\\.ssh/(authorized_keys|known_hosts|config|id_rsa|id_ed25519)"
+    mitre:
+      - tactic_id: "TA0008"
+        tactic_name: "Lateral Movement"
+        technique_id: "T1021.004"
+        technique_name: "Remote Services: SSH"
+    alert:
+      title: "CIS: SSH key file modified"
+    enabled: true
+
+  - id: 6312
+    level: 10
+    description: "Rootkit or rootcheck suspicious file pattern detected (CIS Control 10)"
+    groups:
+      - "cis"
+      - "rootkit_detection"
+      - "cis_control_10"
+      - "critical"
+    match:
+      type: "fim.added"
+      fields:
+        path:
+          regex: "/(proc/[0-9]+/exe|dev/(shm|null|random|mem)|tmp/\\.)"
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1014"
+        technique_name: "Rootkit"
+    alert:
+      title: "CIS: Suspicious rootkit-like file pattern"
+    enabled: true

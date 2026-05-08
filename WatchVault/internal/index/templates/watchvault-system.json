@@ -1,0 +1,27 @@
+{
+  "index_patterns": ["watchvault-system-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 1,
+      "index.refresh_interval": "5s"
+    },
+    "mappings": {
+      "properties": {
+        "timestamp": {"type": "date", "format": "epoch_millis"},
+        "agent_id": {"type": "keyword"},
+        "metric_type": {"type": "keyword"},
+        "cpu_percent": {"type": "float"},
+        "memory_percent": {"type": "float"},
+        "disk_percent": {"type": "float"},
+        "process_name": {"type": "keyword"},
+        "pid": {"type": "integer"},
+        "bytes_sent": {"type": "long"},
+        "bytes_recv": {"type": "long"},
+        "load_1m": {"type": "float"},
+        "load_5m": {"type": "float"},
+        "load_15m": {"type": "float"}
+      }
+    }
+  }
+}

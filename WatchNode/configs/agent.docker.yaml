@@ -1,0 +1,80 @@
+# Docker host-monitoring configuration (Linux).
+# Uses bind-mounts at /host/... for FIM and logs.
+
+agent:
+  id: ""
+  name: "{{hostname}}"
+  labels:
+    environment: docker
+    team: security
+
+manager:
+  # When using host networking, manager is on localhost:50051 (published by manager container or host).
+  url: "127.0.0.1:50051"
+  tls:
+    cert: "/etc/watchnode/certs/client.crt"
+    key: "/etc/watchnode/certs/client.key"
+    ca: "/etc/watchnode/certs/ca.crt"
+  reconnect:
+    max_attempts: 0
+    initial_backoff: "1s"
+    max_backoff: "1m"
+
+collectors:
+  system:
+    enabled: true
+    interval: "30s"
+    metrics: ["cpu","memory","disk","network","processes"]
+
+  file_integrity:
+    enabled: true
+    interval: "5m"
+    paths:
+      - path: "/host/etc"
+        recursive: true
+        ignore_patterns: ["*.lock", "*.pid"]
+      - path: "/host/usr/bin"
+        recursive: true
+    hash_algorithms: ["sha256"]
+    scan_on_start: true
+
+  logs:
+    enabled: true
+    sources:
+      - type: file
+        path: "/host/var/log/auth.log"
+        tags: ["authentication"]
+        multiline_pattern: "^\\d{4}-\\d{2}-\\d{2}"
+    max_line_length: 1048576
+    max_buffer_size: 10485760
+
+  process:
+    enabled: true
+    interval: "30s"
+
+  network:
+    enabled: true
+    interval: "30s"
+
+  vulnerability:
+    enabled: true
+    interval: "24h"
+
+  syscollector:
+    enabled: true
+    interval: "1h"
+    hardware: true
+    os: true
+    packages: true
+    ports: true
+    network_interfaces: true
+    users: true
+
+performance:
+  max_cpu_percent: 20
+  max_memory_bytes: 268435456
+  max_disk_bytes: 1073741824
+  batch_size: 1000
+  flush_interval: "30s"
+  queue_size: 10000
+

@@ -1,0 +1,25 @@
+{
+  "index_patterns": ["watchvault-alerts-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 1,
+      "index.refresh_interval": "5s"
+    },
+    "mappings": {
+      "properties": {
+        "timestamp": {"type": "date", "format": "epoch_millis"},
+        "rule_id": {"type": "integer"},
+        "rule_level": {"type": "integer"},
+        "rule_description": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+        "rule_groups": {"type": "keyword"},
+        "agent_id": {"type": "keyword"},
+        "agent_name": {"type": "keyword"},
+        "title": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+        "event_type": {"type": "keyword"},
+        "event_data": {"type": "object", "dynamic": true},
+        "tags": {"type": "keyword"}
+      }
+    }
+  }
+}

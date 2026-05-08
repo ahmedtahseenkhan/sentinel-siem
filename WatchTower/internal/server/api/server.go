@@ -1,0 +1,59 @@
+package api
+
+import (
+	"context"
+	"net/http"
+	"time"
+
+	"github.com/watchtower/watchtower/internal/audit"
+	"github.com/watchtower/watchtower/internal/config"
+	"github.com/watchtower/watchtower/internal/engine"
+	"github.com/watchtower/watchtower/internal/registry"
+	"github.com/watchtower/watchtower/internal/store"
+	"go.uber.org/zap"
+)
+
+type Server struct {
+	cfg      config.APIConfig
+	logger   *zap.Logger
+	registry *registry.Registry
+	store    *store.Store
+	engine   *engine.Engine
+	audit    *audit.Logger
+	http     *http.Server
+}
+
+func NewServer(cfg config.APIConfig, logger *zap.Logger, reg *registry.Registry, st *store.Store, eng *engine.Engine, al *audit.Logger) *Server {
+	if cfg.Auth.APIKey == "" {
+		logger.Fatal("api_key must be configured; refusing to start without authentication")
+	}
+	s := &Server{
+		cfg:      cfg,
+		logger:   logger,
+		registry: reg,
+		store:    st,
+		engine:   eng,
+		audit:    al,
+	}
+	addr := cfg.ListenAddress
+	if addr == "" {
+		addr = "0.0.0.0:9400"
+	}
+	s.http = &http.Server{
+		Addr:         addr,
+		Handler:      s.routes(),
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+	return s
+}
+
+func (s *Server) Start() error {
+	s.logger.Info("API server listening", zap.String("addr", s.http.Addr))
+	return s.http.ListenAndServe()
+}
+
+func (s *Server) Stop(ctx context.Context) error {
+	return s.http.Shutdown(ctx)
+}

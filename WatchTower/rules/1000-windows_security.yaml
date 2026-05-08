@@ -1,0 +1,345 @@
+# WatchTower - Windows Security Event Log Rules
+# Rule IDs: 6000-6015
+
+rules:
+  - id: 6000
+    level: 3
+    description: "Windows: Successful user logon"
+    groups:
+      - "authentication"
+      - "windows"
+      - "logon"
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          equals: "4624"
+    mitre:
+      - tactic_id: "TA0001"
+        tactic_name: "Initial Access"
+        technique_id: "T1078"
+        technique_name: "Valid Accounts"
+    alert:
+      title: "Windows: Successful user logon"
+    enabled: true
+
+  - id: 6001
+    level: 8
+    description: "Windows: Failed logon attempt"
+    groups:
+      - "authentication"
+      - "windows"
+      - "brute_force"
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          equals: "4625"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1110"
+        technique_name: "Brute Force"
+    alert:
+      title: "Windows: Failed logon attempt"
+    enabled: true
+
+  - id: 6002
+    level: 12
+    description: "Windows: Multiple failed logons - brute force"
+    groups:
+      - "authentication"
+      - "windows"
+      - "brute_force"
+      - "high_severity"
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          equals: "4625"
+    threshold:
+      count: 5
+      period_secs: 60
+      group_by: "win_IpAddress"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1110.001"
+        technique_name: "Brute Force: Password Guessing"
+    alert:
+      title: "Windows: Brute force logon attack detected"
+    active_response:
+      action: "firewall-drop"
+      field: "win_IpAddress"
+    enabled: true
+
+  - id: 6003
+    level: 8
+    description: "Windows: Logon with explicit credentials (Pass-the-Hash)"
+    groups:
+      - "authentication"
+      - "windows"
+      - "lateral_movement"
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          equals: "4648"
+    mitre:
+      - tactic_id: "TA0008"
+        tactic_name: "Lateral Movement"
+        technique_id: "T1550.002"
+        technique_name: "Use Alternate Authentication Material: Pass the Hash"
+    alert:
+      title: "Windows: Logon with explicit credentials detected"
+    enabled: true
+
+  - id: 6004
+    level: 5
+    description: "Windows: RDP session connected"
+    groups:
+      - "authentication"
+      - "windows"
+      - "rdp"
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          equals: "4624"
+        win_LogonType:
+          equals: "10"
+    mitre:
+      - tactic_id: "TA0008"
+        tactic_name: "Lateral Movement"
+        technique_id: "T1021.001"
+        technique_name: "Remote Services: Remote Desktop Protocol"
+    alert:
+      title: "Windows: RDP session connected"
+    enabled: true
+
+  - id: 6005
+    level: 10
+    description: "Windows: User account created"
+    groups:
+      - "account_management"
+      - "windows"
+      - "persistence"
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          equals: "4720"
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1136.001"
+        technique_name: "Create Account: Local Account"
+    alert:
+      title: "Windows: New user account created"
+    active_response:
+      action: "alert-admin"
+      field: "win_TargetUserName"
+    enabled: true
+
+  - id: 6006
+    level: 10
+    description: "Windows: User account deleted"
+    groups:
+      - "account_management"
+      - "windows"
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          equals: "4726"
+    mitre:
+      - tactic_id: "TA0040"
+        tactic_name: "Impact"
+        technique_id: "T1531"
+        technique_name: "Account Access Removal"
+    alert:
+      title: "Windows: User account deleted"
+    enabled: true
+
+  - id: 6007
+    level: 10
+    description: "Windows: User added to privileged group"
+    groups:
+      - "account_management"
+      - "windows"
+      - "privilege_escalation"
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          regex: "4728|4732|4756"
+    mitre:
+      - tactic_id: "TA0004"
+        tactic_name: "Privilege Escalation"
+        technique_id: "T1078.003"
+        technique_name: "Valid Accounts: Local Accounts"
+    alert:
+      title: "Windows: User added to privileged group"
+    enabled: true
+
+  - id: 6008
+    level: 10
+    description: "Windows: User account locked out"
+    groups:
+      - "account_management"
+      - "windows"
+      - "brute_force"
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          equals: "4740"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1110"
+        technique_name: "Brute Force"
+    alert:
+      title: "Windows: User account locked out"
+    enabled: true
+
+  - id: 6009
+    level: 8
+    description: "Windows: Special privileges assigned to new logon"
+    groups:
+      - "privilege_escalation"
+      - "windows"
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          equals: "4672"
+    mitre:
+      - tactic_id: "TA0004"
+        tactic_name: "Privilege Escalation"
+        technique_id: "T1078"
+        technique_name: "Valid Accounts"
+    alert:
+      title: "Windows: Special privileges assigned to new logon"
+    enabled: true
+
+  - id: 6010
+    level: 12
+    description: "Windows: New service installed (possible persistence)"
+    groups:
+      - "persistence"
+      - "windows"
+      - "service"
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          equals: "7045"
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1543.003"
+        technique_name: "Create or Modify System Process: Windows Service"
+    alert:
+      title: "Windows: New service installed"
+    enabled: true
+
+  - id: 6011
+    level: 10
+    description: "Windows: Scheduled task created"
+    groups:
+      - "persistence"
+      - "windows"
+      - "scheduled_task"
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          equals: "4698"
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1053.005"
+        technique_name: "Scheduled Task/Job: Scheduled Task"
+    alert:
+      title: "Windows: Scheduled task created"
+    enabled: true
+
+  - id: 6012
+    level: 8
+    description: "Windows: New process created"
+    groups:
+      - "process"
+      - "windows"
+      - "execution"
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          equals: "4688"
+    mitre:
+      - tactic_id: "TA0002"
+        tactic_name: "Execution"
+        technique_id: "T1059"
+        technique_name: "Command and Scripting Interpreter"
+    alert:
+      title: "Windows: New process created"
+    enabled: true
+
+  - id: 6013
+    level: 10
+    description: "Windows: Kerberos authentication failure"
+    groups:
+      - "authentication"
+      - "windows"
+      - "kerberos"
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          equals: "4771"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1558"
+        technique_name: "Steal or Forge Kerberos Tickets"
+    alert:
+      title: "Windows: Kerberos authentication failure"
+    enabled: true
+
+  - id: 6014
+    level: 8
+    description: "Windows: Service crashed unexpectedly"
+    groups:
+      - "system"
+      - "windows"
+      - "availability"
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          equals: "7034"
+    alert:
+      title: "Windows: Service crashed unexpectedly"
+    enabled: true
+
+  - id: 6015
+    level: 5
+    description: "Windows: NTLM authentication attempted"
+    groups:
+      - "authentication"
+      - "windows"
+      - "ntlm"
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          equals: "4776"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1557.001"
+        technique_name: "Adversary-in-the-Middle: LLMNR/NBT-NS Poisoning and SMB Relay"
+    alert:
+      title: "Windows: NTLM authentication attempted"
+    enabled: true

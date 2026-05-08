@@ -1,0 +1,48 @@
+# WatchTower - File Integrity Monitoring Decoder
+# Extracts path components and metadata from FIM events
+
+decoders:
+  - name: "fim-path"
+    description: "Extract directory, filename, and extension from FIM event file paths"
+    match:
+      type: "fim.added"
+      tags: {}
+    extract:
+      - field: "directory"
+        regex: "^(.+)/[^/]+$"
+      - field: "filename"
+        regex: "/([^/]+)$"
+      - field: "extension"
+        regex: "\\.([^./]+)$"
+      - field: "basename"
+        regex: "/([^/]+?)(?:\\.[^./]+)?$"
+
+  - name: "fim-modified-path"
+    description: "Extract path components and hash details from FIM modification events"
+    match:
+      type: "fim.modified"
+      tags: {}
+    extract:
+      - field: "directory"
+        regex: "^(.+)/[^/]+$"
+      - field: "filename"
+        regex: "/([^/]+)$"
+      - field: "extension"
+        regex: "\\.([^./]+)$"
+      - field: "basename"
+        regex: "/([^/]+?)(?:\\.[^./]+)?$"
+
+  - name: "fim-deleted-path"
+    description: "Extract path components from FIM deletion events"
+    match:
+      type: "fim.deleted"
+      tags: {}
+    extract:
+      - field: "directory"
+        regex: "^(.+)/[^/]+$"
+      - field: "filename"
+        regex: "/([^/]+)$"
+      - field: "extension"
+        regex: "\\.([^./]+)$"
+      - field: "basename"
+        regex: "/([^/]+?)(?:\\.[^./]+)?$"

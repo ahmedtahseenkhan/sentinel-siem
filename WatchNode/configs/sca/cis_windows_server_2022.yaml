@@ -1,0 +1,267 @@
+policy:
+  id: "cis_win_server_2022"
+  name: "CIS Microsoft Windows Server 2022 Benchmark v1.0"
+  description: >
+    Center for Internet Security Windows Server 2022 Benchmark checks.
+    Covers account policies, local policies, security options, services,
+    and Windows Firewall hardening aligned to CIS Level 1 and Level 2.
+  references:
+    - "https://www.cisecurity.org/benchmark/microsoft_windows_server"
+
+  checks:
+    # ── 1. Account Policies ────────────────────────────────────────────────
+
+    - id: 10001
+      title: "1.1.1 Ensure 'Minimum password length' is set to 14 or more characters"
+      description: "Password length should be at least 14 characters."
+      rationale: "Short passwords are susceptible to brute-force attacks."
+      remediation: >
+        Navigate to Computer Configuration > Windows Settings > Security Settings >
+        Account Policies > Password Policy. Set Minimum password length to 14.
+      compliance: "CIS Windows Server 2022 1.1.1 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:net accounts -> r:Minimum password length:\\s+1[4-9]|[2-9][0-9]"
+
+    - id: 10002
+      title: "1.1.2 Ensure 'Password must meet complexity requirements' is set to Enabled"
+      description: "Password complexity should be enabled."
+      rationale: "Complex passwords are harder to guess or brute-force."
+      remediation: >
+        Navigate to Computer Configuration > Windows Settings > Security Settings >
+        Account Policies > Password Policy. Enable Passwords must meet complexity requirements.
+      compliance: "CIS Windows Server 2022 1.1.2 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:net accounts -> r:Password requirements:\\s+Yes"
+
+    - id: 10003
+      title: "1.1.3 Ensure 'Account lockout threshold' is set to 5 or fewer invalid logon attempts"
+      description: "Account should lock out after 5 or fewer bad attempts."
+      rationale: "Lockout prevents online brute-force attacks on accounts."
+      remediation: >
+        Navigate to Computer Configuration > Windows Settings > Security Settings >
+        Account Policies > Account Lockout Policy. Set lockout threshold <= 5.
+      compliance: "CIS Windows Server 2022 1.2.1 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:net accounts -> r:Lockout threshold:\\s+[1-5]$"
+
+    - id: 10004
+      title: "1.1.4 Ensure 'Account lockout duration' is set to 15 or more minutes"
+      description: "Locked accounts should remain locked for at least 15 minutes."
+      rationale: "A short lockout duration lets attackers retry quickly."
+      remediation: >
+        Set Account lockout duration to 15 or more minutes in Account Lockout Policy.
+      compliance: "CIS Windows Server 2022 1.2.2 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:net accounts -> r:Lockout duration \\(minutes\\):\\s+1[5-9]|[2-9][0-9]|0"
+
+    # ── 2. Local Security Options ──────────────────────────────────────────
+
+    - id: 10005
+      title: "2.3.1 Ensure 'Guest account' is disabled"
+      description: "The built-in Guest account should be disabled."
+      rationale: "Guest accounts allow unauthenticated or anonymous access."
+      remediation: >
+        Run: net user Guest /active:no
+      compliance: "CIS Windows Server 2022 2.3.1 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:net user Guest -> r:Account active\\s+No"
+
+    - id: 10006
+      title: "2.3.2 Ensure 'Administrator account' is renamed"
+      description: "The built-in Administrator account should be renamed to a non-obvious name."
+      rationale: "The default name is targeted by automated attacks."
+      remediation: >
+        Rename the Administrator account: wmic useraccount where name='Administrator' rename 'new_name'
+      compliance: "CIS Windows Server 2022 2.3.2 | Level 1"
+      type: "command"
+      condition: "none"
+      rules:
+        - "c:net user Administrator -> r:Account active\\s+Yes"
+
+    # ── 3. Windows Services ────────────────────────────────────────────────
+
+    - id: 10007
+      title: "5.1 Ensure 'Print Spooler' service is disabled (DC)"
+      description: "The Print Spooler service should be disabled on domain controllers."
+      rationale: "PrintNightmare and related vulnerabilities exploit this service."
+      remediation: >
+        Run: sc config Spooler start= disabled && net stop Spooler
+      compliance: "CIS Windows Server 2022 5.1 | Level 1"
+      type: "command"
+      condition: "none"
+      rules:
+        - "c:sc query Spooler -> r:RUNNING"
+
+    - id: 10008
+      title: "5.2 Ensure 'Remote Registry' service is disabled"
+      description: "The Remote Registry service should be disabled."
+      rationale: "Remote registry access enables attackers to read/modify system configuration remotely."
+      remediation: >
+        Run: sc config RemoteRegistry start= disabled && net stop RemoteRegistry
+      compliance: "CIS Windows Server 2022 5.2 | Level 1"
+      type: "command"
+      condition: "none"
+      rules:
+        - "c:sc query RemoteRegistry -> r:RUNNING"
+
+    - id: 10009
+      title: "5.3 Ensure 'Routing and Remote Access' is disabled"
+      description: "The RRAS service should be disabled unless this server is a router."
+      rationale: "RRAS provides VPN and routing capabilities that should not exist on non-gateway servers."
+      remediation: >
+        Run: sc config RemoteAccess start= disabled
+      compliance: "CIS Windows Server 2022 5.3 | Level 1"
+      type: "command"
+      condition: "none"
+      rules:
+        - "c:sc query RemoteAccess -> r:RUNNING"
+
+    # ── 4. Windows Firewall ────────────────────────────────────────────────
+
+    - id: 10010
+      title: "9.1.1 Ensure 'Windows Firewall: Domain: Firewall state' is On"
+      description: "Domain profile firewall should be enabled."
+      rationale: "The firewall provides a critical layer of network defence."
+      remediation: >
+        Run: netsh advfirewall set domainprofile state on
+      compliance: "CIS Windows Server 2022 9.1.1 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:netsh advfirewall show domainprofile -> r:State\\s+ON"
+
+    - id: 10011
+      title: "9.2.1 Ensure 'Windows Firewall: Private: Firewall state' is On"
+      description: "Private profile firewall should be enabled."
+      rationale: "The firewall provides protection on private networks."
+      remediation: >
+        Run: netsh advfirewall set privateprofile state on
+      compliance: "CIS Windows Server 2022 9.2.1 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:netsh advfirewall show privateprofile -> r:State\\s+ON"
+
+    - id: 10012
+      title: "9.3.1 Ensure 'Windows Firewall: Public: Firewall state' is On"
+      description: "Public profile firewall should be enabled."
+      rationale: "Public networks are inherently untrusted; firewall must be enabled."
+      remediation: >
+        Run: netsh advfirewall set publicprofile state on
+      compliance: "CIS Windows Server 2022 9.3.1 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:netsh advfirewall show publicprofile -> r:State\\s+ON"
+
+    # ── 5. Audit Policies ─────────────────────────────────────────────────
+
+    - id: 10013
+      title: "17.1.1 Ensure 'Audit Credential Validation' is configured"
+      description: "Credential validation events should be audited for Success and Failure."
+      rationale: "Auditing credential validation helps detect pass-the-hash and brute-force attacks."
+      remediation: >
+        Run: auditpol /set /subcategory:"Credential Validation" /success:enable /failure:enable
+      compliance: "CIS Windows Server 2022 17.1.1 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:auditpol /get /subcategory:\"Credential Validation\" -> r:Success and Failure"
+
+    - id: 10014
+      title: "17.5.1 Ensure 'Audit Account Logon' is configured for Failure"
+      description: "Failed logon events should be audited."
+      rationale: "Failed logins indicate brute-force or unauthorized access attempts."
+      remediation: >
+        Run: auditpol /set /subcategory:"Logon" /failure:enable
+      compliance: "CIS Windows Server 2022 17.5.1 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:auditpol /get /subcategory:Logon -> r:Failure"
+
+    - id: 10015
+      title: "17.9.1 Ensure 'Audit System Integrity' is configured"
+      description: "System integrity events should be audited for Success and Failure."
+      rationale: "System integrity auditing detects tampering with the security subsystem."
+      remediation: >
+        Run: auditpol /set /subcategory:"System Integrity" /success:enable /failure:enable
+      compliance: "CIS Windows Server 2022 17.9.1 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:auditpol /get /subcategory:\"System Integrity\" -> r:Success and Failure"
+
+    # ── 6. Registry Checks ─────────────────────────────────────────────────
+
+    - id: 10016
+      title: "18.4.1 Ensure 'NetBIOS' over TCP/IP is disabled"
+      description: "NetBIOS over TCP/IP should be disabled to reduce attack surface."
+      rationale: "NetBIOS enables name-poisoning attacks (LLMNR, NBNS) used in relay attacks."
+      remediation: >
+        Set HKLM\\SYSTEM\\CurrentControlSet\\Services\\NetBT\\Parameters\\Interfaces\\Tcpip_*\\NetbiosOptions to 2.
+      compliance: "CIS Windows Server 2022 18.4.1 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:reg query HKLM\\SYSTEM\\CurrentControlSet\\services\\NetBT\\Parameters\\Interfaces /s -> r:NetbiosOptions\\s+REG_DWORD\\s+0x2"
+
+    - id: 10017
+      title: "18.9.58 Ensure 'WDigest Authentication' is disabled"
+      description: "WDigest should be disabled to prevent plaintext credential exposure."
+      rationale: "WDigest stores credentials in memory in plaintext, enabling pass-the-hash attacks."
+      remediation: >
+        Set HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest\\UseLogonCredential to 0.
+      compliance: "CIS Windows Server 2022 18.9.58 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:reg query HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\WDigest /v UseLogonCredential -> r:UseLogonCredential\\s+REG_DWORD\\s+0x0"
+
+    - id: 10018
+      title: "18.9.14 Ensure 'AutoPlay' is disabled"
+      description: "AutoPlay should be disabled to prevent automatic execution of media content."
+      rationale: "AutoPlay can be exploited to execute malicious code from removable media."
+      remediation: >
+        Set HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer\\NoDriveTypeAutoRun to 255.
+      compliance: "CIS Windows Server 2022 18.9.14 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:reg query HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer /v NoDriveTypeAutoRun -> r:0xff|0x255"
+
+    # ── 7. Remote Access ──────────────────────────────────────────────────
+
+    - id: 10019
+      title: "18.10.56 Ensure 'RDP NLA' is required"
+      description: "Network Level Authentication should be required for Remote Desktop."
+      rationale: "NLA requires authentication before the RDP session is established, reducing the attack surface."
+      remediation: >
+        Set HKLM\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp\\UserAuthentication to 1.
+      compliance: "CIS Windows Server 2022 18.10.56 | Level 1"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:reg query \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp\" /v UserAuthentication -> r:UserAuthentication\\s+REG_DWORD\\s+0x1"
+
+    - id: 10020
+      title: "18.10.56 Ensure RDP is not enabled if not required"
+      description: "Remote Desktop should be disabled if not actively needed."
+      rationale: "Exposing RDP increases the attack surface significantly."
+      remediation: >
+        If RDP is not required: Set HKLM\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\fDenyTSConnections to 1.
+      compliance: "CIS Windows Server 2022 18.10.56 | Level 2"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:reg query \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\" /v fDenyTSConnections -> r:fDenyTSConnections\\s+REG_DWORD\\s+0x1"

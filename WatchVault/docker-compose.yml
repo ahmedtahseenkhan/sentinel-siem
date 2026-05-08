@@ -1,0 +1,47 @@
+version: "3.8"
+services:
+  opensearch:
+    image: opensearchproject/opensearch:2.12.0
+    environment:
+      - discovery.type=single-node
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=WatchVault@2024!
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - DISABLE_SECURITY_PLUGIN=true
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200 | grep -q 'cluster_name'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.12.0
+    ports:
+      - "5601:5601"
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
+  watchvault:
+    build: .
+    ports:
+      - "50052:50052"
+      - "9500:9500"
+    environment:
+      - WATCHVAULT_OPENSEARCH_URL=http://opensearch:9200
+      - WATCHVAULT_OPENSEARCH_USER=admin
+      - WATCHVAULT_OPENSEARCH_PASS=admin
+      - WATCHVAULT_LOG_LEVEL=info
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  opensearch-data:

@@ -1,0 +1,215 @@
+# WatchTower - HIPAA Compliance Rules
+# Rule IDs: 6100-6114
+# Maps controls from HIPAA Security Rule (45 CFR Part 164)
+
+rules:
+  - id: 6100
+    level: 10
+    description: "Access to likely PHI path - potential unauthorized health data access (HIPAA §164.312(b))"
+    groups:
+      - "hipaa"
+      - "phi_access"
+      - "audit_control"
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "/(patient|medical.record|ehr|emr|health.data|dicom|phi|clinician|encounter|prescription)/"
+    mitre:
+      - tactic_id: "TA0009"
+        tactic_name: "Collection"
+        technique_id: "T1005"
+        technique_name: "Data from Local System"
+    alert:
+      title: "HIPAA: PHI data path accessed or modified"
+    enabled: true
+
+  - id: 6101
+    level: 12
+    description: "PHI data directory deleted - possible data destruction incident (HIPAA §164.312(c)(1))"
+    groups:
+      - "hipaa"
+      - "phi_access"
+      - "data_integrity"
+      - "critical"
+    match:
+      type: "fim.deleted"
+      fields:
+        path:
+          regex: "/(patient|medical.record|ehr|emr|phi|health.data)/"
+    mitre:
+      - tactic_id: "TA0040"
+        tactic_name: "Impact"
+        technique_id: "T1485"
+        technique_name: "Data Destruction"
+    alert:
+      title: "HIPAA: PHI data deleted"
+    enabled: true
+
+  - id: 6102
+    level: 9
+    description: "Repeated authentication failure for healthcare system user (HIPAA §164.312(d))"
+    groups:
+      - "hipaa"
+      - "authentication"
+      - "access_control"
+    match:
+      type: "log"
+      fields:
+        message:
+          regex: "(maximum authentication attempts exceeded|account locked|Failed password.*([5-9]|[1-9][0-9]+) time)"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1110.001"
+        technique_name: "Brute Force: Password Guessing"
+    alert:
+      title: "HIPAA: Account lockout or brute force detected"
+    enabled: true
+
+  - id: 6103
+    level: 8
+    description: "Privileged user accessing system outside business hours (HIPAA §164.312(a)(2)(iii))"
+    groups:
+      - "hipaa"
+      - "access_control"
+      - "privilege_escalation"
+    match:
+      type: "log"
+      fields:
+        message:
+          regex: "(Accepted .* for root|sudo.*COMMAND|session opened for user root)"
+    mitre:
+      - tactic_id: "TA0004"
+        tactic_name: "Privilege Escalation"
+        technique_id: "T1078.003"
+        technique_name: "Valid Accounts: Local Accounts"
+    alert:
+      title: "HIPAA: Privileged user system access"
+    enabled: true
+
+  - id: 6104
+    level: 9
+    description: "Audit log file modified or truncated - audit integrity at risk (HIPAA §164.312(b))"
+    groups:
+      - "hipaa"
+      - "audit_control"
+      - "log_integrity"
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "^/(var/log|etc/audit)/"
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1070.002"
+        technique_name: "Indicator Removal: Clear Linux or Mac System Logs"
+    alert:
+      title: "HIPAA: Audit log tampered"
+    enabled: true
+
+  - id: 6105
+    level: 10
+    description: "Large outbound data transfer detected - potential PHI exfiltration (HIPAA §164.312(e))"
+    groups:
+      - "hipaa"
+      - "data_protection"
+      - "exfiltration"
+    match:
+      type: "network.connection"
+      fields:
+        remote_port:
+          regex: "^(20|21|2049|445|137|138|139)$"
+    mitre:
+      - tactic_id: "TA0010"
+        tactic_name: "Exfiltration"
+        technique_id: "T1048"
+        technique_name: "Exfiltration Over Alternative Protocol"
+    alert:
+      title: "HIPAA: Potential PHI exfiltration protocol detected"
+    enabled: true
+
+  - id: 6106
+    level: 8
+    description: "User account created or modified on clinical system (HIPAA §164.312(a)(2)(ii))"
+    groups:
+      - "hipaa"
+      - "access_control"
+      - "account_management"
+    match:
+      type: "log"
+      fields:
+        message:
+          regex: "(new user|useradd|adduser|usermod|passwd|chpasswd)"
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1136.001"
+        technique_name: "Create Account: Local Account"
+    alert:
+      title: "HIPAA: User account created or modified"
+    enabled: true
+
+  - id: 6107
+    level: 9
+    description: "Critical or high severity vulnerability in healthcare system component (HIPAA §164.308(a)(1))"
+    groups:
+      - "hipaa"
+      - "vulnerability"
+      - "risk_management"
+    match:
+      type: "vulnerability"
+      fields:
+        severity:
+          regex: "^(HIGH|CRITICAL)$"
+    mitre:
+      - tactic_id: "TA0002"
+        tactic_name: "Execution"
+        technique_id: "T1203"
+        technique_name: "Exploitation for Client Execution"
+    alert:
+      title: "HIPAA: Critical vulnerability detected"
+    enabled: true
+
+  - id: 6108
+    level: 8
+    description: "Remote access tool executed on clinical workstation (HIPAA §164.312(e)(2)(i))"
+    groups:
+      - "hipaa"
+      - "remote_access"
+      - "access_control"
+    match:
+      type: "process.new"
+      fields:
+        name:
+          regex: "^(teamviewer|anydesk|vnc|ultravnc|tigervnc|x11vnc|rdpwrap|putty|openssh)$"
+    mitre:
+      - tactic_id: "TA0008"
+        tactic_name: "Lateral Movement"
+        technique_id: "T1021.005"
+        technique_name: "Remote Services: VNC"
+    alert:
+      title: "HIPAA: Remote access tool detected"
+    enabled: true
+
+  - id: 6109
+    level: 10
+    description: "Password or shadow file changed - credential integrity at risk (HIPAA §164.312(d))"
+    groups:
+      - "hipaa"
+      - "authentication"
+      - "data_integrity"
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "^/etc/(passwd|shadow|gshadow|group)$"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1003.008"
+        technique_name: "OS Credential Dumping: /etc/passwd and /etc/shadow"
+    alert:
+      title: "HIPAA: Authentication credential file modified"
+    enabled: true

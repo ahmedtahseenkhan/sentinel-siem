@@ -1,0 +1,43 @@
+# WatchVault Indexer Configuration
+# Copy this file to one of the search paths:
+#   /etc/watchvault/config.yaml
+#   ~/.watchvault/config.yaml
+#   ./config.yaml
+
+server:
+  grpc:
+    listen_address: "0.0.0.0:50052"
+    tls:
+      cert: ""
+      key: ""
+      ca: ""
+  api:
+    listen_address: "0.0.0.0:9500"
+    auth:
+      api_key: ""
+
+opensearch:
+  addresses:
+    - "https://localhost:9200"
+  username: "admin"
+  # Set via environment variable WATCHVAULT_OPENSEARCH_PASSWORD — never hardcode
+  password: ""
+  insecure_skip_verify: false
+  ca_cert: ""
+
+pipeline:
+  workers: 4
+  buffer_size: 10000
+  flush_interval: "5s"
+  bulk_size: 500
+
+indices:
+  prefix: "watchvault"
+  rollover: "daily"
+  retention_days: 90
+  shards: 1
+  replicas: 1
+
+logging:
+  level: "info"
+  output: ""

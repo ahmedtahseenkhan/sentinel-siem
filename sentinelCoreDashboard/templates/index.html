@@ -1,0 +1,1948 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sentinel Core SIEM</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script>
+    (function() {
+      try {
+        var t = localStorage.getItem('sentinel_theme');
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="app">
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <span class="sidebar-logo"><img src="/static/img/lion-logo.svg" alt="Sentinel Core" style="width:100%; height:100%; object-fit:contain;" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';"/><span class="sidebar-logo-fallback" style="display:none;">SC</span></span>
+        </div>
+        <nav class="sidebar-nav">
+
+          <!-- OVERVIEW -->
+          <a href="#" class="nav-item active" data-page="overview">
+            <span class="nav-icon">⊞</span>
+            <span class="nav-label">Overview</span>
+          </a>
+
+          <!-- DASHBOARDS -->
+          <div class="nav-section-label">Dashboards</div>
+          <a href="#" class="nav-item" data-page="custom-dashboards">
+            <span class="nav-icon">🗂</span>
+            <span class="nav-label">My Dashboards</span>
+          </a>
+          <a href="#" class="nav-item" data-page="visualize">
+            <span class="nav-icon">📊</span>
+            <span class="nav-label">Visualize</span>
+          </a>
+
+          <!-- DETECTION -->
+          <div class="nav-section-label">Detection</div>
+          <a href="#" class="nav-item" data-page="alerts">
+            <span class="nav-icon">🔔</span>
+            <span class="nav-label">Alerts</span>
+          </a>
+          <a href="#" class="nav-item" data-page="threat-hunting">
+            <span class="nav-icon">◈</span>
+            <span class="nav-label">Threat Hunting</span>
+          </a>
+          <a href="#" class="nav-item" data-page="mitre">
+            <span class="nav-icon">🎯</span>
+            <span class="nav-label">MITRE ATT&amp;CK</span>
+          </a>
+          <a href="#" class="nav-item" data-page="discover">
+            <span class="nav-icon">🔍</span>
+            <span class="nav-label">Discover</span>
+          </a>
+
+          <!-- ENDPOINTS -->
+          <div class="nav-section-label">Endpoints</div>
+          <a href="#" class="nav-item" data-page="agents">
+            <span class="nav-icon">▣</span>
+            <span class="nav-label">Agent Health</span>
+          </a>
+          <a href="#" class="nav-item" data-page="fim">
+            <span class="nav-icon">📁</span>
+            <span class="nav-label">File Integrity</span>
+          </a>
+          <a href="#" class="nav-item" data-page="audit">
+            <span class="nav-icon">🔐</span>
+            <span class="nav-label">Audit Trail</span>
+          </a>
+          <a href="#" class="nav-item" data-page="sca">
+            <span class="nav-icon">✅</span>
+            <span class="nav-label">Policy Monitor</span>
+          </a>
+
+          <!-- INTELLIGENCE -->
+          <div class="nav-section-label">Intelligence</div>
+          <a href="#" class="nav-item" data-page="vulnerabilities">
+            <span class="nav-icon">⚠</span>
+            <span class="nav-label">Vulnerabilities</span>
+          </a>
+          <a href="#" class="nav-item" data-page="it-hygiene">
+            <span class="nav-icon">🖥</span>
+            <span class="nav-label">IT Hygiene</span>
+          </a>
+          <a href="#" class="nav-item" data-page="compliance">
+            <span class="nav-icon">🛡</span>
+            <span class="nav-label">Compliance</span>
+          </a>
+
+          <!-- MANAGEMENT -->
+          <div class="nav-section-label">Management</div>
+          <a href="#" class="nav-item" data-page="rules">
+            <span class="nav-icon">📜</span>
+            <span class="nav-label">Rules</span>
+          </a>
+          <a href="#" class="nav-item" data-page="decoders">
+            <span class="nav-icon">📋</span>
+            <span class="nav-label">Decoders</span>
+          </a>
+          <a href="#" class="nav-item" data-page="index-management">
+            <span class="nav-icon">📑</span>
+            <span class="nav-label">Index Management</span>
+          </a>
+          <a href="#" class="nav-item" data-page="stack">
+            <span class="nav-icon">⚙</span>
+            <span class="nav-label">Stack Status</span>
+          </a>
+          <a href="#" class="nav-item" data-page="reports">
+            <span class="nav-icon">📄</span>
+            <span class="nav-label">Reports</span>
+          </a>
+          <a href="#" class="nav-item" data-page="notifications">
+            <span class="nav-icon">🔔</span>
+            <span class="nav-label">Notifications</span>
+          </a>
+          <a href="#" class="nav-item" data-page="data-sources">
+            <span class="nav-icon">⎔</span>
+            <span class="nav-label">Data Sources</span>
+          </a>
+
+        </nav>
+        <div class="sidebar-footer">
+          <div class="sidebar-user" id="sidebarUser"></div>
+        </div>
+      </aside>
+  
+      <div class="content">
+        <header class="content-header content-header--main">
+          <div class="header-brand">
+            <button type="button" class="header-icon-btn sidebar-toggle-btn" id="sidebarToggle" title="Show/hide sidebar" aria-label="Toggle sidebar">☰</button>
+            <div class="header-brand-text">
+              <h1 class="header-title">SENTINEL CORE SIEM - SYSTEM OVERVIEW</h1>
+            </div>
+          </div>
+          <div class="header-meta">
+             <button type="button" class="header-icon-btn theme-toggle" id="themeToggle" title="Switch theme" aria-label="Switch theme">🌙</button>
+             <span class="header-icon-btn" title="Refresh" id="btnRefresh" aria-label="Refresh">🔔</span>
+             <span class="header-icon-btn" title="Profile" aria-label="Profile">👤</span>
+             <a href="/logout" class="header-icon-btn" title="Log out" aria-label="Log out" style="text-decoration: none; color: inherit;">🚪</a>
+          </div>
+        </header>
+
+        <main class="content-main">
+          <section id="page-overview" class="page active">
+            <!-- Row 1: KPI cards -->
+            <div class="dashboard-kpi-row cyber-kpi-row">
+              <div class="dashboard-kpi-card cyber-kpi-card cyber-kpi--events">
+                <div class="cyber-kpi-header">KPI</div>
+                <div class="dashboard-kpi-label">TOTAL EVENTS (24H):</div>
+                <div class="dashboard-kpi-value cyber-val-green" id="kpiTotalEvents">1,289,531</div>
+              </div>
+              <div class="dashboard-kpi-card cyber-kpi-card cyber-kpi--alerts">
+                <div class="cyber-kpi-header">KPI</div>
+                <div class="dashboard-kpi-label">ACTIVE CRITICAL ALERTS:</div>
+                <div class="dashboard-kpi-value cyber-val-red" id="criticalCount">42 <span style="font-size:1.2rem;vertical-align:middle;">🚨</span></div>
+              </div>
+              <div class="dashboard-kpi-card cyber-kpi-card cyber-kpi--assets">
+                <div class="cyber-kpi-header">KPI</div>
+                <div class="dashboard-kpi-label">MONITORED ASSETS:</div>
+                <div class="dashboard-kpi-value cyber-val-blue" id="kpiMonitoredAssets">156</div>
+              </div>
+              <div class="dashboard-kpi-card cyber-kpi-card cyber-kpi--health">
+                 <div class="cyber-kpi-header">KPI</div>
+                 <div class="dashboard-kpi-label">SYSTEM HEALTH:</div>
+                 <div class="dashboard-kpi-value cyber-val-green" id="healthPct" style="display:-none;"><span style="font-size:1.5rem;vertical-align:middle;margin-right:8px;">✅</span>OPERATIONAL</div>
+              </div>
+            </div>
+
+          <!-- Row 2: Attack Trends + Threat Summary (side by side) -->
+          <div class="dashboard-grid dashboard-grid--2">
+            <div class="panel dashboard-widget dashboard-widget--timeline cyber-panel">
+              <div class="cyber-panel-toolbar">
+                <span class="cyber-panel-icon">⋮</span>
+              </div>
+              <h3 class="dashboard-widget-title cyber-widget-title">ATTACK TRENDS (LAST 24 HOURS)</h3>
+              <div class="timeline-chart timeline-chart--overview" id="timelineChart">
+                <canvas id="timelineCanvas" width="600" height="180"></canvas>
+              </div>
+              <div class="cyber-chart-legend">
+                <span class="cyber-legend-item"><span class="cyber-legend-color cyber-blue-bg"></span> TOTAL LOGS (EPS)</span>
+                <span class="cyber-legend-item"><span class="cyber-legend-color cyber-orange-bg"></span> SECURITY ALERTS</span>
+              </div>
+            </div>
+            <div class="panel dashboard-widget cyber-panel">
+              <h3 class="dashboard-widget-title cyber-widget-title">THREAT SUMMARY BY SEVERITY</h3>
+              <div class="dashboard-donut-wrap cyber-donut-wrap">
+                <div class="dashboard-donut-inner cyber-donut-inner">
+                  <canvas id="threatSummaryDonutCanvas" width="200" height="200"></canvas>
+                  <div class="dashboard-donut-center cyber-donut-center">
+                    <div class="donut-sublabel">Total Alerts:</div>
+                    <div id="threatSummaryTotal" class="donut-big-val">0</div>
+                  </div>
+                </div>
+                <div id="threatSummaryLegend" class="dashboard-donut-legend"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 3: Top Source IPs + Attacked Assets + Activity Snapshot -->
+          <div class="dashboard-grid dashboard-grid--3 cyber-grid-3">
+            <div class="panel dashboard-widget cyber-panel">
+              <h3 class="dashboard-widget-title cyber-widget-title">TOP SOURCE IPS <span class="cyber-widget-subtitle">(BAR CHART)</span></h3>
+              <div class="attack-origin-box" id="attackOriginBox">
+                <div class="source-ips-list cyber-source-ips-list" id="topSourcesList">
+                  <!-- The JS will generate identical Cyber lines here -->
+                </div>
+                <div class="overview-empty" id="topSourcesEmpty">
+                  <span class="overview-empty-icon">◉</span>
+                  <span class="overview-empty-text">No source IP data in the last 24 hours</span>
+                </div>
+              </div>
+            </div>
+            <div class="panel dashboard-widget cyber-panel">
+              <h3 class="dashboard-widget-title cyber-widget-title">TOP ATTACKED ASSETS <span class="cyber-widget-subtitle">(LIST)</span></h3>
+              <div class="assets-table-wrap cyber-assets-list">
+                <ol id="topAttackedAssetsList" class="cyber-ol-list">
+                  <li><span class="cyber-asset-name">Web-Server-01</span> <span class="cyber-tag cyber-tag-red">(CRITICAL)</span> <span class="cyber-icons">🚨</span></li>
+                  <li><span class="cyber-asset-name">DB-Prod</span> <span class="cyber-tag cyber-tag-red">(HIGH)</span> <span class="cyber-icons">⚠️</span></li>
+                  <li><span class="cyber-asset-name">Web-Server-01</span> <span class="cyber-tag cyber-tag-red">(CRITICAL)</span> <span class="cyber-icons">🔊 🚨</span></li>
+                  <li><span class="cyber-asset-name">Web-Server-01</span> <span class="cyber-tag cyber-tag-red">(HIGH)</span> <span class="cyber-icons">--- 🚨</span></li>
+                  <li><span class="cyber-asset-name">Web-Server-01</span> <span class="cyber-tag cyber-tag-red">(CRITICAL)</span> <span class="cyber-icons">🔊 🚨</span></li>
+                </ol>
+              </div>
+            </div>
+            <div class="panel dashboard-widget cyber-panel">
+              <h3 class="dashboard-widget-title cyber-widget-title">ACTIVITY SNAPSHOT <span class="cyber-widget-subtitle">(TABLE)</span></h3>
+              <div class="donut-widget-wrap cyber-activity-table">
+                <table class="cyber-table">
+                  <tbody id="activitySnapshotBody">
+                    <tr><td>Failed Login (Admin)</td><td class="text-right text-muted">2m ago</td></tr>
+                    <tr><td>Malware Detected</td><td class="text-right text-muted">5m ago</td></tr>
+                    <tr><td>Privilege Escalation</td><td class="text-right text-muted">12m ago</td></tr>
+                    <tr><td>Malware Detected (Admin)</td><td class="text-right text-muted">5m ago</td></tr>
+                    <tr><td>Privilege Escalation</td><td class="text-right text-muted">12m ago</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 4: At-Risk + MITRE + Response -->
+          <div class="dashboard-grid dashboard-grid--3">
+            <div class="panel dashboard-widget">
+              <h3 class="dashboard-widget-title">Top At-Risk Entities</h3>
+              <div class="atrisk-section">
+                <div class="atrisk-label">Users</div>
+                <div id="atRiskUsers" class="atrisk-bars"></div>
+              </div>
+              <div class="atrisk-section">
+                <div class="atrisk-label">Devices</div>
+                <div id="atRiskDevices" class="atrisk-bars"></div>
+              </div>
+            </div>
+            <div class="panel dashboard-widget">
+              <h3 class="dashboard-widget-title">MITRE ATT&amp;CK</h3>
+              <div class="donut-wrap" id="mitreDonut">
+                <canvas id="mitreCanvas" width="180" height="180"></canvas>
+                <div class="donut-legend" id="mitreLegend"></div>
+              </div>
+              <a href="#" class="panel-link" data-page="threat-hunting">View Full →</a>
+            </div>
+            <div class="panel dashboard-widget">
+              <h3 class="dashboard-widget-title">Response Metrics</h3>
+              <div class="response-metrics">
+                <div class="response-row">
+                  <span class="response-label">MTTR</span>
+                  <span class="response-value" id="responseMttr">— min</span>
+                </div>
+                <div class="response-row">
+                  <span class="response-label">Triage Rate</span>
+                  <span class="response-value" id="responseTriage">—%</span>
+                </div>
+                <div class="response-row">
+                  <span class="response-label">Containment</span>
+                  <div class="response-bar"><div class="response-bar-fill" id="responseContainment" style="width:0%"></div></div>
+                  <span class="response-pct" id="responseContainmentPct">0%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel dashboard-widget-full cyber-panel cyber-stream">
+            <h3 class="dashboard-widget-title cyber-widget-title">SECURITY OFFENSES / ALERTS FEED (LIVE)</h3>
+            <div class="cyber-stream-toolbar" style="position:absolute;top:10px;right:15px;color:var(--text-muted);font-size:0.8rem;cursor:pointer;">⋮</div>
+            <div class="stream-table-wrap">
+              <table class="cyber-table cyber-stream-table">
+                <thead>
+                  <tr>
+                    <th style="text-align:left;">TIMESTAMP ▴</th>
+                    <th style="text-align:left;">AGENT</th>
+                    <th style="text-align:left;">ALERT DESCRIPTION</th>
+                    <th style="text-align:left;">SEVERITY</th>
+                    <th style="text-align:left;">ACTION</th>
+                  </tr>
+                </thead>
+                <tbody id="liveAlertStream">
+                  <tr>
+                    <td>21:04:12</td>
+                    <td>Server-01</td>
+                    <td>SSH Brute Force</td>
+                    <td><span class="cyber-pill cyber-pill-crit">CRITICAL</span></td>
+                    <td class="cyber-action"><a href="#">🔍 [Investigate]</a></td>
+                  </tr>
+                  <tr>
+                    <td>21:04:12</td>
+                    <td>Server-01</td>
+                    <td>SSH Brute Force</td>
+                    <td><span class="cyber-pill cyber-pill-crit">CRITICAL</span></td>
+                    <td class="cyber-action"><a href="#">🔍 [Investigate]</a></td>
+                  </tr>
+                  <tr>
+                    <td>21:04:13</td>
+                    <td>Server-01</td>
+                    <td>SSH Brute Force</td>
+                    <td><span class="cyber-pill cyber-pill-med""style="background:var(--cyber-orange);color:#fff;">CRITICAL</span></td>
+                    <td class="cyber-action"><a href="#">🔍 [Investigate]</a></td>
+                  </tr>
+                  <tr>
+                    <td>21:04:38</td>
+                    <td>Server-01</td>
+                    <td>MULTIPLE SSH BRUTE FORCE</td>
+                    <td><span class="cyber-pill cyber-pill-med">MEDIUM</span></td>
+                    <td class="cyber-action"><a href="#">🔍 [Investigate]</a></td>
+                  </tr>
+                  <!-- JS Will append below here dynamically or overwrite -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="quick-actions" id="quickActions">
+            <a href="#" class="quick-action-btn" data-page="dashboard" title="Generate Report">📊 Generate Report</a>
+            <a href="#" class="quick-action-btn" data-page="advanced" title="Alert Rules">🚨 Create Alert Rule</a>
+            <a href="#" class="quick-action-btn" data-page="threat-hunting" title="Threat Hunt">🔍 Threat Hunt</a>
+            <a href="#" class="quick-action-btn" data-page="compliance" title="Compliance">📋 Compliance</a>
+          </div>
+        </section>
+
+        <section id="page-stack" class="page">
+          <div class="stack-cards" id="stackCards">
+            <div class="card card-skeleton">Loading stack status…</div>
+          </div>
+          <div class="status-grid two-cols">
+            <div class="panel">
+              <h3>Manager connection</h3>
+              <div id="stackManagerDetail" class="status-content">—</div>
+            </div>
+            <div class="panel">
+              <h3>Indexer connection</h3>
+              <div id="stackIndexerDetail" class="status-content">—</div>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>Configured endpoints (from .env)</h3>
+            <div id="stackConfig" class="status-content">—</div>
+          </div>
+        </section>
+
+        <section id="page-data-sources" class="page">
+          <div class="panel">
+            <h3>Manager API configuration</h3>
+            <div id="managerConfigDisplay" class="status-content">—</div>
+            <button type="button" class="btn-test" id="btnTestManager">Test connection</button>
+            <div id="managerTestResult" class="test-result"></div>
+          </div>
+
+          <div class="panel">
+            <h3>Indexer API configuration</h3>
+            <div id="indexerConfigDisplay" class="status-content">—</div>
+            <button type="button" class="btn-test" id="btnTestIndexer">Test connection</button>
+            <div id="indexerTestResult" class="test-result"></div>
+          </div>
+
+          <div class="panel">
+            <h3>Index patterns</h3>
+            <div id="indexPatternsList" class="patterns-list">Loading…</div>
+          </div>
+        </section>
+
+        <section id="page-index-management" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">Index Management</h2>
+              <p class="agents-subtitle">View and manage indexer indices. Health, status, size, and document counts.</p>
+            </div>
+          </header>
+          <div class="rules-toolbar index-management-toolbar">
+            <input type="search" id="indexMgmtSearch" class="global-search" placeholder="Search indexes (e.g. watchvault or *)" aria-label="Search">
+            <label class="index-mgmt-toggle">
+              <input type="checkbox" id="indexMgmtDataStreams" checked>
+              <span>Show all indexes</span>
+            </label>
+            <button type="button" id="indexMgmtRefresh" class="global-btn">Refresh</button>
+          </div>
+          <div class="panel">
+            <p class="panel-badge"><span id="indexMgmtTotal">0</span> indexes</p>
+            <div class="table-wrap">
+              <table class="table table-index-mgmt">
+                <thead>
+                  <tr>
+                    <th>Index</th>
+                    <th>Health</th>
+                    <th>Status</th>
+                    <th>Total size</th>
+                    <th>Size of primaries</th>
+                    <th>Documents</th>
+                    <th>Deleted docs</th>
+                    <th>Primaries</th>
+                    <th>Replicas</th>
+                  </tr>
+                </thead>
+                <tbody id="indexMgmtBody"><tr><td colspan="9">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="page-agents" class="page">
+          <!-- Header -->
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">Connected Systems</h2>
+              <p class="agents-subtitle">Monitor, manage, and enroll WatchNode agents across your environment.</p>
+            </div>
+            <div class="agents-header-right" style="display:flex;gap:10px;align-items:center">
+              <span class="agents-updated" id="agentsUpdated" style="font-size:12px;color:var(--text-muted)">—</span>
+              <select id="agentsRefresh" class="global-select"><option value="0">Manual</option><option value="30" selected>Auto 30s</option><option value="60">Auto 60s</option></select>
+              <button type="button" class="btn-primary" id="agentsAddNewBtn">+ Add New Agent</button>
+            </div>
+          </header>
+
+          <!-- Enroll CTA banner (shown when 0 active agents or always visible) -->
+          <div class="agents-enroll-banner">
+            <span>🖥 Deploy WatchNode to any machine to start monitoring it in real time.</span>
+            <button type="button" class="btn-primary" id="agentsAddNewBtn2">+ Add New Agent</button>
+          </div>
+
+          <!-- Status bar -->
+          <div class="agents-status-bar">
+            <div class="asb-item asb-total"><span class="asb-num" id="agentsKpiTotal">—</span><span class="asb-label">Total Systems</span></div>
+            <div class="asb-divider"></div>
+            <div class="asb-item asb-active"><span class="asb-dot asb-dot-active"></span><span class="asb-num" id="agentsKpiActive">—</span><span class="asb-label">Connected</span></div>
+            <div class="asb-item asb-disconnected"><span class="asb-dot asb-dot-disconnected"></span><span class="asb-num" id="agentsKpiDisconnected">—</span><span class="asb-label">Disconnected</span></div>
+            <div class="asb-item asb-pending"><span class="asb-dot asb-dot-pending"></span><span class="asb-num" id="agentsKpiPending">—</span><span class="asb-label">Pending</span></div>
+            <div class="asb-divider"></div>
+            <div class="asb-health-bar-wrap">
+              <div class="asb-health-label">Fleet Health</div>
+              <div class="asb-health-track"><div class="asb-health-fill" id="agentsHealthFill" style="width:0%"></div></div>
+              <span class="asb-health-pct" id="agentsHealthPct">—%</span>
+            </div>
+          </div>
+
+          <!-- Search + filter toolbar -->
+          <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center">
+            <input type="search" id="agentsSearch" class="global-search" placeholder="Search by name, ID, OS…" style="flex:2">
+            <select id="agentsFilterStatus" class="global-select">
+              <option value="">All statuses</option>
+              <option value="active">Connected</option>
+              <option value="disconnected">Disconnected</option>
+              <option value="pending">Pending</option>
+            </select>
+            <button type="button" class="global-btn" id="agentsExport">⬇ Export CSV</button>
+          </div>
+
+          <!-- Agent cards grid -->
+          <div id="agentCardsGrid" class="agent-cards-grid"></div>
+
+          <!-- Full table (below cards) -->
+          <div class="panel" style="margin-top:20px">
+            <div class="panel-head">
+              <h3>All Agents <span id="agentsTableCount" class="panel-badge"></span></h3>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Status</th>
+                    <th>Name / Hostname</th>
+                    <th>Agent ID</th>
+                    <th>OS</th>
+                    <th>Version</th>
+                    <th>Total Alerts</th>
+                    <th>Critical</th>
+                    <th>Last Seen</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="agentsBody"><tr><td colspan="9">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Agent detail slide-in panel -->
+          <div id="agentDetailPanel" class="agent-detail-panel hidden">
+            <div class="agent-detail-header">
+              <h2 id="agentDetailTitle">Agent Detail</h2>
+              <button type="button" id="agentDetailClose" class="agent-detail-close">×</button>
+            </div>
+            <div id="agentDetailContent" class="agent-detail-content"><p class="empty-msg">Loading…</p></div>
+          </div>
+
+          <!-- Add New Agent modal -->
+          <div id="agentEnrollModal" class="modal-overlay hidden">
+            <div class="modal" style="max-width:680px">
+              <div class="modal-header">
+                <h3>Add New Agent</h3>
+                <button type="button" id="agentEnrollClose" class="modal-close">×</button>
+              </div>
+              <div class="modal-body">
+                <!-- Step 1: Platform -->
+                <div class="enroll-step">
+                  <div class="enroll-step-num">1</div>
+                  <div class="enroll-step-body">
+                    <div class="enroll-step-title">Choose operating system</div>
+                    <div class="enroll-os-btns">
+                      <button type="button" class="enroll-os-btn active" data-os="linux">🐧 Linux</button>
+                      <button type="button" class="enroll-os-btn" data-os="windows">🪟 Windows</button>
+                      <button type="button" class="enroll-os-btn" data-os="macos">🍎 macOS</button>
+                    </div>
+                  </div>
+                </div>
+                <!-- Step 2: Server IP -->
+                <div class="enroll-step">
+                  <div class="enroll-step-num">2</div>
+                  <div class="enroll-step-body">
+                    <div class="enroll-step-title">WatchTower server address</div>
+                    <input type="text" id="enrollServerIp" class="global-search" style="width:100%;margin-top:6px"
+                           placeholder="e.g. 192.168.1.100" value="">
+                  </div>
+                </div>
+                <!-- Step 3: Commands -->
+                <div class="enroll-step">
+                  <div class="enroll-step-num">3</div>
+                  <div class="enroll-step-body">
+                    <div class="enroll-step-title">Run these commands on the target machine</div>
+                    <div id="enrollCommands" class="enroll-commands-wrap"></div>
+                  </div>
+                </div>
+                <!-- Step 4: Verify -->
+                <div class="enroll-step">
+                  <div class="enroll-step-num">4</div>
+                  <div class="enroll-step-body">
+                    <div class="enroll-step-title">Verify connection</div>
+                    <p style="font-size:13px;color:var(--text-muted);margin:6px 0 0">
+                      After running the agent, return here and click <strong>Refresh</strong> — the new agent will appear in the list within 30 seconds once it connects to WatchTower on port <code>50051</code>.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button type="button" id="agentEnrollDone" class="btn-primary">Done — Refresh Agent List</button>
+              </div>
+            </div>
+          </div>
+
+        </section>
+
+        <section id="page-threat-hunting" class="page">
+          <div class="section-title">Alerts by agent</div>
+          <div id="chartByAgent" class="chart-content"></div>
+          <div class="section-title">Alerts by severity</div>
+          <div id="chartSeverity" class="chart-content"></div>
+          <div class="section-title">Top rules</div>
+          <div id="chartRules" class="chart-content"></div>
+        </section>
+
+        <section id="page-alerts" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">🚨 ALERTS & INCIDENTS</h2>
+              <p class="agents-subtitle">Real-time Threat Detection and Analysis</p>
+            </div>
+            <div class="agents-header-right">
+              <span class="header-datetime" id="alertsHeaderTime">—</span>
+            </div>
+          </header>
+          <div class="agents-toolbar">
+            <select id="alertsTimeRange" class="global-select"><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option></select>
+            <select id="alertsRefresh" class="global-select"><option value="0">Off</option><option value="30" selected>Auto (30s)</option></select>
+            <input type="search" id="alertsSearch" class="global-search" placeholder="🔍 Search Alerts">
+          </div>
+
+          <div class="scorecards scorecards--enhanced" id="alertsKpiCards">
+            <div class="scorecard"><div class="scorecard-head"><span class="scorecard-title">TOTAL ALERTS</span></div><div class="scorecard-big-num" id="alertsKpiTotal">—</div><div class="scorecard-meta">LAST 24H</div></div>
+            <div class="scorecard scorecard--critical"><div class="scorecard-head"><span class="scorecard-title">CRITICAL (12+)</span></div><div class="scorecard-big-num scorecard-critical" id="alertsKpiCritical">—</div><div class="scorecard-meta" id="alertsKpiCriticalMeta">⚠️ —</div></div>
+            <div class="scorecard"><div class="scorecard-head"><span class="scorecard-title">HIGH (8-11)</span></div><div class="scorecard-big-num scorecard-teal" id="alertsKpiHigh">—</div><div class="scorecard-meta" id="alertsKpiHighMeta">📈 —</div></div>
+            <div class="scorecard"><div class="scorecard-head"><span class="scorecard-title">MED/LOW (1-7)</span></div><div class="scorecard-big-num scorecard-green" id="alertsKpiMedLow">—</div><div class="scorecard-meta">📊 Baseline</div></div>
+          </div>
+
+          <div class="panel">
+            <h3>Alert Timeline (Last 24 Hours)</h3>
+            <div class="timeline-chart"><canvas id="alertsTimelineCanvas" width="600" height="200"></canvas></div>
+            <p class="panel-badge" id="alertsTimelinePeak">Peak: —</p>
+          </div>
+
+          <div class="overview-middle">
+            <div class="panel">
+              <h3>Top Alert Categories</h3>
+              <div id="alertsTopCategories" class="hygiene-chart-list"></div>
+            </div>
+            <div class="panel">
+              <h3>Top Affected Agents</h3>
+              <div id="alertsTopAgents" class="hygiene-chart-list"></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><h3>Active Incidents</h3><div><a href="#" class="panel-link" data-page="discover">View All</a></div></div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead><tr><th>TIME</th><th>SEVERITY</th><th>INCIDENT</th><th>AFFECTED</th><th>STATUS</th></tr></thead>
+                <tbody id="alertsIncidentsBody"><tr><td colspan="5">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel panel-cta">
+            <h3>Alert Table &amp; search</h3>
+            <p>View the full alert list with search, filters, and complete event details on the Discover page.</p>
+            <a href="#" class="btn-primary" id="alertsOpenDiscover">Open in Discover →</a>
+          </div>
+
+          <div class="quick-actions">
+            <button type="button" class="quick-action-btn">🔔 Create Alert Rule</button>
+            <button type="button" class="quick-action-btn">📊 Export to PDF</button>
+            <button type="button" class="quick-action-btn">🤖 Run Playbook</button>
+            <button type="button" class="quick-action-btn">📋 Investigate</button>
+          </div>
+        </section>
+
+        <section id="page-discover" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">🔍 Discover</h2>
+              <p class="agents-subtitle">Explore alerts with field selector, filters, and DSL</p>
+            </div>
+            <div class="agents-header-right">
+              <span class="discover-index-badge" id="discoverIndexBadge">watchvault-alerts*</span>
+            </div>
+          </header>
+          <div class="discover-toolbar">
+            <input type="search" id="discoverSearch" class="global-search" placeholder="Search description, rule ID, agent, source IP…" aria-label="Search" style="flex:2;min-width:200px">
+            <select id="discoverTimeRange" class="global-select">
+              <option value="24h" selected>Last 24 hours</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+            </select>
+            <select id="discoverSeverity" class="global-select">
+              <option value="">All severities</option>
+              <option value="12">Critical (12+)</option>
+              <option value="8">High (8–11)</option>
+              <option value="4">Medium (4–7)</option>
+              <option value="1">Low (1–3)</option>
+            </select>
+            <select id="discoverAgent" class="global-select"><option value="">All agents</option></select>
+            <select id="discoverGroup" class="global-select"><option value="">All groups</option></select>
+            <button type="button" id="discoverExportCsv" class="global-btn" title="Export current results to CSV">⬇ CSV</button>
+            <button type="button" id="discoverRefresh" class="global-btn">↺ Refresh</button>
+          </div>
+          <div class="discover-filter-builder" id="discoverFilterBuilder">
+            <div class="filter-builder-row">
+              <select id="discoverFilterField" class="filter-builder-field" aria-label="Field"><option value="">Field</option></select>
+              <select id="discoverFilterOp" class="filter-builder-op" aria-label="Operator"><option value="is">is</option><option value="is not">is not</option><option value="is one of">is one of</option><option value="exists">exists</option><option value="does not exist">does not exist</option><option value="starts with">starts with</option><option value=">">greater than</option><option value="<">less than</option><option value=">=">gte</option><option value="<=">lte</option><option value="between">between</option></select>
+              <div class="filter-builder-value-wrap" id="discoverFilterValueWrap">
+                <input type="text" id="discoverFilterValue" class="filter-builder-value" placeholder="Value" aria-label="Value">
+              </div>
+              <button type="button" id="discoverFilterAdd" class="global-btn">Add filter</button>
+            </div>
+          </div>
+          <div class="discover-filters" id="discoverFilterPills"></div>
+          <div class="discover-histogram-wrap">
+            <canvas id="discoverHistogram" width="900" height="60" style="width:100%;height:60px;display:block;border-radius:4px;"></canvas>
+          </div>
+          <div class="discover-layout">
+            <aside class="discover-sidebar" id="discoverSidebar">
+              <div class="discover-fields-section">
+                <h3 class="discover-fields-title">Selected fields</h3>
+                <ul class="discover-fields-list" id="discoverSelectedFields"></ul>
+              </div>
+              <div class="discover-fields-section">
+                <h3 class="discover-fields-title">Popular fields</h3>
+                <ul class="discover-fields-list" id="discoverPopularFields"></ul>
+              </div>
+              <div class="discover-fields-section">
+                <h3 class="discover-fields-title">Available fields</h3>
+                <ul class="discover-fields-list discover-fields-available" id="discoverAvailableFields"></ul>
+              </div>
+            </aside>
+            <div class="discover-main">
+              <div class="panel">
+                <p class="panel-badge"><span id="discoverHits">0</span> hits</p>
+                <div class="table-wrap">
+                  <table class="table table-discover" id="discoverTable">
+                    <thead id="discoverThead"><tr><th>Time</th><th>Level</th><th>Rule ID</th><th>Description</th><th>Source</th><th>IP</th><th></th></tr></thead>
+                    <tbody id="discoverBody"><tr><td colspan="7">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+                <div class="hygiene-table-footer">
+                  <span id="discoverTableInfo">Showing 0 of 0</span>
+                  <div class="hygiene-pagination">
+                    <select id="discoverPageSize" class="global-select discover-page-size"><option value="10">10</option><option value="25" selected>25</option><option value="50">50</option><option value="100">100</option></select>
+                    <button type="button" id="discoverPrev">← Previous</button>
+                    <span id="discoverPageInfo">Page 1</span>
+                    <button type="button" id="discoverNext">Next →</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="discoverDetailPanel" class="agent-detail-panel hidden">
+            <div class="agent-detail-header">
+              <h2 id="discoverDetailTitle">Event details</h2>
+              <button type="button" id="discoverDetailClose" class="agent-detail-close" aria-label="Close">×</button>
+            </div>
+            <div class="discover-detail-tabs">
+              <button type="button" class="discover-detail-tab active" data-tab="table">Table</button>
+              <button type="button" class="discover-detail-tab" data-tab="json">JSON</button>
+            </div>
+            <div id="discoverDetailContent" class="agent-detail-content discover-detail-table-wrap"></div>
+            <div id="discoverDetailJson" class="agent-detail-content discover-detail-json-wrap hidden"></div>
+          </div>
+        </section>
+
+        <section id="page-rules" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">Rules</h2>
+              <p class="agents-subtitle">Manage your rules. Add new rule files or browse existing rules.</p>
+            </div>
+          </header>
+          <div class="rules-toolbar">
+            <input type="search" id="rulesSearch" class="global-search" placeholder="Search rules…" aria-label="Search">
+            <button type="button" id="rulesAddFile" class="btn-primary">+ Add new rules file</button>
+            <button type="button" id="rulesRefresh" class="global-btn">Refresh</button>
+          </div>
+          <div class="panel">
+            <p class="panel-badge"><span id="rulesTotal">0</span> rules</p>
+            <div class="table-wrap">
+              <table class="table table-rules">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Description</th>
+                    <th>Groups</th>
+                    <th>Level</th>
+                    <th>File</th>
+                    <th>Path</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="rulesBody"><tr><td colspan="7">Loading…</td></tr></tbody>
+              </table>
+            </div>
+            <div class="hygiene-table-footer">
+              <span id="rulesTableInfo">Showing 0 of 0</span>
+              <div class="hygiene-pagination">
+                <button type="button" id="rulesPrev">← Previous</button>
+                <span id="rulesPageInfo">Page 1</span>
+                <button type="button" id="rulesNext">Next →</button>
+              </div>
+            </div>
+          </div>
+          <div id="rulesModal" class="modal-overlay hidden">
+            <div class="modal rules-modal">
+              <div class="modal-header">
+                <h3>Add new rules file</h3>
+                <button type="button" id="rulesModalClose" class="modal-close" aria-label="Close">×</button>
+              </div>
+              <div class="modal-body">
+                <label for="rulesModalFilename">Filename (e.g. local_rules.xml)</label>
+                <input type="text" id="rulesModalFilename" class="global-search" placeholder="local_rules.xml">
+                <label for="rulesModalContent">XML content</label>
+                <textarea id="rulesModalContent" class="rules-xml-textarea" placeholder="<group name=\"local,\">&#10;  <rule id=\"100001\" level=\"3\">&#10;    <description>My custom rule.</description>&#10;    ...&#10;  </rule>&#10;</group>" rows="12"></textarea>
+                <p class="rules-modal-hint">Custom rule files are stored under etc/rules/. Use a unique filename (e.g. local_rules.xml).</p>
+              </div>
+              <div class="modal-footer">
+                <button type="button" id="rulesModalCancel" class="global-btn">Cancel</button>
+                <button type="button" id="rulesModalSave" class="btn-primary">Save rules file</button>
+              </div>
+            </div>
+          </div>
+          <div id="rulesDetailPanel" class="agent-detail-panel hidden">
+            <div class="agent-detail-header">
+              <h2 id="rulesDetailTitle">Rule details</h2>
+              <button type="button" id="rulesDetailClose" class="agent-detail-close" aria-label="Close">×</button>
+            </div>
+            <div class="agent-detail-content">
+              <div id="rulesDetailTableWrap"></div>
+              <div class="rules-detail-file-section">
+                <button type="button" id="rulesDetailViewFile" class="global-btn">View rule file content</button>
+                <pre id="rulesDetailFileContent" class="rules-file-content hidden"></pre>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="page-decoders" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">Decoders</h2>
+              <p class="agents-subtitle">Manage your decoders. Add new decoder files or browse existing decoders.</p>
+            </div>
+          </header>
+          <div class="rules-toolbar">
+            <input type="search" id="decodersSearch" class="global-search" placeholder="Search decoders…" aria-label="Search">
+            <button type="button" id="decodersAddFile" class="btn-primary">+ Add new decoders file</button>
+            <button type="button" id="decodersRefresh" class="global-btn">Refresh</button>
+          </div>
+          <div class="panel">
+            <p class="panel-badge"><span id="decodersTotal">0</span> decoders</p>
+            <div class="table-wrap">
+              <table class="table table-rules table-decoders">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Program name</th>
+                    <th>Order</th>
+                    <th>File</th>
+                    <th>Path</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="decodersBody"><tr><td colspan="6">Loading…</td></tr></tbody>
+              </table>
+            </div>
+            <div class="hygiene-table-footer">
+              <span id="decodersTableInfo">Showing 0 of 0</span>
+              <div class="hygiene-pagination">
+                <button type="button" id="decodersPrev">← Previous</button>
+                <span id="decodersPageInfo">Page 1</span>
+                <button type="button" id="decodersNext">Next →</button>
+              </div>
+            </div>
+          </div>
+          <div id="decodersModal" class="modal-overlay hidden">
+            <div class="modal rules-modal">
+              <div class="modal-header">
+                <h3>Add new decoders file</h3>
+                <button type="button" id="decodersModalClose" class="modal-close" aria-label="Close">×</button>
+              </div>
+              <div class="modal-body">
+                <label for="decodersModalFilename">Filename (e.g. local_decoders.xml)</label>
+                <input type="text" id="decodersModalFilename" class="global-search" placeholder="local_decoders.xml">
+                <label for="decodersModalContent">XML content</label>
+                <textarea id="decodersModalContent" class="rules-xml-textarea" placeholder="<decoder name=\"my-decoder\">&#10;  <program_name>myprogram</program_name>&#10;  <prematch>^my:</prematch>&#10;  ...&#10;</decoder>" rows="12"></textarea>
+                <p class="rules-modal-hint">Custom decoder files are stored under etc/decoders/. Use a unique filename (e.g. local_decoders.xml).</p>
+              </div>
+              <div class="modal-footer">
+                <button type="button" id="decodersModalCancel" class="global-btn">Cancel</button>
+                <button type="button" id="decodersModalSave" class="btn-primary">Save decoders file</button>
+              </div>
+            </div>
+          </div>
+          <div id="decodersDetailPanel" class="agent-detail-panel hidden">
+            <div class="agent-detail-header">
+              <h2 id="decodersDetailTitle">Decoder details</h2>
+              <button type="button" id="decodersDetailClose" class="agent-detail-close" aria-label="Close">×</button>
+            </div>
+            <div class="agent-detail-content">
+              <div id="decodersDetailTableWrap"></div>
+              <div class="rules-detail-file-section">
+                <button type="button" id="decodersDetailViewFile" class="global-btn">View decoder file content</button>
+                <pre id="decodersDetailFileContent" class="rules-file-content hidden"></pre>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="page-vulnerabilities" class="page">
+          <div class="vuln-toolbar">
+            <div class="vuln-toolbar-row">
+              <input type="text" id="vulnSearch" class="vuln-search" placeholder="Search CVE or package…">
+              <select id="vulnTimeRange" class="vuln-time">
+                <option value="7d">Last 7 days</option>
+                <option value="24h">Last 24 hours</option>
+                <option value="30d" selected>Last 30 days</option>
+              </select>
+            </div>
+            <div class="vuln-filters">
+              <div class="vuln-filter-group">
+                <span class="vuln-filter-label">Severity</span>
+                <select id="vulnSeverity">
+                  <option value="">All</option>
+                  <option value="Critical">Critical</option>
+                  <option value="High">High</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Low">Low</option>
+                </select>
+              </div>
+              <div class="vuln-filter-group">
+                <span class="vuln-filter-label">Agent</span>
+                <select id="vulnAgent"><option value="">All agents</option></select>
+              </div>
+              <div class="vuln-filter-group">
+                <span class="vuln-filter-label">CVSS</span>
+                <input type="number" id="vulnCvssMin" class="vuln-cvss-input" placeholder="Min" min="0" max="10" step="0.1">
+                <span class="vuln-filter-sep">–</span>
+                <input type="number" id="vulnCvssMax" class="vuln-cvss-input" placeholder="Max" min="0" max="10" step="0.1">
+              </div>
+              <button type="button" class="btn-test" id="vulnApplyFilters">Apply filters</button>
+            </div>
+          </div>
+
+          <div class="vuln-kpis" id="vulnKpis">
+            <div class="vuln-kpi"><span class="vuln-kpi-value" id="vulnKpiTotal">—</span><span class="vuln-kpi-label">Total vulnerabilities</span></div>
+            <div class="vuln-kpi vuln-kpi--critical"><span class="vuln-kpi-value" id="vulnKpiCriticalHigh">—</span><span class="vuln-kpi-label">Critical / High</span></div>
+            <div class="vuln-kpi"><span class="vuln-kpi-value" id="vulnKpiAvgCvss">—</span><span class="vuln-kpi-label">Avg CVSS score</span></div>
+            <div class="vuln-kpi"><span class="vuln-kpi-value" id="vulnKpiAgents">—</span><span class="vuln-kpi-label">Affected agents</span></div>
+            <div class="vuln-kpi"><span class="vuln-kpi-value" id="vulnKpiCves">—</span><span class="vuln-kpi-label">Unique CVEs</span></div>
+          </div>
+
+          <div class="vuln-charts">
+            <div class="panel vuln-chart-panel">
+              <h3>Vulnerability trends over time</h3>
+              <div class="vuln-trend-wrap">
+                <canvas id="vulnTrendCanvas" width="700" height="220"></canvas>
+                <div id="vulnTrendLegend" class="vuln-legend"></div>
+              </div>
+            </div>
+          </div>
+          <div class="vuln-charts vuln-charts--two">
+            <div class="panel vuln-chart-panel">
+              <h3>Top 10 agents by vulnerabilities</h3>
+              <div id="vulnTopAgents" class="vuln-bar-list">Loading…</div>
+            </div>
+            <div class="panel vuln-chart-panel">
+              <h3>Top 10 vulnerable packages</h3>
+              <div id="vulnTopPackages" class="vuln-bar-list">Loading…</div>
+            </div>
+          </div>
+
+          <div class="panel vuln-table-panel">
+            <h3>Vulnerability details</h3>
+            <div class="vuln-table-wrap">
+              <table class="vuln-table">
+                <thead>
+                  <tr>
+                    <th>Detected</th>
+                    <th>CVE ID</th>
+                    <th>Severity</th>
+                    <th>Agent</th>
+                    <th>Package</th>
+                    <th>Score</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="vulnBody">
+                  <tr><td colspan="7">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="vuln-pagination" id="vulnPagination">
+              <button type="button" class="btn-pagination" id="vulnPrevPage" disabled>← Previous</button>
+              <span class="vuln-pagination-info" id="vulnPaginationInfo">—</span>
+              <button type="button" class="btn-pagination" id="vulnNextPage">Next →</button>
+              <select id="vulnPageSize" class="vuln-page-size">
+                <option value="10">10 per page</option>
+                <option value="25" selected>25 per page</option>
+                <option value="50">50 per page</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <section id="page-visualizations" class="page">
+          <div class="viz-grid">
+            <div class="panel viz-panel">
+              <h3>Top 5 Alerts by Agent</h3>
+              <p class="viz-desc">Horizontal bar · Terms aggregation on agent.name · Count</p>
+              <div id="vizTop5Agents" class="viz-content">Loading…</div>
+            </div>
+            <div class="panel viz-panel">
+              <h3>Alert Severity Over Time</h3>
+              <p class="viz-desc">Line chart · Date Histogram (X) · Split by rule.level · Count</p>
+              <div class="viz-chart-wrap">
+                <canvas id="vizSeverityOverTime" width="600" height="260"></canvas>
+              </div>
+              <div id="vizSeverityOverTimeLegend" class="viz-legend"></div>
+            </div>
+            <div class="panel viz-panel">
+              <h3>Rule Tactic Breakdown</h3>
+              <p class="viz-desc">Pie chart · Terms aggregation on rule.mitre.tactic · Count</p>
+              <div class="donut-wrap">
+                <canvas id="vizTacticPie" width="220" height="220"></canvas>
+                <div class="donut-legend" id="vizTacticLegend"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="page-dashboard" class="page">
+          <div class="dashboard-toolbar">
+            <div class="dashboard-filter">
+              <label for="dashboardMinLevel">Min rule.level</label>
+              <select id="dashboardMinLevel">
+                <option value="">All</option>
+                <option value="1">≥ 1</option>
+                <option value="5">≥ 5</option>
+                <option value="10">≥ 10</option>
+                <option value="12">≥ 12</option>
+                <option value="15">≥ 15</option>
+              </select>
+            </div>
+            <div class="dashboard-time">
+              <label for="dashboardTimeRange">Time range</label>
+              <select id="dashboardTimeRange">
+                <option value="24h">Last 24 hours</option>
+                <option value="7d" selected>Last 7 days</option>
+                <option value="30d">Last 30 days</option>
+              </select>
+            </div>
+            <div class="dashboard-filter">
+              <label for="dashboardAgent">Filter by agent</label>
+              <select id="dashboardAgent">
+                <option value="">All agents</option>
+              </select>
+            </div>
+            <div class="dashboard-filter">
+              <label for="dashboardRuleGroup">Filter by rule group</label>
+              <select id="dashboardRuleGroup">
+                <option value="">All groups</option>
+              </select>
+            </div>
+            <div class="dashboard-filter dashboard-filter--wide">
+              <label for="dashboardExcludeRules">Exclude rule IDs (comma-separated)</label>
+              <input type="text" id="dashboardExcludeRules" placeholder="e.g. 100001,100002" class="dashboard-input">
+            </div>
+            <div class="dashboard-actions">
+              <button type="button" class="btn-test" id="dashboardApply">Apply</button>
+              <button type="button" class="btn-save-dash" id="dashboardSave">Save dashboard</button>
+              <span class="dashboard-filter-badge" id="dashboardFilterBadge" style="display:none;"></span>
+              <button type="button" class="btn-clear-filter" id="dashboardClearFilter" style="display:none;">Clear filter</button>
+            </div>
+          </div>
+          <div class="viz-grid" id="dashboardVizGrid">
+            <div class="panel viz-panel">
+              <h3>Top 5 Alerts by Agent</h3>
+              <p class="viz-subtitle" id="dashTop5Subtitle">Click a bar to filter dashboard by that agent.</p>
+              <div id="dashTop5Agents" class="viz-content">Loading…</div>
+            </div>
+            <div class="panel viz-panel">
+              <h3>Alert Severity Over Time</h3>
+              <p class="viz-subtitle" id="dashSeveritySubtitle">—</p>
+              <div class="viz-chart-wrap"><canvas id="dashSeverityOverTime" width="600" height="260"></canvas></div>
+              <div id="dashSeverityLegend" class="viz-legend"></div>
+            </div>
+            <div class="panel viz-panel">
+              <h3>Rule Tactic Breakdown</h3>
+              <p class="viz-subtitle" id="dashTacticSubtitle">—</p>
+              <div class="donut-wrap">
+                <canvas id="dashTacticPie" width="220" height="220"></canvas>
+                <div class="donut-legend" id="dashTacticLegend"></div>
+              </div>
+            </div>
+            <div class="panel viz-panel viz-panel--stats">
+              <h3>Unique counts (filtered)</h3>
+              <p class="viz-subtitle">Unique source IPs and agents in selected time range.</p>
+              <div id="dashStats" class="viz-content">—</div>
+            </div>
+          </div>
+        </section>
+
+        <section id="page-advanced" class="page">
+          <div class="panel">
+            <h3>Configuration reference</h3>
+            <div class="status-content">
+              <div class="line"><span class="key">Manager / Indexer URLs, users, passwords</span><span>.env (SENTINEL_MANAGER_*, SENTINEL_INDEXER_*)</span></div>
+              <div class="line"><span class="key">SSL verification</span><span>.env (VERIFY_SSL)</span></div>
+              <div class="line"><span class="key">API timeouts</span><span>.env (REQUEST_TIMEOUT, default 15s)</span></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>Phase 7: Data sources &amp; custom data</h3>
+            <ul class="phase-list">
+              <li><strong>IT Hygiene</strong> — IT Hygiene dashboards (OS, software, processes, network; newer versions add Browser Extensions and Services) use state/inventory indices. Use <strong>Data Sources</strong> here to see index patterns; the same indices can be queried for custom views.</li>
+              <li><strong>Custom data</strong> — Identify new sources (app logs, threat intel). Use the <strong>command wodle</strong> in <code>ossec.conf</code> to run scripts; write <strong>custom rules</strong> in <code>local_rules.xml</code> to turn output into alerts so they reach the indexer. New indices will appear under index patterns once data is indexed; then add visualizations in this dashboard.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <h3>Phase 8: Operations &amp; troubleshooting</h3>
+            <ul class="phase-list">
+              <li><strong>Maintenance</strong> — Check version compatibility (manager, indexer, dashboard) before upgrades; keep cluster nodes on the same version. Schedule regular upgrades.</li>
+              <li><strong>Monitoring</strong> — Verify services for your Sentinel stack (manager, indexer, web UI). Check logs (e.g. systemd journal for the web UI and manager logs under <code>/var/ossec/logs/ossec.log</code>). Use <strong>Stack Status</strong> and <strong>Data Sources</strong> here to test connectivity.</li>
+              <li><strong>Data issues</strong> — Inventory (e.g. software) updates on an interval (e.g. 1 hour); changes can be delayed. Restart the agent service to trigger a scan if <code>scan_on_start</code> is enabled. For raw data, query inventory indices directly.</li>
+            </ul>
+          </div>
+
+          <div class="panel">
+            <h3>Phase 9: Branding, reporting &amp; alerting</h3>
+            <ul class="phase-list">
+              <li><strong>Branding</strong> — Customize this Sentinel Core UI by editing <code>templates/</code> and <code>static/css/style.css</code> (and JS) to match your organization.</li>
+              <li><strong>Reporting</strong> — For scheduled PDF reports and email, use your preferred reporting stack (for example, OpenSearch Dashboards reporting) alongside this app, which focuses on live dashboards.</li>
+              <li><strong>Alerts from searches</strong> — For saved-search alerting (email, Slack, etc.), use your underlying search/dashboard platform or an external monitoring system; this app does not implement saved-search alerting.</li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="page-it-hygiene" class="page">
+          <div class="hygiene-subnav">
+            <button type="button" class="hygiene-subtab active" data-hygiene="system">System</button>
+            <button type="button" class="hygiene-subtab" data-hygiene="software">Software</button>
+            <button type="button" class="hygiene-subtab" data-hygiene="processes">Processes</button>
+            <button type="button" class="hygiene-subtab" data-hygiene="identity">Identity</button>
+          </div>
+          <div class="hygiene-filters" id="hygieneFilters">
+            <input type="text" id="hygieneClusterFilter" class="global-search" placeholder="Cluster name (optional)" title="Cluster filter">
+          </div>
+
+          <div id="hygiene-system" class="hygiene-view">
+            <div class="overview-middle">
+              <div class="panel">
+                <h3>Top 5 platforms</h3>
+                <div id="hygieneTopPlatforms" class="hygiene-chart-list"></div>
+              </div>
+              <div class="panel">
+                <h3>Top 5 operating systems</h3>
+                <div id="hygieneTopOs" class="hygiene-chart-list"></div>
+              </div>
+              <div class="panel">
+                <h3>Architecture</h3>
+                <div id="hygieneTopArch" class="hygiene-chart-list"></div>
+              </div>
+            </div>
+            <div class="panel">
+              <h3>System inventory</h3>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead><tr><th>agent.name</th><th>host.os.platform</th><th>host.os.name</th><th>host.os.version</th><th>host.os.kernel.release</th><th>host.architecture</th></tr></thead>
+                  <tbody id="hygieneSystemTable"></tbody>
+                </table>
+              </div>
+              <div class="hygiene-table-footer">
+                <span id="hygieneSystemHits">0 hits</span>
+                <div class="hygiene-pagination">
+                  <button type="button" id="hygieneSystemPrev">← Prev</button>
+                  <span id="hygieneSystemPageInfo">Page 1</span>
+                  <button type="button" id="hygieneSystemNext">Next →</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="hygiene-software" class="hygiene-view hidden">
+            <div class="overview-middle">
+              <div class="panel">
+                <h3>Top 5 vendors</h3>
+                <div id="hygieneTopVendors" class="hygiene-chart-list"></div>
+              </div>
+              <div class="panel">
+                <h3>Unique packages</h3>
+                <div id="hygieneUniquePackages" class="scorecard-big-num scorecard-teal">—</div>
+              </div>
+              <div class="panel">
+                <h3>Package types</h3>
+                <div id="hygienePackageTypes" class="hygiene-chart-list"></div>
+              </div>
+            </div>
+            <div class="panel">
+              <h3>Packages list</h3>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead><tr><th>agent.name</th><th>package.vendor</th><th>package.name</th><th>package.version</th><th>package.type</th></tr></thead>
+                  <tbody id="hygienePackagesTable"></tbody>
+                </table>
+              </div>
+              <div class="hygiene-table-footer">
+                <span id="hygienePackagesHits">0 hits</span>
+                <div class="hygiene-pagination">
+                  <button type="button" id="hygienePackagesPrev">← Prev</button>
+                  <span id="hygienePackagesPageInfo">Page 1</span>
+                  <button type="button" id="hygienePackagesNext">Next →</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="hygiene-processes" class="hygiene-view hidden">
+            <div class="overview-middle">
+              <div class="panel">
+                <h3>Top 5 processes</h3>
+                <div id="hygieneTopProcesses" class="hygiene-chart-list"></div>
+              </div>
+              <div class="panel panel-timeline-full">
+                <h3>Processes start time</h3>
+                <div id="hygieneProcessStartChart" class="timeline-chart"><canvas id="hygieneProcessStartCanvas" width="400" height="180"></canvas></div>
+              </div>
+            </div>
+            <div class="panel">
+              <h3>Process list</h3>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead><tr><th>agent.name</th><th>process.name</th><th>process.start</th><th>process.pid</th><th>process.parent.pid</th><th>process.command_line</th></tr></thead>
+                  <tbody id="hygieneProcessesTable"></tbody>
+                </table>
+              </div>
+              <div class="hygiene-table-footer">
+                <span id="hygieneProcessesHits">0 hits</span>
+                <div class="hygiene-pagination">
+                  <button type="button" id="hygieneProcessesPrev">← Prev</button>
+                  <span id="hygieneProcessesPageInfo">Page 1</span>
+                  <button type="button" id="hygieneProcessesNext">Next →</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="hygiene-identity" class="hygiene-view hidden">
+            <div class="overview-middle">
+              <div class="panel">
+                <h3>Top 5 users</h3>
+                <div id="hygieneTopUsers" class="hygiene-chart-list"></div>
+              </div>
+              <div class="panel">
+                <h3>Top 5 user groups</h3>
+                <div id="hygieneTopGroups" class="hygiene-chart-list"></div>
+              </div>
+              <div class="panel">
+                <h3>Top 5 user shells</h3>
+                <div id="hygieneTopShells" class="hygiene-chart-list"></div>
+              </div>
+            </div>
+            <div class="panel">
+              <h3>Users list</h3>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead><tr><th>agent.name</th><th>user.name</th><th>user.groups</th><th>user.shell</th><th>user.home</th></tr></thead>
+                  <tbody id="hygieneUsersTable"></tbody>
+                </table>
+              </div>
+              <div class="hygiene-table-footer">
+                <span id="hygieneUsersHits">0 hits</span>
+                <div class="hygiene-pagination">
+                  <button type="button" id="hygieneUsersPrev">← Prev</button>
+                  <span id="hygieneUsersPageInfo">Page 1</span>
+                  <button type="button" id="hygieneUsersNext">Next →</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="page-compliance" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">📋 HIPAA</h2>
+              <p class="agents-subtitle">Compliance framework – requirements and events</p>
+            </div>
+          </header>
+          <div class="hipaa-toolbar">
+            <span class="filter-pill">Manager: Sentinel Manager</span>
+            <span class="filter-pill">Framework: HIPAA</span>
+            <select id="hipaaTimeRange" class="global-select"><option value="24h" selected>Last 24 hours</option><option value="7d">Last 7 days</option></select>
+            <button type="button" id="hipaaRefresh" class="global-btn">Refresh</button>
+          </div>
+          <div class="hipaa-tabs">
+            <button type="button" class="hipaa-tab active" data-hipaa-view="dashboard">Dashboard</button>
+            <button type="button" class="hipaa-tab" data-hipaa-view="controls">Controls</button>
+            <button type="button" class="hipaa-tab" data-hipaa-view="events">Events</button>
+          </div>
+
+          <div id="hipaa-dashboard-view" class="hipaa-view">
+            <div class="overview-middle">
+              <div class="panel">
+                <h3>Alerts volume by agent</h3>
+                <div id="hipaaHeatmap" class="hipaa-heatmap-wrap"></div>
+              </div>
+              <div class="panel">
+                <h3>Most common alerts</h3>
+                <div id="hipaaMostCommon" class="hipaa-list"></div>
+              </div>
+            </div>
+            <div class="overview-middle">
+              <div class="panel">
+                <h3>Top 10 requirements</h3>
+                <div id="hipaaTopReqs" class="hipaa-donut-wrap"><canvas id="hipaaDonutCanvas" width="280" height="200"></canvas><div id="hipaaDonutLegend" class="hipaa-donut-legend"></div></div>
+              </div>
+              <div class="panel">
+                <h3>Most active agents</h3>
+                <div id="hipaaActiveAgents" class="hipaa-list"></div>
+              </div>
+              <div class="panel">
+                <h3>Stats</h3>
+                <div class="hipaa-stats">
+                  <div class="hipaa-stat"><span id="hipaaTotalAlerts" class="hipaa-stat-num">—</span><span>Total alerts</span></div>
+                  <div class="hipaa-stat"><span id="hipaaMaxLevel" class="hipaa-stat-num">—</span><span>Max rule level</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="panel">
+              <h3>Requirements evolution over time</h3>
+              <div class="timeline-chart"><canvas id="hipaaEvolutionCanvas" width="700" height="220"></canvas></div>
+            </div>
+            <div class="panel">
+              <h3>Requirements distribution by agent</h3>
+              <div class="timeline-chart"><canvas id="hipaaDistByAgentCanvas" width="700" height="220"></canvas></div>
+            </div>
+          </div>
+
+          <div id="hipaa-controls-view" class="hipaa-view hidden">
+            <div class="hipaa-controls-layout">
+              <div class="panel">
+                <h3>HIPAA <span class="hipaa-controls-gear">⚙</span></h3>
+                <div id="hipaaHighLevelList" class="hipaa-req-list"></div>
+              </div>
+              <div class="panel hipaa-controls-main">
+                <div class="panel-head"><h3>Requirements</h3><label class="hipaa-toggle"><input type="checkbox" id="hipaaHideZero"> Hide requirements with no alerts</label></div>
+                <input type="search" id="hipaaFilterReqs" class="global-search" placeholder="Filter requirements">
+                <div id="hipaaRequirementsGrid" class="hipaa-req-grid"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="hipaa-events-view" class="hipaa-view hidden">
+            <div class="panel">
+              <h3>Event count over time</h3>
+              <div class="timeline-chart"><canvas id="hipaaEventsTimelineCanvas" width="700" height="180"></canvas></div>
+            </div>
+            <div class="panel">
+              <p class="panel-badge"><span id="hipaaEventsHits">0</span> hits</p>
+              <div class="table-wrap">
+                <table class="table">
+                  <thead><tr><th>timestamp</th><th>agent.name</th><th>rule.hipaa</th><th>rule.description</th><th>rule.level</th><th>rule.id</th></tr></thead>
+                  <tbody id="hipaaEventsBody"><tr><td colspan="6">Loading…</td></tr></tbody>
+                </table>
+              </div>
+              <div class="hygiene-table-footer">
+                <span id="hipaaEventsInfo">Showing 0 of 0</span>
+                <div class="hygiene-pagination">
+                  <button type="button" id="hipaaEventsPrev">← Previous</button>
+                  <span id="hipaaEventsPageInfo">Page 1</span>
+                  <button type="button" id="hipaaEventsNext">Next →</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- MITRE ATT&CK Page -->
+        <section id="page-mitre" class="page">
+          <div class="dashboard-kpi-row cyber-kpi-row">
+            <div class="dashboard-kpi-card cyber-kpi-card">
+              <div class="cyber-kpi-header">KPI</div>
+              <div class="dashboard-kpi-label">TECHNIQUES DETECTED</div>
+              <div class="dashboard-kpi-val cyber-val-red" id="mitreTechniquesCount">—</div>
+            </div>
+            <div class="dashboard-kpi-card cyber-kpi-card">
+              <div class="cyber-kpi-header">KPI</div>
+              <div class="dashboard-kpi-label">TACTICS COVERED</div>
+              <div class="dashboard-kpi-val cyber-val-orange" id="mitreTacticsCount">—</div>
+            </div>
+            <div class="dashboard-kpi-card cyber-kpi-card">
+              <div class="cyber-kpi-header">KPI</div>
+              <div class="dashboard-kpi-label">TOTAL MITRE ALERTS</div>
+              <div class="dashboard-kpi-val cyber-val-blue" id="mitreTotalAlerts">—</div>
+            </div>
+            <div class="dashboard-kpi-card cyber-kpi-card">
+              <div class="cyber-kpi-header">KPI</div>
+              <div class="dashboard-kpi-label">CRITICAL TECHNIQUES</div>
+              <div class="dashboard-kpi-val cyber-val-red" id="mitreCriticalCount">—</div>
+            </div>
+          </div>
+          <div class="overview-middle">
+            <div class="panel" style="flex:2">
+              <h3>MITRE ATT&amp;CK Technique Heatmap</h3>
+              <div id="mitreMatrix" class="mitre-matrix-wrap"></div>
+            </div>
+            <div class="panel" style="flex:1">
+              <h3>Top Tactics by Alert Volume</h3>
+              <div id="mitreTacticsBar" class="chart-bar-wrap" style="height:300px"></div>
+            </div>
+          </div>
+          <div class="overview-middle">
+            <div class="panel" style="flex:1">
+              <h3>Top 10 Techniques</h3>
+              <div id="mitreTopTechniques" class="mitre-list"></div>
+            </div>
+            <div class="panel" style="flex:1">
+              <h3>Technique Distribution</h3>
+              <canvas id="mitreTechniqueDonut" width="300" height="220"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <!-- File Integrity Monitoring Page -->
+        <section id="page-fim" class="page">
+          <div class="dashboard-kpi-row cyber-kpi-row">
+            <div class="dashboard-kpi-card cyber-kpi-card">
+              <div class="cyber-kpi-header">KPI</div>
+              <div class="dashboard-kpi-label">CHANGES (24H)</div>
+              <div class="dashboard-kpi-val cyber-val-orange" id="fimTotal">—</div>
+            </div>
+            <div class="dashboard-kpi-card cyber-kpi-card">
+              <div class="cyber-kpi-header">KPI</div>
+              <div class="dashboard-kpi-label">FILES ADDED</div>
+              <div class="dashboard-kpi-val cyber-val-green" id="fimAdded">—</div>
+            </div>
+            <div class="dashboard-kpi-card cyber-kpi-card">
+              <div class="cyber-kpi-header">KPI</div>
+              <div class="dashboard-kpi-label">FILES MODIFIED</div>
+              <div class="dashboard-kpi-val cyber-val-orange" id="fimModified">—</div>
+            </div>
+            <div class="dashboard-kpi-card cyber-kpi-card">
+              <div class="cyber-kpi-header">KPI</div>
+              <div class="dashboard-kpi-label">FILES DELETED</div>
+              <div class="dashboard-kpi-val cyber-val-red" id="fimDeleted">—</div>
+            </div>
+          </div>
+          <div class="overview-middle">
+            <div class="panel" style="flex:2">
+              <h3>FIM Events Timeline (24H)</h3>
+              <div class="timeline-chart"><canvas id="fimTimelineCanvas" width="700" height="180"></canvas></div>
+            </div>
+            <div class="panel" style="flex:1">
+              <h3>Events by Action</h3>
+              <canvas id="fimActionDonut" width="280" height="200"></canvas>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <h3>FIM Events <span id="fimEventsHits" class="panel-badge">0 hits</span></h3>
+              <div style="display:flex;gap:8px">
+                <input type="text" id="fimAgentFilter" placeholder="Filter by agent…" class="global-search" style="width:180px">
+                <input type="text" id="fimPathFilter" placeholder="Filter by path…" class="global-search" style="width:200px">
+                <button type="button" id="fimApplyFilter" class="cyber-btn">Apply</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead><tr><th>Timestamp</th><th>Agent</th><th>Action</th><th>File Path</th><th>MD5/SHA256</th><th>Size</th></tr></thead>
+                <tbody id="fimEventsBody"><tr><td colspan="6">Loading…</td></tr></tbody>
+              </table>
+            </div>
+            <div class="hygiene-table-footer">
+              <span id="fimEventsInfo">Showing 0 of 0</span>
+              <div class="hygiene-pagination">
+                <button type="button" id="fimPrev">← Previous</button>
+                <span id="fimPageInfo">Page 1</span>
+                <button type="button" id="fimNext">Next →</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Audit Trail Page -->
+        <section id="page-audit" class="page">
+          <div class="dashboard-kpi-row cyber-kpi-row">
+            <div class="dashboard-kpi-card cyber-kpi-card">
+              <div class="cyber-kpi-header">KPI</div>
+              <div class="dashboard-kpi-label">AUTH EVENTS (24H)</div>
+              <div class="dashboard-kpi-val cyber-val-blue" id="auditTotal">—</div>
+            </div>
+            <div class="dashboard-kpi-card cyber-kpi-card">
+              <div class="cyber-kpi-header">KPI</div>
+              <div class="dashboard-kpi-label">FAILED LOGINS</div>
+              <div class="dashboard-kpi-val cyber-val-red" id="auditFailed">—</div>
+            </div>
+            <div class="dashboard-kpi-card cyber-kpi-card">
+              <div class="cyber-kpi-header">KPI</div>
+              <div class="dashboard-kpi-label">SUCCESSFUL LOGINS</div>
+              <div class="dashboard-kpi-val cyber-val-green" id="auditSuccess">—</div>
+            </div>
+            <div class="dashboard-kpi-card cyber-kpi-card">
+              <div class="cyber-kpi-header">KPI</div>
+              <div class="dashboard-kpi-label">SUDO EVENTS</div>
+              <div class="dashboard-kpi-val cyber-val-orange" id="auditSudo">—</div>
+            </div>
+          </div>
+          <div class="overview-middle">
+            <div class="panel" style="flex:2">
+              <h3>Authentication Activity Timeline (24H)</h3>
+              <div class="timeline-chart"><canvas id="auditTimelineCanvas" width="700" height="180"></canvas></div>
+            </div>
+            <div class="panel" style="flex:1">
+              <h3>Login Success vs Failure</h3>
+              <canvas id="auditLoginDonut" width="280" height="200"></canvas>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <h3>Audit Events <span id="auditEventsHits" class="panel-badge">0 hits</span></h3>
+              <div style="display:flex;gap:8px">
+                <input type="text" id="auditAgentFilter" placeholder="Filter by agent…" class="global-search" style="width:180px">
+                <select id="auditTimeRange" class="global-search" style="width:140px">
+                  <option value="24h">Last 24 hours</option>
+                  <option value="7d">Last 7 days</option>
+                  <option value="30d">Last 30 days</option>
+                </select>
+                <button type="button" id="auditApplyFilter" class="cyber-btn">Apply</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="table">
+                <thead><tr><th>Timestamp</th><th>Agent</th><th>User</th><th>Event</th><th>Source IP</th><th>Level</th><th>Rule</th></tr></thead>
+                <tbody id="auditEventsBody"><tr><td colspan="7">Loading…</td></tr></tbody>
+              </table>
+            </div>
+            <div class="hygiene-table-footer">
+              <span id="auditEventsInfo">Showing 0 of 0</span>
+              <div class="hygiene-pagination">
+                <button type="button" id="auditPrev">← Previous</button>
+                <span id="auditPageInfo">Page 1</span>
+                <button type="button" id="auditNext">Next →</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- SCA / Policy Monitoring Page -->
+        <section id="page-sca" class="page">
+          <div class="dashboard-kpi-row cyber-kpi-row">
+            <div class="dashboard-kpi-card cyber-kpi-card">
+              <div class="cyber-kpi-header">KPI</div>
+              <div class="dashboard-kpi-label">TOTAL CHECKS</div>
+              <div class="dashboard-kpi-val cyber-val-blue" id="scaTotalChecks">—</div>
+            </div>
+            <div class="dashboard-kpi-card cyber-kpi-card">
+              <div class="cyber-kpi-header">KPI</div>
+              <div class="dashboard-kpi-label">PASSED</div>
+              <div class="dashboard-kpi-val cyber-val-green" id="scaPassed">—</div>
+            </div>
+            <div class="dashboard-kpi-card cyber-kpi-card">
+              <div class="cyber-kpi-header">KPI</div>
+              <div class="dashboard-kpi-label">FAILED</div>
+              <div class="dashboard-kpi-val cyber-val-red" id="scaFailed">—</div>
+            </div>
+            <div class="dashboard-kpi-card cyber-kpi-card">
+              <div class="cyber-kpi-header">KPI</div>
+              <div class="dashboard-kpi-label">COMPLIANCE SCORE</div>
+              <div class="dashboard-kpi-val cyber-val-orange" id="scaScore">—%</div>
+            </div>
+          </div>
+          <div class="overview-middle">
+            <div class="panel" style="flex:1">
+              <h3>Check Results Distribution</h3>
+              <canvas id="scaResultDonut" width="280" height="200"></canvas>
+            </div>
+            <div class="panel" style="flex:2">
+              <h3>Agent Compliance Scores</h3>
+              <div id="scaAgentBars" class="chart-bar-wrap" style="height:280px"></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>Policy Check Results by Agent</h3>
+            <div class="table-wrap">
+              <table class="table">
+                <thead><tr><th>Agent</th><th>Policy</th><th>Total</th><th>Passed</th><th>Failed</th><th>N/A</th><th>Score</th><th>Last Scan</th></tr></thead>
+                <tbody id="scaAgentBody"><tr><td colspan="8">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================== VISUALIZE PAGE ===================== -->
+        <section id="page-visualize" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">📊 Visualize</h2>
+              <p class="agents-subtitle">Create and save custom visualizations to add to your dashboards.</p>
+            </div>
+            <div class="agents-header-right">
+              <button type="button" id="vizCreateNew" class="btn-primary">+ Create visualization</button>
+            </div>
+          </header>
+
+          <!-- Visualization list -->
+          <div id="vizListView">
+            <div id="vizList" class="viz-card-grid"></div>
+            <div id="vizListEmpty" class="viz-empty hidden">
+              <div class="viz-empty-icon">📊</div>
+              <p>No visualizations yet. Click <strong>+ Create visualization</strong> to get started.</p>
+            </div>
+          </div>
+
+          <!-- Builder panel (shown when creating/editing) -->
+          <div id="vizBuilderPanel" class="viz-builder hidden">
+            <div class="viz-builder-header">
+              <button type="button" id="vizBuilderBack" class="global-btn">← Back</button>
+              <h3 id="vizBuilderTitle">New Visualization</h3>
+              <button type="button" id="vizBuilderSave" class="btn-primary">💾 Save</button>
+            </div>
+
+            <div class="viz-builder-body">
+              <!-- Left: Configuration -->
+              <div class="viz-builder-config">
+                <div class="viz-config-section">
+                  <label class="viz-label">Title</label>
+                  <input type="text" id="vizTitle" class="global-search" placeholder="My Visualization" style="width:100%">
+                </div>
+
+                <div class="viz-config-section">
+                  <label class="viz-label">Visualization Type</label>
+                  <div class="viz-type-grid" id="vizTypeGrid">
+                    <button type="button" class="viz-type-btn active" data-type="metric">
+                      <span class="viz-type-icon">🔢</span>
+                      <span>Metric</span>
+                    </button>
+                    <button type="button" class="viz-type-btn" data-type="area">
+                      <span class="viz-type-icon">📈</span>
+                      <span>Area Chart</span>
+                    </button>
+                    <button type="button" class="viz-type-btn" data-type="bar">
+                      <span class="viz-type-icon">📊</span>
+                      <span>Bar Chart</span>
+                    </button>
+                    <button type="button" class="viz-type-btn" data-type="pie">
+                      <span class="viz-type-icon">🥧</span>
+                      <span>Pie Chart</span>
+                    </button>
+                    <button type="button" class="viz-type-btn" data-type="table">
+                      <span class="viz-type-icon">📋</span>
+                      <span>Data Table</span>
+                    </button>
+                    <button type="button" class="viz-type-btn" data-type="markdown">
+                      <span class="viz-type-icon">📝</span>
+                      <span>Markdown</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="viz-config-section" id="vizDatasourceSection">
+                  <label class="viz-label">Data Source</label>
+                  <select id="vizDatasource" class="global-select" style="width:100%">
+                    <option value="watchvault-alerts-*">watchvault-alerts-* (Alerts)</option>
+                    <option value="watchvault-events-*">watchvault-events-* (Events)</option>
+                    <option value="watchvault-vulnerability-*">watchvault-vulnerability-* (Vulnerabilities)</option>
+                  </select>
+                </div>
+
+                <!-- Metric config -->
+                <div class="viz-config-section viz-type-config" id="vizConfigMetric">
+                  <label class="viz-label">Aggregation</label>
+                  <select id="vizMetricAgg" class="global-select" style="width:100%">
+                    <option value="count">Count</option>
+                    <option value="avg">Average</option>
+                    <option value="max">Maximum</option>
+                    <option value="min">Minimum</option>
+                    <option value="sum">Sum</option>
+                  </select>
+                  <label class="viz-label" id="vizMetricFieldLabel" style="margin-top:10px">Field (for avg/max/min/sum)</label>
+                  <select id="vizMetricField" class="global-select" style="width:100%">
+                    <option value="rule_level">rule_level</option>
+                    <option value="rule_id">rule_id</option>
+                  </select>
+                </div>
+
+                <!-- Area config -->
+                <div class="viz-config-section viz-type-config hidden" id="vizConfigArea">
+                  <label class="viz-label">Time Interval</label>
+                  <select id="vizAreaInterval" class="global-select" style="width:100%">
+                    <option value="1h">1 hour</option>
+                    <option value="6h">6 hours</option>
+                    <option value="12h">12 hours</option>
+                    <option value="1d">1 day</option>
+                  </select>
+                  <label class="viz-label" style="margin-top:10px">Split by (optional)</label>
+                  <select id="vizAreaSplit" class="global-select" style="width:100%">
+                    <option value="">None</option>
+                    <option value="rule_groups">rule_groups</option>
+                    <option value="agent_id">agent_id</option>
+                    <option value="rule_level">rule_level</option>
+                  </select>
+                </div>
+
+                <!-- Bar config -->
+                <div class="viz-config-section viz-type-config hidden" id="vizConfigBar">
+                  <label class="viz-label">Field to aggregate by</label>
+                  <select id="vizBarField" class="global-select" style="width:100%">
+                    <option value="rule_groups">rule_groups</option>
+                    <option value="agent_id">agent_id</option>
+                    <option value="rule_level">rule_level</option>
+                    <option value="event_data.type">event_data.type</option>
+                  </select>
+                  <label class="viz-label" style="margin-top:10px">Top N results</label>
+                  <select id="vizBarSize" class="global-select" style="width:100%">
+                    <option value="5">Top 5</option>
+                    <option value="10" selected>Top 10</option>
+                    <option value="20">Top 20</option>
+                  </select>
+                </div>
+
+                <!-- Pie config -->
+                <div class="viz-config-section viz-type-config hidden" id="vizConfigPie">
+                  <label class="viz-label">Field to slice by</label>
+                  <select id="vizPieField" class="global-select" style="width:100%">
+                    <option value="rule_groups">rule_groups</option>
+                    <option value="agent_id">agent_id</option>
+                    <option value="rule_level">rule_level</option>
+                    <option value="event_data.type">event_data.type</option>
+                  </select>
+                  <label class="viz-label" style="margin-top:10px">Top N slices</label>
+                  <select id="vizPieSize" class="global-select" style="width:100%">
+                    <option value="5">Top 5</option>
+                    <option value="10" selected>Top 10</option>
+                  </select>
+                </div>
+
+                <!-- Table config -->
+                <div class="viz-config-section viz-type-config hidden" id="vizConfigTable">
+                  <label class="viz-label">Rows to show</label>
+                  <select id="vizTableSize" class="global-select" style="width:100%">
+                    <option value="5">5 rows</option>
+                    <option value="10" selected>10 rows</option>
+                    <option value="25">25 rows</option>
+                  </select>
+                </div>
+
+                <!-- Markdown config -->
+                <div class="viz-config-section viz-type-config hidden" id="vizConfigMarkdown">
+                  <label class="viz-label">Markdown / Text Content</label>
+                  <textarea id="vizMarkdownContent" class="viz-textarea" placeholder="## My Note&#10;Write **markdown** here. This text will be displayed as a panel on your dashboard."></textarea>
+                </div>
+
+                <!-- Common filters -->
+                <div class="viz-config-section" id="vizFiltersSection">
+                  <label class="viz-label">Filters (optional)</label>
+                  <div class="viz-filter-row">
+                    <label>Min rule level</label>
+                    <select id="vizFilterLevel" class="global-select">
+                      <option value="">Any</option>
+                      <option value="4">4+ (Medium)</option>
+                      <option value="8">8+ (High)</option>
+                      <option value="12">12+ (Critical)</option>
+                    </select>
+                  </div>
+                  <div class="viz-filter-row">
+                    <label>Rule group</label>
+                    <input type="text" id="vizFilterGroup" class="global-search" placeholder="e.g. network" style="width:100%">
+                  </div>
+                </div>
+
+                <div class="viz-config-section">
+                  <label class="viz-label">Default Time Range</label>
+                  <select id="vizTimeFilter" class="global-select" style="width:100%">
+                    <option value="1h">Last 1 hour</option>
+                    <option value="6h">Last 6 hours</option>
+                    <option value="24h" selected>Last 24 hours</option>
+                    <option value="7d">Last 7 days</option>
+                    <option value="30d">Last 30 days</option>
+                  </select>
+                </div>
+
+                <button type="button" id="vizPreviewBtn" class="global-btn" style="width:100%;margin-top:8px">▶ Preview</button>
+              </div>
+
+              <!-- Right: Preview -->
+              <div class="viz-builder-preview">
+                <div class="viz-preview-header">Preview</div>
+                <div id="vizPreviewArea" class="viz-preview-area">
+                  <div class="viz-preview-placeholder">Configure and click Preview to see your visualization.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================== CUSTOM DASHBOARDS PAGE ===================== -->
+        <section id="page-custom-dashboards" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">🗂 My Dashboards</h2>
+              <p class="agents-subtitle">Build and save personalized security dashboards from your visualizations.</p>
+            </div>
+            <div class="agents-header-right" style="gap:8px;display:flex;align-items:center">
+              <select id="dashTimeFilter" class="global-select">
+                <option value="1h">Last 1 hour</option>
+                <option value="6h">Last 6 hours</option>
+                <option value="24h" selected>Last 24 hours</option>
+                <option value="7d">Last 7 days</option>
+                <option value="30d">Last 30 days</option>
+              </select>
+              <button type="button" id="dashRefreshBtn" class="global-btn">↺ Refresh</button>
+              <button type="button" id="dashNewBtn" class="btn-primary">+ New Dashboard</button>
+            </div>
+          </header>
+
+          <!-- Dashboard list -->
+          <div id="dashListView">
+            <div id="dashList" class="dash-card-list"></div>
+            <div id="dashListEmpty" class="viz-empty hidden">
+              <div class="viz-empty-icon">🗂</div>
+              <p>No dashboards yet. Click <strong>+ New Dashboard</strong> to create one.</p>
+            </div>
+          </div>
+
+          <!-- Dashboard viewer/editor -->
+          <div id="dashViewer" class="hidden">
+            <div class="dash-viewer-header">
+              <button type="button" id="dashBackBtn" class="global-btn">← All Dashboards</button>
+              <h3 id="dashViewerTitle">Dashboard</h3>
+              <div style="display:flex;gap:8px;margin-left:auto">
+                <button type="button" id="dashEditToggle" class="global-btn">✏ Edit</button>
+                <button type="button" id="dashDeleteBtn" class="global-btn" style="color:#ff4444">🗑 Delete</button>
+              </div>
+            </div>
+
+            <!-- Edit toolbar (hidden by default) -->
+            <div id="dashEditToolbar" class="dash-edit-toolbar hidden">
+              <span style="font-size:13px;color:var(--text-muted)">Edit mode:</span>
+              <button type="button" id="dashAddWidgetBtn" class="global-btn">+ Add Widget</button>
+              <button type="button" id="dashSaveLayoutBtn" class="btn-primary">💾 Save</button>
+              <button type="button" id="dashCancelEditBtn" class="global-btn">Cancel</button>
+            </div>
+
+            <!-- Widget grid -->
+            <div id="dashWidgetGrid" class="dash-widget-grid"></div>
+          </div>
+
+          <!-- New dashboard modal -->
+          <div id="dashNewModal" class="modal-overlay hidden">
+            <div class="modal">
+              <div class="modal-header">
+                <h3>Create New Dashboard</h3>
+                <button type="button" id="dashNewModalClose" class="modal-close">×</button>
+              </div>
+              <div class="modal-body">
+                <label>Dashboard Title</label>
+                <input type="text" id="dashNewTitle" class="global-search" placeholder="My Security Dashboard" style="width:100%;margin-bottom:12px">
+                <label>Description (optional)</label>
+                <input type="text" id="dashNewDesc" class="global-search" placeholder="Brief description…" style="width:100%">
+              </div>
+              <div class="modal-footer">
+                <button type="button" id="dashNewCancel" class="global-btn">Cancel</button>
+                <button type="button" id="dashNewConfirm" class="btn-primary">Create</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Add widget modal -->
+          <div id="dashAddWidgetModal" class="modal-overlay hidden">
+            <div class="modal" style="max-width:600px">
+              <div class="modal-header">
+                <h3>Add Visualization</h3>
+                <button type="button" id="dashAddWidgetClose" class="modal-close">×</button>
+              </div>
+              <div class="modal-body">
+                <input type="search" id="dashAddWidgetSearch" class="global-search" placeholder="Search visualizations…" style="width:100%;margin-bottom:12px">
+                <div id="dashAddWidgetList" class="dash-add-viz-list"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="page-reports" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">📄 Security Reports</h2>
+              <p class="agents-subtitle">Generate PDF security reports for management and compliance audits.</p>
+            </div>
+          </header>
+          <div class="panel" style="max-width:600px">
+            <h3>Generate Report</h3>
+            <div style="display:flex;flex-direction:column;gap:16px;margin-top:16px">
+              <div>
+                <label class="viz-label">Report Period</label>
+                <select id="reportTimeRange" class="global-select" style="width:100%">
+                  <option value="24h">Daily — Last 24 hours</option>
+                  <option value="7d" selected>Weekly — Last 7 days</option>
+                  <option value="30d">Monthly — Last 30 days</option>
+                  <option value="90d">Quarterly — Last 90 days</option>
+                </select>
+              </div>
+              <div>
+                <label class="viz-label">Format</label>
+                <div style="display:flex;gap:10px">
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                    <input type="radio" name="reportFormat" value="pdf" checked> PDF (download)
+                  </label>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                    <input type="radio" name="reportFormat" value="html"> HTML (preview in browser)
+                  </label>
+                </div>
+              </div>
+              <button type="button" id="reportGenerateBtn" class="btn-primary" style="align-self:flex-start">
+                &#8595; Generate Report
+              </button>
+              <div id="reportStatus" style="font-size:13px;color:var(--text-muted)"></div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top:20px">
+            <h3>About Reports</h3>
+            <p style="font-size:13px;color:var(--text-muted);line-height:1.6">
+              Reports include: Executive summary KPIs, alert severity breakdown, top alert rules, agent status table, and vulnerability summary.
+              <br><br>
+              <strong>PDF reports</strong> require WeasyPrint: <code>pip install weasyprint</code>
+              <br>
+              If WeasyPrint is not installed, reports are generated as HTML automatically.
+            </p>
+          </div>
+        </section>
+
+        <section id="page-notifications" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">🔔 Notifications</h2>
+              <p class="agents-subtitle">Configure email and Slack alerts for critical security events.</p>
+            </div>
+          </header>
+          <div class="panel" style="max-width:680px">
+            <h3>Email Configuration</h3>
+            <div id="notifEmailStatus" style="margin:12px 0;padding:10px 14px;border-radius:6px;font-size:13px;background:rgba(255,255,255,0.05)">Loading&hellip;</div>
+            <p style="font-size:13px;color:var(--text-muted);line-height:1.6">
+              Configure SMTP settings in <code>.env</code> file:
+            </p>
+            <pre style="background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:14px;font-size:12px;overflow-x:auto;color:#e6edf3">SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your@email.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM=sentinel@yourdomain.com
+SMTP_TLS=true
+ALERT_EMAIL_TO=soc-team@yourdomain.com
+ALERT_THROTTLE_MINUTES=30</pre>
+            <button type="button" id="notifTestEmail" class="global-btn" style="margin-top:12px">&#128231; Send Test Email</button>
+            <span id="notifEmailTestResult" style="margin-left:12px;font-size:13px"></span>
+          </div>
+          <div class="panel" style="margin-top:20px;max-width:680px">
+            <h3>Slack Configuration</h3>
+            <div id="notifSlackStatus" style="margin:12px 0;padding:10px 14px;border-radius:6px;font-size:13px;background:rgba(255,255,255,0.05)">Loading&hellip;</div>
+            <p style="font-size:13px;color:var(--text-muted);line-height:1.6">
+              Add to <code>.env</code>:
+            </p>
+            <pre style="background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:14px;font-size:12px;overflow-x:auto;color:#e6edf3">SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...</pre>
+            <button type="button" id="notifTestSlack" class="global-btn" style="margin-top:12px">&#128172; Send Test Slack Message</button>
+            <span id="notifSlackTestResult" style="margin-left:12px;font-size:13px"></span>
+          </div>
+          <div class="panel" style="margin-top:20px;max-width:680px">
+            <h3>Alert Rules</h3>
+            <p style="font-size:13px;color:var(--text-muted)">Notifications are sent for alerts with rule_level &ge; 8 (HIGH or CRITICAL). Throttle: one notification per rule per agent per <span id="notifThrottle">30</span> minutes.</p>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+  <script src="/static/js/app.js"></script>
+  <script src="/static/js/app_cyber_patch.js"></script>
+</body>
+</html>

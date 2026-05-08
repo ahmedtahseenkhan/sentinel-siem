@@ -1,0 +1,54 @@
+syntax = "proto3";
+package indexer;
+option go_package = "github.com/watchtower/watchtower/pkg/proto";
+
+service IndexerService {
+    rpc IngestEvents(stream EventBatch) returns (IngestResponse);
+    rpc IngestAlerts(stream AlertBatch) returns (IngestResponse);
+    rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+message EventBatch {
+    repeated IndexEvent events = 1;
+    string source_manager = 2;
+}
+
+message IndexEvent {
+    string id = 1;
+    int64 timestamp = 2;
+    string event_type = 3;
+    string agent_id = 4;
+    string agent_name = 5;
+    bytes data = 6;
+    map<string, string> tags = 7;
+}
+
+message AlertBatch {
+    repeated IndexAlert alerts = 1;
+}
+
+message IndexAlert {
+    string id = 1;
+    int64 timestamp = 2;
+    int32 rule_id = 3;
+    int32 rule_level = 4;
+    string rule_description = 5;
+    repeated string rule_groups = 6;
+    string agent_id = 7;
+    string agent_name = 8;
+    string title = 9;
+    bytes event_data = 10;
+}
+
+message IngestResponse {
+    int64 accepted = 1;
+    int64 failed = 2;
+    string message = 3;
+}
+
+message HealthRequest {}
+message HealthResponse {
+    string status = 1;
+    int64 total_indexed = 2;
+    int32 opensearch_status = 3;
+}

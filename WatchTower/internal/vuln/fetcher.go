@@ -1,0 +1,219 @@
+package vuln
+
+import (
+	"compress/gzip"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"time"
+
+	"go.uber.org/zap"
+)
+
+// FeedSource defines a vulnerability feed.
+type FeedSource struct {
+	Name string `yaml:"name" json:"name"`
+	URL  string `yaml:"url" json:"url"`
+	Type string `yaml:"type" json:"type"` // nvd, oval
+}
+
+// DefaultFeeds returns the default NVD and OVAL feed sources.
+func DefaultFeeds() []FeedSource {
+	return []FeedSource{
+		{
+			Name: "NVD-2024",
+			URL:  "https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-2024.json.gz",
+			Type: "nvd",
+		},
+		{
+			Name: "NVD-2023",
+			URL:  "https://nvd.nist.gov/feeds/json/cve/1.1/nvdcve-1.1-2023.json.gz",
+			Type: "nvd",
+		},
+	}
+}
+
+// Fetcher downloads vulnerability data from remote feeds.
+type Fetcher struct {
+	logger  *zap.Logger
+	client  *http.Client
+	cacheDir string
+}
+
+// NewFetcher creates a new feed fetcher.
+func NewFetcher(logger *zap.Logger, cacheDir string) *Fetcher {
+	return &Fetcher{
+		logger: logger,
+		client: &http.Client{Timeout: 120 * time.Second},
+		cacheDir: cacheDir,
+	}
+}
+
+// FetchNVD downloads and parses an NVD JSON feed.
+func (f *Fetcher) FetchNVD(feed FeedSource) ([]Vulnerability, error) {
+	data, err := f.downloadFeed(feed)
+	if err != nil {
+		return nil, err
+	}
+
+	var nvdFeed NVDFeed
+	if err := json.Unmarshal(data, &nvdFeed); err != nil {
+		return nil, fmt.Errorf("parse NVD feed %s: %w", feed.Name, err)
+	}
+
+	var vulns []Vulnerability
+	for _, item := range nvdFeed.CVEItems {
+		v := convertNVDItem(item)
+		if v.CVEID != "" {
+			vulns = append(vulns, v)
+		}
+	}
+	f.logger.Info("NVD feed parsed",
+		zap.String("feed", feed.Name),
+		zap.Int("vulnerabilities", len(vulns)),
+	)
+	return vulns, nil
+}
+
+func (f *Fetcher) downloadFeed(feed FeedSource) ([]byte, error) {
+	// Check cache
+	cachePath := filepath.Join(f.cacheDir, feed.Name+".json")
+	if info, err := os.Stat(cachePath); err == nil {
+		// Use cache if less than 6 hours old
+		if time.Since(info.ModTime()) < 6*time.Hour {
+			return os.ReadFile(cachePath)
+		}
+	}
+
+	f.logger.Info("downloading feed", zap.String("name", feed.Name), zap.String("url", feed.URL))
+	resp, err := f.client.Get(feed.URL)
+	if err != nil {
+		return nil, fmt.Errorf("download %s: %w", feed.URL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("download %s: status %d", feed.URL, resp.StatusCode)
+	}
+
+	var reader io.Reader = resp.Body
+	if filepath.Ext(feed.URL) == ".gz" {
+		gz, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("gunzip %s: %w", feed.URL, err)
+		}
+		defer gz.Close()
+		reader = gz
+	}
+
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", feed.URL, err)
+	}
+
+	// Cache the result
+	_ = os.MkdirAll(f.cacheDir, 0755)
+	_ = os.WriteFile(cachePath, data, 0644)
+	return data, nil
+}
+
+// NVDFeed represents the NVD JSON feed structure.
+type NVDFeed struct {
+	CVEItems []NVDCVEItem `json:"CVE_Items"`
+}
+
+// NVDCVEItem is a single CVE entry from the NVD.
+type NVDCVEItem struct {
+	CVE struct {
+		CVEDataMeta struct {
+			ID string `json:"ID"`
+		} `json:"CVE_data_meta"`
+		Description struct {
+			DescriptionData []struct {
+				Value string `json:"value"`
+			} `json:"description_data"`
+		} `json:"description"`
+	} `json:"cve"`
+	Impact struct {
+		BaseMetricV3 struct {
+			CVSSV3 struct {
+				BaseScore    float64 `json:"baseScore"`
+				BaseSeverity string  `json:"baseSeverity"`
+			} `json:"cvssV3"`
+		} `json:"baseMetricV3"`
+	} `json:"impact"`
+	Configurations struct {
+		Nodes []struct {
+			CPEMatch []struct {
+				Vulnerable            bool   `json:"vulnerable"`
+				CPE23URI              string `json:"cpe23Uri"`
+				VersionEndIncluding   string `json:"versionEndIncluding,omitempty"`
+				VersionEndExcluding   string `json:"versionEndExcluding,omitempty"`
+				VersionStartIncluding string `json:"versionStartIncluding,omitempty"`
+			} `json:"cpe_match"`
+		} `json:"nodes"`
+	} `json:"configurations"`
+}
+
+func convertNVDItem(item NVDCVEItem) Vulnerability {
+	v := Vulnerability{
+		CVEID:     item.CVE.CVEDataMeta.ID,
+		CVSSScore: item.Impact.BaseMetricV3.CVSSV3.BaseScore,
+		Severity:  item.Impact.BaseMetricV3.CVSSV3.BaseSeverity,
+	}
+	if len(item.CVE.Description.DescriptionData) > 0 {
+		v.Description = item.CVE.Description.DescriptionData[0].Value
+	}
+	// Extract package info from CPE
+	for _, node := range item.Configurations.Nodes {
+		for _, match := range node.CPEMatch {
+			if match.Vulnerable {
+				parts := parseCPE(match.CPE23URI)
+				if parts.Product != "" {
+					v.PackageName = parts.Product
+					v.AffectedMax = match.VersionEndIncluding
+					if v.AffectedMax == "" {
+						v.AffectedMax = match.VersionEndExcluding
+					}
+					v.FixedVersion = match.VersionEndExcluding
+				}
+			}
+		}
+	}
+	return v
+}
+
+type cpeParts struct {
+	Vendor  string
+	Product string
+	Version string
+}
+
+func parseCPE(cpe string) cpeParts {
+	// cpe:2.3:a:vendor:product:version:...
+	parts := splitN(cpe, ':', 6)
+	cp := cpeParts{}
+	if len(parts) >= 5 {
+		cp.Vendor = parts[3]
+		cp.Product = parts[4]
+	}
+	if len(parts) >= 6 {
+		cp.Version = parts[5]
+	}
+	return cp
+}
+
+func splitN(s string, sep byte, n int) []string {
+	var result []string
+	start := 0
+	for i := 0; i < len(s) && len(result) < n-1; i++ {
+		if s[i] == sep {
+			result = append(result, s[start:i])
+			start = i + 1
+		}
+	}
+	result = append(result, s[start:])
+	return result
+}

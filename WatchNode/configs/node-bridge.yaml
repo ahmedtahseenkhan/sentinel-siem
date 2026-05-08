@@ -1,0 +1,60 @@
+agent:
+  id: ""
+  name: "{{hostname}}"
+  labels:
+    environment: docker
+    team: security
+
+manager:
+  url: "watchtower:50051"
+  reconnect:
+    max_attempts: 0
+    initial_backoff: "1s"
+    max_backoff: "1m"
+
+collectors:
+  system:
+    enabled: true
+    interval: "30s"
+    metrics: ["cpu", "memory", "disk", "network", "processes"]
+
+  process:
+    enabled: true
+    interval: "30s"
+
+  network:
+    enabled: true
+    interval: "30s"
+
+  file_integrity:
+    enabled: false
+
+  logs:
+    enabled: false
+
+  sca:
+    enabled: false
+
+  rootcheck:
+    enabled: false
+
+  vulnerability:
+    enabled: true
+    interval: "24h"
+
+  syscollector:
+    enabled: true
+    interval: "1h"
+    hardware: true
+    os: true
+    packages: true
+    ports: true
+    network_interfaces: true
+    users: true
+
+performance:
+  max_cpu_percent: 20
+  max_memory_bytes: 268435456
+  batch_size: 1000
+  flush_interval: "30s"
+  queue_size: 10000

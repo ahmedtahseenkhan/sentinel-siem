@@ -1,0 +1,71 @@
+# WatchTower Manager Configuration
+# Copy to /etc/watchtower/config.yaml or ~/.watchtower/config.yaml
+
+server:
+  grpc:
+    listen_address: ":50051"
+    tls:
+      cert: "/etc/watchtower/certs/server.crt"
+      key: "/etc/watchtower/certs/server.key"
+      ca: "/etc/watchtower/certs/ca.crt"
+  api:
+    listen_address: ":9400"
+    auth:
+      api_key: "change-me-to-a-secure-key"
+
+engine:
+  rules_dir: "/etc/watchtower/rules"
+  decoders_dir: "/etc/watchtower/decoders"
+  cdb_dir: "/etc/watchtower/cdb"
+  workers: 4
+
+vulnerability:
+  enabled: false
+  db_path: "/var/lib/watchtower/vuln.db"
+  update_interval: "6h"
+  feed_url: "https://feeds.watchtower.local/cve"
+
+forwarder:
+  watchvault:
+    address: "localhost:50052"
+    tls:
+      cert: "/etc/watchtower/certs/forwarder.crt"
+      key: "/etc/watchtower/certs/forwarder.key"
+      ca: "/etc/watchtower/certs/ca.crt"
+    batch_size: 500
+    flush_interval: "5s"
+
+store:
+  path: "/var/lib/watchtower/state.db"
+
+logging:
+  level: "info"       # debug, info, warn, error
+  output: "stdout"    # stdout or file path
+
+# Threat intelligence feed auto-ingestion.
+# IOCs are loaded into CDB lists so detection rules can match them via
+# the cdb_lookup field condition.
+threat_intel:
+  enabled: false
+  interval: "6h"
+  sources:
+    # AbuseIPDB blacklist — requires free API key from abuseipdb.com
+    - type: abuseipdb
+      api_key: ""          # set via WATCHTOWER_ABUSEIPDB_KEY or here
+      list_name: "malicious-ips"
+      value: "abuseipdb"
+      enabled: false
+
+    # OTX AlienVault indicators — requires free API key from otx.alienvault.com
+    - type: otx
+      api_key: ""          # set via WATCHTOWER_OTX_KEY or here
+      list_name: "malicious-ips"
+      value: "otx"
+      enabled: false
+
+    # Custom plaintext feed — one IOC per line; optional "ioc:value" format
+    # - type: plaintext
+    #   url: "https://example.com/blocklist.txt"
+    #   list_name: "custom-blocklist"
+    #   value: "custom"
+    #   enabled: false

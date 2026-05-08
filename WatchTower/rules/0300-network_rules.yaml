@@ -1,0 +1,113 @@
+# WatchTower - Network Connection Rules
+# Rule IDs: 5700-5704
+
+rules:
+  - id: 5700
+    level: 2
+    description: "New network connection established"
+    groups:
+      - "network"
+      - "informational"
+    match:
+      type: "network.connection"
+      fields: {}
+    mitre:
+      - tactic_id: "TA0011"
+        tactic_name: "Command and Control"
+        technique_id: "T1071"
+        technique_name: "Application Layer Protocol"
+    alert:
+      title: "Network: New connection detected"
+    enabled: true
+
+  - id: 5701
+    level: 10
+    description: "Connection to known malicious or exploit-framework port"
+    groups:
+      - "network"
+      - "attack"
+      - "command_and_control"
+      - "high_severity"
+    match:
+      type: "network.connection"
+      fields:
+        remote_port:
+          regex: "^(4444|5555|6666|31337|1337|8888|12345)$"
+    mitre:
+      - tactic_id: "TA0011"
+        tactic_name: "Command and Control"
+        technique_id: "T1071.001"
+        technique_name: "Application Layer Protocol: Web Protocols"
+    alert:
+      title: "Network: Connection to suspicious port"
+    active_response:
+      action: "firewall-drop"
+      field: "remote_addr"
+    enabled: true
+
+  - id: 5702
+    level: 5
+    description: "Outbound connection on high/unusual port"
+    groups:
+      - "network"
+      - "anomaly"
+      - "exfiltration"
+    match:
+      type: "network.connection"
+      fields:
+        remote_port:
+          regex: "^[1-9][0-9]{4,}$"
+        status:
+          equals: "ESTABLISHED"
+    mitre:
+      - tactic_id: "TA0010"
+        tactic_name: "Exfiltration"
+        technique_id: "T1048"
+        technique_name: "Exfiltration Over Alternative Protocol"
+    alert:
+      title: "Network: Connection on unusual high port"
+    enabled: true
+
+  - id: 5703
+    level: 8
+    description: "IRC protocol connection detected - common C2 channel"
+    groups:
+      - "network"
+      - "attack"
+      - "command_and_control"
+      - "irc"
+    match:
+      type: "network.connection"
+      fields:
+        remote_port:
+          regex: "^(6667|6668|6669|6697|7000|7070)$"
+    mitre:
+      - tactic_id: "TA0011"
+        tactic_name: "Command and Control"
+        technique_id: "T1095"
+        technique_name: "Non-Application Layer Protocol"
+    alert:
+      title: "Network: IRC connection detected"
+    enabled: true
+
+  - id: 5704
+    level: 9
+    description: "Tor network connection detected - anonymization proxy"
+    groups:
+      - "network"
+      - "attack"
+      - "proxy"
+      - "anonymization"
+    match:
+      type: "network.connection"
+      fields:
+        remote_port:
+          regex: "^(9050|9150|9051|9151)$"
+    mitre:
+      - tactic_id: "TA0011"
+        tactic_name: "Command and Control"
+        technique_id: "T1090.003"
+        technique_name: "Proxy: Multi-hop Proxy"
+    alert:
+      title: "Network: Tor connection detected"
+    enabled: true

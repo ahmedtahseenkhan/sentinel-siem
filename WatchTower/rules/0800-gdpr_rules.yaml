@@ -1,0 +1,215 @@
+# WatchTower - GDPR Compliance Rules
+# Rule IDs: 6200-6214
+# Maps controls from GDPR (Regulation EU 2016/679)
+
+rules:
+  - id: 6200
+    level: 10
+    description: "Personal data directory modified - potential data integrity violation (GDPR Art. 5, Art. 32)"
+    groups:
+      - "gdpr"
+      - "personal_data"
+      - "data_integrity"
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "/(personal.data|customer.data|user.data|pii|gdpr|profile|subscriber|member|client.db)/"
+    mitre:
+      - tactic_id: "TA0040"
+        tactic_name: "Impact"
+        technique_id: "T1565.001"
+        technique_name: "Stored Data Manipulation"
+    alert:
+      title: "GDPR: Personal data path modified"
+    enabled: true
+
+  - id: 6201
+    level: 12
+    description: "Personal data deleted in bulk - potential data destruction or unlawful erasure (GDPR Art. 17, Art. 32)"
+    groups:
+      - "gdpr"
+      - "personal_data"
+      - "data_deletion"
+      - "critical"
+    match:
+      type: "fim.deleted"
+      fields:
+        path:
+          regex: "/(personal.data|customer|user.data|pii|subscriber|member|gdpr)/"
+    mitre:
+      - tactic_id: "TA0040"
+        tactic_name: "Impact"
+        technique_id: "T1485"
+        technique_name: "Data Destruction"
+    alert:
+      title: "GDPR: Personal data deleted"
+    enabled: true
+
+  - id: 6202
+    level: 10
+    description: "Data exported via alternative protocol - potential personal data exfiltration (GDPR Art. 32)"
+    groups:
+      - "gdpr"
+      - "data_exfiltration"
+      - "data_protection"
+    match:
+      type: "network.connection"
+      fields:
+        remote_port:
+          regex: "^(20|21|2049|445)$"
+    mitre:
+      - tactic_id: "TA0010"
+        tactic_name: "Exfiltration"
+        technique_id: "T1048"
+        technique_name: "Exfiltration Over Alternative Protocol"
+    alert:
+      title: "GDPR: Potential personal data exfiltration"
+    enabled: true
+
+  - id: 6203
+    level: 8
+    description: "Database-related process started by non-service account (GDPR Art. 25, Art. 32)"
+    groups:
+      - "gdpr"
+      - "data_access"
+      - "access_control"
+    match:
+      type: "process.new"
+      fields:
+        name:
+          regex: "^(mysqldump|pg_dump|mongodump|sqlite3|sqlitedump|expdp|exp)$"
+    mitre:
+      - tactic_id: "TA0009"
+        tactic_name: "Collection"
+        technique_id: "T1005"
+        technique_name: "Data from Local System"
+    alert:
+      title: "GDPR: Database dump utility executed"
+    enabled: true
+
+  - id: 6204
+    level: 9
+    description: "New user account created with access to personal data systems (GDPR Art. 5, Art. 32)"
+    groups:
+      - "gdpr"
+      - "access_control"
+      - "account_management"
+    match:
+      type: "log"
+      fields:
+        message:
+          regex: "(new user|useradd|adduser|usermod -aG|chage -E 99999|chage -E -1)"
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1136.001"
+        technique_name: "Create Account: Local Account"
+    alert:
+      title: "GDPR: User account created or access expanded"
+    enabled: true
+
+  - id: 6205
+    level: 8
+    description: "Audit log modified - breach detection capability impaired (GDPR Art. 33)"
+    groups:
+      - "gdpr"
+      - "audit_trail"
+      - "breach_notification"
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "^/(var/log|etc/audit)/"
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1070.002"
+        technique_name: "Indicator Removal: Clear Linux or Mac System Logs"
+    alert:
+      title: "GDPR: Audit trail modified"
+    enabled: true
+
+  - id: 6206
+    level: 10
+    description: "Encryption or key management file modified (GDPR Art. 32)"
+    groups:
+      - "gdpr"
+      - "encryption"
+      - "data_protection"
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "/(ssl|tls|pki|gpg|pgp|keystore|truststore|\.key|\.pem|\.crt|certificates)/"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1552.004"
+        technique_name: "Unsecured Credentials: Private Keys"
+    alert:
+      title: "GDPR: Encryption key or certificate file modified"
+    enabled: true
+
+  - id: 6207
+    level: 8
+    description: "Reconnaissance tool detecting personal data stores (GDPR Art. 32)"
+    groups:
+      - "gdpr"
+      - "data_discovery"
+      - "unauthorized_access"
+    match:
+      type: "process.new"
+      fields:
+        name:
+          regex: "^(nmap|masscan|sqlmap|gobuster|dirb|nikto|wfuzz)$"
+    mitre:
+      - tactic_id: "TA0007"
+        tactic_name: "Discovery"
+        technique_id: "T1046"
+        technique_name: "Network Service Scanning"
+    alert:
+      title: "GDPR: Reconnaissance tool executed near data systems"
+    enabled: true
+
+  - id: 6208
+    level: 9
+    description: "Critical vulnerability in data processor system (GDPR Art. 32)"
+    groups:
+      - "gdpr"
+      - "vulnerability"
+      - "risk_management"
+    match:
+      type: "vulnerability"
+      fields:
+        severity:
+          regex: "^(HIGH|CRITICAL)$"
+    mitre:
+      - tactic_id: "TA0002"
+        tactic_name: "Execution"
+        technique_id: "T1203"
+        technique_name: "Exploitation for Client Execution"
+    alert:
+      title: "GDPR: High severity vulnerability detected"
+    enabled: true
+
+  - id: 6209
+    level: 10
+    description: "Outbound Tor or anonymization proxy connection - potential covert data transfer (GDPR Art. 32)"
+    groups:
+      - "gdpr"
+      - "data_exfiltration"
+      - "anonymization"
+    match:
+      type: "network.connection"
+      fields:
+        remote_port:
+          regex: "^(9050|9150|9051|9151)$"
+    mitre:
+      - tactic_id: "TA0011"
+        tactic_name: "Command and Control"
+        technique_id: "T1090.003"
+        technique_name: "Proxy: Multi-hop Proxy"
+    alert:
+      title: "GDPR: Anonymization proxy connection detected"
+    enabled: true

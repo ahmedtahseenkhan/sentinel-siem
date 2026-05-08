@@ -1,0 +1,150 @@
+# WatchTower - Syslog / Authentication Rules
+# Rule IDs: 5800-5805
+
+rules:
+  - id: 5800
+    level: 5
+    description: "SSH authentication failure"
+    groups:
+      - "syslog"
+      - "authentication"
+      - "ssh"
+      - "brute_force"
+    match:
+      type: "log"
+      fields:
+        source:
+          equals: "sshd"
+        message:
+          regex: "(Failed password|authentication failure|Invalid user).*"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1110.001"
+        technique_name: "Brute Force: Password Guessing"
+    alert:
+      title: "Auth: SSH login attempt failed"
+    enabled: true
+
+  - id: 5801
+    level: 10
+    description: "Multiple SSH authentication failures - possible brute force attack (PCI-DSS Req 10.5)"
+    groups:
+      - "syslog"
+      - "authentication"
+      - "ssh"
+      - "brute_force"
+      - "high_severity"
+    match:
+      type: "log"
+      fields:
+        source:
+          equals: "sshd"
+        message:
+          regex: "(Failed password|Invalid user|authentication failure)"
+    threshold:
+      count: 5
+      period_secs: 60
+      group_by: "srcip"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1110.001"
+        technique_name: "Brute Force: Password Guessing"
+    alert:
+      title: "Auth: SSH brute force attempt"
+    active_response:
+      action: "firewall-drop"
+      field: "srcip"
+    enabled: true
+
+  - id: 5802
+    level: 3
+    description: "Successful SSH login"
+    groups:
+      - "syslog"
+      - "authentication"
+      - "ssh"
+      - "login_success"
+    match:
+      type: "log"
+      fields:
+        source:
+          equals: "sshd"
+        message:
+          regex: "(Accepted (password|publickey|keyboard-interactive)|session opened for user)"
+    mitre:
+      - tactic_id: "TA0008"
+        tactic_name: "Lateral Movement"
+        technique_id: "T1021.004"
+        technique_name: "Remote Services: SSH"
+    alert:
+      title: "Auth: Successful SSH login"
+    enabled: true
+
+  - id: 5803
+    level: 8
+    description: "Root user login detected"
+    groups:
+      - "syslog"
+      - "authentication"
+      - "root_login"
+      - "privilege_escalation"
+    match:
+      type: "log"
+      fields:
+        message:
+          regex: "(session opened for user root|Accepted .* for root|ROOT LOGIN|root logged in)"
+    mitre:
+      - tactic_id: "TA0004"
+        tactic_name: "Privilege Escalation"
+        technique_id: "T1078.003"
+        technique_name: "Valid Accounts: Local Accounts"
+    alert:
+      title: "Auth: Root login detected"
+    enabled: true
+
+  - id: 5804
+    level: 5
+    description: "Sudo command executed"
+    groups:
+      - "syslog"
+      - "authentication"
+      - "sudo"
+      - "privilege_escalation"
+    match:
+      type: "log"
+      fields:
+        source:
+          equals: "sudo"
+        message:
+          regex: ".*COMMAND=.*"
+    mitre:
+      - tactic_id: "TA0004"
+        tactic_name: "Privilege Escalation"
+        technique_id: "T1548.003"
+        technique_name: "Abuse Elevation Control Mechanism: Sudo and Sudo Caching"
+    alert:
+      title: "Auth: Sudo command executed"
+    enabled: true
+
+  - id: 5805
+    level: 7
+    description: "User account created or modified"
+    groups:
+      - "syslog"
+      - "account_change"
+      - "persistence"
+    match:
+      type: "log"
+      fields:
+        message:
+          regex: "(useradd|usermod|adduser|passwd|chpasswd|new user|account added|new group|groupadd)"
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1136.001"
+        technique_name: "Create Account: Local Account"
+    alert:
+      title: "Auth: User account change detected"
+    enabled: true

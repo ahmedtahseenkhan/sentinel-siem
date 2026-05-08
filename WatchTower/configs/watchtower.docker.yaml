@@ -1,0 +1,29 @@
+server:
+  grpc:
+    listen_address: "0.0.0.0:50051"
+    tls:
+      cert: ""
+      key: ""
+      ca: ""
+  api:
+    listen_address: "0.0.0.0:9400"
+    auth:
+      api_key: ""
+
+engine:
+  rules_dir: "/etc/watchtower/rules"
+  decoders_dir: "/etc/watchtower/decoders"
+  cdb_dir: "/etc/watchtower/cdb"
+  workers: 4
+
+forwarder:
+  watchvault:
+    address: "watchvault:50052"
+    batch_size: 500
+    flush_interval: "5s"
+
+store:
+  path: "/var/lib/watchtower/state.db"
+
+logging:
+  level: "info"

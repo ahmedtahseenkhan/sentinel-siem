@@ -1,0 +1,59 @@
+# WatchTower - Syslog Decoder
+# Extracts structured fields from standard syslog messages (RFC 3164 / RFC 5424)
+
+decoders:
+  - name: "syslog-header"
+    description: "Extract syslog priority, timestamp, hostname, program, and PID from RFC 3164 format"
+    match:
+      type: "log"
+      tags:
+        format: "syslog"
+    extract:
+      - field: "priority"
+        regex: "^<(\\d{1,3})>"
+      - field: "timestamp"
+        regex: "^(?:<\\d{1,3}>)?([A-Z][a-z]{2}\\s+\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2})"
+      - field: "hostname"
+        regex: "^(?:<\\d{1,3}>)?[A-Z][a-z]{2}\\s+\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2}\\s+(\\S+)"
+      - field: "program"
+        regex: "^(?:<\\d{1,3}>)?[A-Z][a-z]{2}\\s+\\d{1,2}\\s+\\d{2}:\\d{2}:\\d{2}\\s+\\S+\\s+(\\S+?)(?:\\[|:)"
+      - field: "pid"
+        regex: "\\[(\\d+)\\]"
+      - field: "message"
+        regex: "(?:\\[\\d+\\])?:\\s+(.+)$"
+
+  - name: "syslog-rfc5424"
+    description: "Extract fields from RFC 5424 syslog format with structured data"
+    match:
+      type: "log"
+      tags:
+        format: "syslog5424"
+    extract:
+      - field: "priority"
+        regex: "^<(\\d{1,3})>"
+      - field: "version"
+        regex: "^<\\d{1,3}>(\\d+)"
+      - field: "timestamp"
+        regex: "^<\\d{1,3}>\\d+\\s+(\\S+)"
+      - field: "hostname"
+        regex: "^<\\d{1,3}>\\d+\\s+\\S+\\s+(\\S+)"
+      - field: "app_name"
+        regex: "^<\\d{1,3}>\\d+\\s+\\S+\\s+\\S+\\s+(\\S+)"
+      - field: "proc_id"
+        regex: "^<\\d{1,3}>\\d+\\s+\\S+\\s+\\S+\\s+\\S+\\s+(\\S+)"
+      - field: "msg_id"
+        regex: "^<\\d{1,3}>\\d+\\s+\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+(\\S+)"
+
+  - name: "syslog-kernel"
+    description: "Extract kernel log messages with facility and severity"
+    match:
+      type: "log"
+      tags:
+        source: "kernel"
+    extract:
+      - field: "timestamp"
+        regex: "^\\[\\s*(\\d+\\.\\d+)\\]"
+      - field: "subsystem"
+        regex: "^\\[\\s*\\d+\\.\\d+\\]\\s+(\\S+?):"
+      - field: "message"
+        regex: "^\\[\\s*\\d+\\.\\d+\\]\\s+(.+)$"

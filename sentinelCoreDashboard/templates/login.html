@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in · Sentinel Core SIEM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    .login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg); }
+    .login-card { width: 100%; max-width: 360px; padding: 2rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); }
+    .login-card h1 { margin: 0 0 0.25rem; font-size: 1.25rem; }
+    .login-card .subtitle { color: var(--text-muted); font-size: 0.875rem; margin-bottom: 1.5rem; }
+    .login-card label { display: block; font-size: 0.875rem; margin-bottom: 0.35rem; color: var(--text-muted); }
+    .login-card input { width: 100%; padding: 0.6rem 0.75rem; margin-bottom: 1rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-family: var(--font-sans); font-size: 0.95rem; }
+    .login-card input:focus { outline: none; border-color: var(--accent); }
+    .login-card .btn { width: 100%; padding: 0.65rem; background: var(--accent); color: var(--bg); border: none; border-radius: 6px; font-family: var(--font-sans); font-weight: 600; font-size: 0.95rem; cursor: pointer; }
+    .login-card .btn:hover { background: var(--accent-dim); }
+    .login-card .error { color: var(--danger); font-size: 0.875rem; margin-bottom: 1rem; }
+    .login-logo { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; }
+    .login-logo span:first-child { width: 40px; height: 40px; line-height: 40px; text-align: center; background: var(--accent); color: var(--bg); font-weight: 700; border-radius: 6px; }
+    .login-logo span:last-child { font-weight: 700; font-size: 1.1rem; }
+  </style>
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-card">
+      <div class="login-logo">
+        <span>SC</span>
+        <span>Sentinel Core</span>
+      </div>
+      <h1>Sign in</h1>
+      <p class="subtitle">SIEM Dashboard</p>
+      {% if error %}
+      <p class="error">{{ error }}</p>
+      {% endif %}
+      <form method="post" action="{{ url_for('login') }}">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+        <button type="submit" class="btn">Sign in</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

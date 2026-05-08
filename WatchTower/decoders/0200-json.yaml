@@ -1,0 +1,57 @@
+# WatchTower - JSON Log Decoder
+# Extracts common fields from JSON-formatted log events
+
+decoders:
+  - name: "json-generic"
+    description: "Extract common fields from generic JSON log messages"
+    match:
+      type: "log"
+      tags:
+        format: "json"
+    extract:
+      - field: "timestamp"
+        regex: "\"(?:timestamp|@timestamp|time|ts)\"\\s*:\\s*\"([^\"]+)\""
+      - field: "level"
+        regex: "\"(?:level|severity|log_level|loglevel)\"\\s*:\\s*\"([^\"]+)\""
+      - field: "message"
+        regex: "\"(?:message|msg|log)\"\\s*:\\s*\"([^\"]+)\""
+      - field: "source"
+        regex: "\"(?:source|logger|app|application|service)\"\\s*:\\s*\"([^\"]+)\""
+
+  - name: "json-auth"
+    description: "Extract authentication-related fields from JSON log events"
+    match:
+      type: "log"
+      tags:
+        format: "json"
+        category: "auth"
+    extract:
+      - field: "user"
+        regex: "\"(?:user|username|user_name|uid)\"\\s*:\\s*\"([^\"]+)\""
+      - field: "srcip"
+        regex: "\"(?:srcip|source_ip|remote_addr|client_ip|ip)\"\\s*:\\s*\"([^\"]+)\""
+      - field: "action"
+        regex: "\"(?:action|event_type|event|auth_action)\"\\s*:\\s*\"([^\"]+)\""
+      - field: "result"
+        regex: "\"(?:result|status|outcome|success)\"\\s*:\\s*\"([^\"]+)\""
+
+  - name: "json-web-access"
+    description: "Extract fields from JSON-formatted web access logs"
+    match:
+      type: "log"
+      tags:
+        format: "json"
+        category: "web"
+    extract:
+      - field: "method"
+        regex: "\"(?:method|http_method|request_method)\"\\s*:\\s*\"([^\"]+)\""
+      - field: "url"
+        regex: "\"(?:url|path|uri|request_uri)\"\\s*:\\s*\"([^\"]+)\""
+      - field: "status_code"
+        regex: "\"(?:status|status_code|response_code|http_status)\"\\s*:\\s*(\\d{3})"
+      - field: "srcip"
+        regex: "\"(?:remote_addr|client_ip|srcip|x_forwarded_for)\"\\s*:\\s*\"([^\"]+)\""
+      - field: "user_agent"
+        regex: "\"(?:user_agent|useragent|http_user_agent)\"\\s*:\\s*\"([^\"]+)\""
+      - field: "response_size"
+        regex: "\"(?:bytes|body_bytes_sent|response_size|content_length)\"\\s*:\\s*(\\d+)"

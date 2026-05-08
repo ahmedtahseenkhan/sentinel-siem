@@ -1,0 +1,16 @@
+version: "3.8"
+services:
+  watchtower:
+    build: .
+    ports:
+      - "50051:50051"
+      - "9400:9400"
+    volumes:
+      - watchtower-data:/var/lib/watchtower
+      - ./configs/watchtower.docker.yaml:/etc/watchtower/config.yaml:ro
+    environment:
+      - WATCHTOWER_LOG_LEVEL=info
+    restart: unless-stopped
+
+volumes:
+  watchtower-data:

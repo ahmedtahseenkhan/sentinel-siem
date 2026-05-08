@@ -1,0 +1,97 @@
+# WatchNode Agent - Example Configuration
+# Copy to /etc/watchnode/agent/config.yaml or use --config
+
+agent:
+  id: ""  # Auto-generated if empty
+  name: "{{hostname}}"
+  labels:
+    environment: production
+    region: us-east
+    team: security
+
+manager:
+  url: "127.0.0.1:50051"
+  tls:
+    cert: "scripts/certs/client.crt"
+    key: "scripts/certs/client.key"
+    ca: "scripts/certs/ca.crt"
+  reconnect:
+    max_attempts: 0
+    initial_backoff: "1s"
+    max_backoff: "5m"
+
+collectors:
+  system:
+    enabled: true
+    interval: "30s"
+    metrics:
+      - cpu
+      - memory
+      - disk
+      - network
+      - processes
+
+  file_integrity:
+    enabled: true
+    interval: "5m"
+    paths:
+      - path: "/etc"
+        recursive: true
+        ignore_patterns: ["*.lock", "*.pid"]
+      - path: "/usr/bin"
+        recursive: true
+    hash_algorithms: ["sha256"]
+    scan_on_start: true
+
+  logs:
+    enabled: true
+    sources:
+      - type: file
+        path: "/var/log/auth.log"
+        tags: [authentication]
+        multiline_pattern: "^\\d{4}-\\d{2}-\\d{2}"
+      - type: journal
+        units: ["sshd", "systemd-logind", "sudo"]
+      - type: eventlog
+        channels: ["Security", "Application", "System"]
+    max_line_length: 1048576
+    max_buffer_size: 10485760
+
+  process:
+    enabled: true
+    interval: "30s"
+
+  network:
+    enabled: true
+    interval: "30s"
+
+  sca:
+    enabled: true
+    interval: "12h"
+    policy_dirs:
+      - "/etc/watchnode/sca/policies"
+      - "configs/sca"
+
+  vulnerability:
+    enabled: false
+    interval: "24h"
+    db_path: "/var/lib/watchnode/vulndb"
+    db_update_url: "https://vulndb.watchnode.io/latest"
+
+performance:
+  max_cpu_percent: 20
+  max_memory_bytes: 268435456
+  max_disk_bytes: 1073741824
+  batch_size: 1000
+  flush_interval: "30s"
+  queue_size: 10000
+
+# Automatic agent binary updates.
+# When enabled, the agent checks the update server for a newer release on the
+# configured interval.  If a new version is found, the binary is downloaded,
+# its SHA-256 is verified, and the agent restarts in-place.
+autoupdate:
+  enabled: false
+  update_server_url: "https://updates.watchnode.io"
+  check_interval: "24h"
+  allow_prerelease: false

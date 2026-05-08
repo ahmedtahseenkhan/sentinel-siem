@@ -1,0 +1,72 @@
+# ── Secrets & credentials ────────────────────────────────────────────────────
+.env
+*.env
+.env.*
+!.env.example
+!*.env.example
+
+# Private keys and certificate authority keys
+*.key
+*.pem
+!*.pub
+
+# Generated certificates (keep .crt/.csr templates but never private keys)
+scripts/certs/ca.key
+scripts/certs/server.key
+scripts/certs/client.key
+WatchNode/scripts/certs/*.key
+WatchTower/scripts/certs/*.key
+WatchVault/scripts/certs/*.key
+
+# ── Go build outputs ────────────────────────────────────────────────────────
+# Compiled binaries (use explicit paths to avoid matching directories on case-insensitive FS)
+WatchNode/cmd/agent/watchnode
+WatchNode/cmd/agent/watchnode.exe
+WatchNode/watchnode
+WatchNode/watchnode-manager
+WatchNode/sentinel-agent
+WatchNode/sentinel-manager
+WatchTower/cmd/watchtower/watchtower
+WatchTower/watchtower
+WatchVault/cmd/watchvault/watchvault
+WatchVault/watchvault
+*.test
+*.out
+/bin/
+/dist/
+/build/
+
+# Go module cache
+vendor/
+
+# ── IDE / OS ────────────────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+Thumbs.db
+
+# ── Runtime data ─────────────────────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+/data/
+/logs/
+/tmp/
+
+# ── Python (sentinelCoreDashboard) ───────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+sentinelCoreDashboard/venv/
+*.egg-info/
+
+# ── Node / Next.js (marketing) ───────────────────────────────────────────────
+node_modules/
+marketing/.next/
+marketing/out/
+.next/

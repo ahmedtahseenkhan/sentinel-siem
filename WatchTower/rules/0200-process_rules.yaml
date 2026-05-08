@@ -1,0 +1,158 @@
+# WatchTower - Process Monitoring Rules
+# Rule IDs: 5600-5606
+
+rules:
+  - id: 5600
+    level: 3
+    description: "New process started on the system"
+    groups:
+      - "process"
+      - "informational"
+    match:
+      type: "process.new"
+      fields: {}
+    mitre:
+      - tactic_id: "TA0002"
+        tactic_name: "Execution"
+        technique_id: "T1059"
+        technique_name: "Command and Scripting Interpreter"
+    alert:
+      title: "Process: New process detected"
+    enabled: true
+
+  - id: 5601
+    level: 12
+    description: "Reverse shell tool spawned - possible active exploitation"
+    groups:
+      - "process"
+      - "attack"
+      - "execution"
+      - "reverse_shell"
+      - "critical"
+    match:
+      type: "process.new"
+      fields:
+        name:
+          regex: "^(nc|ncat|netcat|socat)$"
+    mitre:
+      - tactic_id: "TA0011"
+        tactic_name: "Command and Control"
+        technique_id: "T1059.004"
+        technique_name: "Unix Shell"
+    alert:
+      title: "Process: Reverse shell tool detected"
+    active_response:
+      action: "kill-process"
+      field: "pid"
+    enabled: true
+
+  - id: 5602
+    level: 12
+    description: "Cryptocurrency miner process detected"
+    groups:
+      - "process"
+      - "attack"
+      - "resource_hijacking"
+      - "crypto_mining"
+      - "critical"
+    match:
+      type: "process.new"
+      fields:
+        name:
+          regex: "^(xmrig|minerd|cpuminer|ethminer|cgminer|bfgminer|claymore)$"
+    mitre:
+      - tactic_id: "TA0040"
+        tactic_name: "Impact"
+        technique_id: "T1496"
+        technique_name: "Resource Hijacking"
+    alert:
+      title: "Process: Crypto miner detected"
+    active_response:
+      action: "kill-process"
+      field: "pid"
+    enabled: true
+
+  - id: 5603
+    level: 9
+    description: "Network reconnaissance or scanning tool executed"
+    groups:
+      - "process"
+      - "attack"
+      - "discovery"
+      - "reconnaissance"
+    match:
+      type: "process.new"
+      fields:
+        name:
+          regex: "^(nmap|masscan|nikto|zmap|sqlmap|dirb|gobuster|ffuf|hydra)$"
+    mitre:
+      - tactic_id: "TA0007"
+        tactic_name: "Discovery"
+        technique_id: "T1046"
+        technique_name: "Network Service Scanning"
+    alert:
+      title: "Process: Reconnaissance tool executed"
+    enabled: true
+
+  - id: 5604
+    level: 5
+    description: "Package manager executed - software installation or update"
+    groups:
+      - "process"
+      - "software_change"
+      - "package_management"
+    match:
+      type: "process.new"
+      fields:
+        name:
+          regex: "^(apt|apt-get|yum|dnf|pip|pip3|npm|gem|cargo|pacman|zypper)$"
+    mitre:
+      - tactic_id: "TA0002"
+        tactic_name: "Execution"
+        technique_id: "T1072"
+        technique_name: "Software Deployment Tools"
+    alert:
+      title: "Process: Package manager executed"
+    enabled: true
+
+  - id: 5605
+    level: 6
+    description: "Container runtime or orchestration tool spawned"
+    groups:
+      - "process"
+      - "container"
+      - "execution"
+    match:
+      type: "process.new"
+      fields:
+        name:
+          regex: "^(docker|kubectl|podman|containerd|ctr|crictl|buildah|nerdctl)$"
+    mitre:
+      - tactic_id: "TA0002"
+        tactic_name: "Execution"
+        technique_id: "T1610"
+        technique_name: "Deploy Container"
+    alert:
+      title: "Process: Container tool executed"
+    enabled: true
+
+  - id: 5606
+    level: 7
+    description: "Compiler or debugging tool executed - possible development activity or analysis"
+    groups:
+      - "process"
+      - "development"
+      - "defense_evasion"
+    match:
+      type: "process.new"
+      fields:
+        name:
+          regex: "^(gcc|g\\+\\+|gdb|strace|ltrace|objdump|radare2|r2|gcore)$"
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1027"
+        technique_name: "Obfuscated Files or Information"
+    alert:
+      title: "Process: Compiler or debugger executed"
+    enabled: true

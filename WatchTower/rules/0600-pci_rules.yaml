@@ -1,0 +1,243 @@
+# WatchTower - PCI-DSS Compliance Rules
+# Rule IDs: 6000-6014
+# Maps controls from PCI-DSS v4.0
+
+rules:
+  - id: 6000
+    level: 9
+    description: "Audit or system log file modified - possible evidence tampering (PCI-DSS Req 10.5)"
+    groups:
+      - "pci_dss"
+      - "log_integrity"
+      - "req_10"
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "^/(var/log|etc/audit)/"
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1070.002"
+        technique_name: "Indicator Removal: Clear Linux or Mac System Logs"
+    alert:
+      title: "PCI-DSS: Audit log file modified"
+    enabled: true
+
+  - id: 6001
+    level: 10
+    description: "Audit or authentication log deleted - audit trail destruction (PCI-DSS Req 10.5.5)"
+    groups:
+      - "pci_dss"
+      - "log_integrity"
+      - "req_10"
+      - "critical"
+    match:
+      type: "fim.deleted"
+      fields:
+        path:
+          regex: "^/var/log/(auth|secure|syslog|messages|audit/audit)\\.log$"
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1070.002"
+        technique_name: "Indicator Removal: Clear Linux or Mac System Logs"
+    alert:
+      title: "PCI-DSS: Log file deleted"
+    enabled: true
+
+  - id: 6002
+    level: 10
+    description: "New privileged user account created (PCI-DSS Req 7, Req 8)"
+    groups:
+      - "pci_dss"
+      - "access_control"
+      - "req_7"
+      - "req_8"
+    match:
+      type: "log"
+      fields:
+        message:
+          regex: "(new user.*wheel|new user.*sudo|useradd.*-G.*(sudo|admin|wheel)|adduser.*admin)"
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1136.001"
+        technique_name: "Create Account: Local Account"
+    alert:
+      title: "PCI-DSS: Privileged account created"
+    enabled: true
+
+  - id: 6003
+    level: 8
+    description: "System time changed - can invalidate audit trail timestamps (PCI-DSS Req 10.6)"
+    groups:
+      - "pci_dss"
+      - "log_integrity"
+      - "req_10"
+    match:
+      type: "log"
+      fields:
+        message:
+          regex: "(settimeofday|adjtimex|ntpdate|chronyc step|timedatectl set-time|time set to)"
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1070.006"
+        technique_name: "Indicator Removal: Timestomp"
+    alert:
+      title: "PCI-DSS: System time modified"
+    enabled: true
+
+  - id: 6004
+    level: 12
+    description: "Sensitive payment data path modified (PCI-DSS Req 3, Req 6)"
+    groups:
+      - "pci_dss"
+      - "data_protection"
+      - "req_3"
+      - "req_6"
+      - "critical"
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "/(payment|cardholder|card.data|billing|checkout|pci.data|cvv)/"
+    mitre:
+      - tactic_id: "TA0040"
+        tactic_name: "Impact"
+        technique_id: "T1565.001"
+        technique_name: "Stored Data Manipulation"
+    alert:
+      title: "PCI-DSS: Payment data path modified"
+    enabled: true
+
+  - id: 6005
+    level: 8
+    description: "Firewall or network security configuration modified (PCI-DSS Req 1)"
+    groups:
+      - "pci_dss"
+      - "network_security"
+      - "req_1"
+    match:
+      type: "log"
+      fields:
+        message:
+          regex: "(iptables -[AI]|ufw allow|firewall-cmd --add|nft add rule|pf.*allow)"
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1562.004"
+        technique_name: "Impair Defenses: Disable or Modify System Firewall"
+    alert:
+      title: "PCI-DSS: Firewall rule added"
+    enabled: true
+
+  - id: 6006
+    level: 9
+    description: "Connection over unencrypted protocol - cardholder data at risk (PCI-DSS Req 4)"
+    groups:
+      - "pci_dss"
+      - "data_protection"
+      - "req_4"
+    match:
+      type: "network.connection"
+      fields:
+        remote_port:
+          regex: "^(21|23|80|110|143)$"
+    mitre:
+      - tactic_id: "TA0010"
+        tactic_name: "Exfiltration"
+        technique_id: "T1048.003"
+        technique_name: "Exfiltration Over Unencrypted Non-C2 Protocol"
+    alert:
+      title: "PCI-DSS: Unencrypted protocol connection"
+    enabled: true
+
+  - id: 6007
+    level: 9
+    description: "Critical or high vulnerability detected in system component (PCI-DSS Req 6, Req 11)"
+    groups:
+      - "pci_dss"
+      - "vulnerability"
+      - "req_6"
+      - "req_11"
+    match:
+      type: "vulnerability"
+      fields:
+        severity:
+          regex: "^(HIGH|CRITICAL)$"
+    mitre:
+      - tactic_id: "TA0002"
+        tactic_name: "Execution"
+        technique_id: "T1203"
+        technique_name: "Exploitation for Client Execution"
+    alert:
+      title: "PCI-DSS: Critical vulnerability detected"
+    enabled: true
+
+  - id: 6008
+    level: 7
+    description: "Antivirus or security software configuration file modified (PCI-DSS Req 5)"
+    groups:
+      - "pci_dss"
+      - "endpoint_protection"
+      - "req_5"
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "/(clamav|maldet|clamd|chkrootkit|rkhunter|aide)/"
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1562.001"
+        technique_name: "Impair Defenses: Disable or Modify Tools"
+    alert:
+      title: "PCI-DSS: Security software configuration changed"
+    enabled: true
+
+  - id: 6009
+    level: 8
+    description: "Default service account or credential pattern detected (PCI-DSS Req 2, Req 8)"
+    groups:
+      - "pci_dss"
+      - "authentication"
+      - "req_2"
+      - "req_8"
+    match:
+      type: "log"
+      fields:
+        message:
+          regex: "(Accepted password for (root|admin|administrator|test|guest|oracle|postgres|mysql|sa))"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1110.001"
+        technique_name: "Brute Force: Password Guessing"
+    alert:
+      title: "PCI-DSS: Default account login detected"
+    enabled: true
+
+  - id: 6010
+    level: 10
+    description: "Active response firewall block executed - possible attack mitigated (PCI-DSS Req 11)"
+    groups:
+      - "pci_dss"
+      - "incident_response"
+      - "req_11"
+    match:
+      type: "active_response.result"
+      fields:
+        command_type:
+          regex: "^firewall-drop$"
+        status:
+          regex: "^executed$"
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1562.004"
+        technique_name: "Impair Defenses: Disable or Modify System Firewall"
+    alert:
+      title: "PCI-DSS: Firewall block active response executed"
+    enabled: true

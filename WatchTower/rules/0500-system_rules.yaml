@@ -1,0 +1,91 @@
+# WatchTower - System Resource Monitoring Rules
+# Rule IDs: 5900-5903
+
+rules:
+  - id: 5900
+    level: 7
+    description: "Total CPU usage exceeds 90% - system under heavy load"
+    groups:
+      - "system"
+      - "resource"
+      - "cpu"
+      - "performance"
+    match:
+      type: "system.cpu.total"
+      fields:
+        usage_percent:
+          regex: "^(9[0-9]|100)(\\.\\d+)?$"
+    mitre:
+      - tactic_id: "TA0040"
+        tactic_name: "Impact"
+        technique_id: "T1496"
+        technique_name: "Resource Hijacking"
+    alert:
+      title: "System: High CPU usage detected (>90%)"
+    enabled: true
+
+  - id: 5901
+    level: 7
+    description: "Memory usage exceeds 90% - possible memory exhaustion"
+    groups:
+      - "system"
+      - "resource"
+      - "memory"
+      - "performance"
+    match:
+      type: "system.memory"
+      fields:
+        used_percent:
+          regex: "^(9[0-9]|100)(\\.\\d+)?$"
+    mitre:
+      - tactic_id: "TA0040"
+        tactic_name: "Impact"
+        technique_id: "T1499"
+        technique_name: "Endpoint Denial of Service"
+    alert:
+      title: "System: High memory usage detected (>90%)"
+    enabled: true
+
+  - id: 5902
+    level: 10
+    description: "Disk usage exceeds 95% - critical storage condition"
+    groups:
+      - "system"
+      - "resource"
+      - "disk"
+      - "critical"
+    match:
+      type: "system.disk"
+      fields:
+        used_percent:
+          regex: "^(9[5-9]|100)(\\.\\d+)?$"
+    mitre:
+      - tactic_id: "TA0040"
+        tactic_name: "Impact"
+        technique_id: "T1485"
+        technique_name: "Data Destruction"
+    alert:
+      title: "System: Critical disk usage (>95%)"
+    enabled: true
+
+  - id: 5903
+    level: 8
+    description: "Individual process consuming excessive CPU - possible runaway or mining process"
+    groups:
+      - "system"
+      - "resource"
+      - "cpu"
+      - "anomaly"
+    match:
+      type: "system.process"
+      fields:
+        cpu_percent:
+          regex: "^(8[0-9]|9[0-9]|100)(\\.\\d+)?$"
+    mitre:
+      - tactic_id: "TA0040"
+        tactic_name: "Impact"
+        technique_id: "T1496"
+        technique_name: "Resource Hijacking"
+    alert:
+      title: "System: Process with high CPU usage (>80%)"
+    enabled: true

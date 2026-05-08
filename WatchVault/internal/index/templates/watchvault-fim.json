@@ -1,0 +1,23 @@
+{
+  "index_patterns": ["watchvault-fim-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 1,
+      "index.refresh_interval": "5s"
+    },
+    "mappings": {
+      "properties": {
+        "timestamp": {"type": "date", "format": "epoch_millis"},
+        "event_type": {"type": "keyword"},
+        "agent_id": {"type": "keyword"},
+        "path": {"type": "keyword", "fields": {"text": {"type": "text"}}},
+        "sha256": {"type": "keyword"},
+        "previous_hash": {"type": "keyword"},
+        "directory": {"type": "keyword"},
+        "filename": {"type": "keyword"},
+        "action": {"type": "keyword"}
+      }
+    }
+  }
+}

@@ -1,0 +1,35 @@
+services:
+  manager:
+    build:
+      context: .
+      target: manager
+    command: ["--config", "/etc/watchnode/manager/config.yaml"]
+    ports:
+      - "50051:50051"
+    volumes:
+      - ./configs/manager.docker.yaml:/etc/watchnode/manager/config.yaml:ro
+      - ./scripts/certs:/etc/watchnode/certs:ro
+
+  agent:
+    build:
+      context: .
+      target: agent
+    command: ["--config", "/etc/watchnode/agent/config.yaml"]
+    depends_on:
+      - manager
+    pid: "host"
+    network_mode: "host"
+    volumes:
+      - ./configs/agent.docker.yaml:/etc/watchnode/agent/config.yaml:ro
+      - ./scripts/certs:/etc/watchnode/certs:ro
+      - watchnode-state:/var/lib/watchnode
+      - /etc:/host/etc:ro
+      - /usr/bin:/host/usr/bin:ro
+      - /var/log:/host/var/log:ro
+    read_only: true
+    user: "0:0"
+    tmpfs:
+      - /tmp
+
+volumes:
+  watchnode-state:

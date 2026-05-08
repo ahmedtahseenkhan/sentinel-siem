@@ -1,0 +1,174 @@
+# WatchTower - File Integrity Monitoring Rules
+# Rule IDs: 5500-5507
+
+rules:
+  - id: 5500
+    level: 5
+    description: "File added to monitored directory"
+    groups:
+      - "fim"
+      - "file_change"
+    match:
+      type: "fim.added"
+      fields: {}
+    mitre:
+      - tactic_id: "TA0040"
+        tactic_name: "Impact"
+        technique_id: "T1565.001"
+        technique_name: "Stored Data Manipulation"
+    alert:
+      title: "FIM: New file created"
+    enabled: true
+
+  - id: 5501
+    level: 5
+    description: "Monitored file was modified"
+    groups:
+      - "fim"
+      - "file_change"
+    match:
+      type: "fim.modified"
+      fields: {}
+    mitre:
+      - tactic_id: "TA0040"
+        tactic_name: "Impact"
+        technique_id: "T1565.001"
+        technique_name: "Stored Data Manipulation"
+    alert:
+      title: "FIM: File modified"
+    enabled: true
+
+  - id: 5502
+    level: 7
+    description: "Monitored file was deleted"
+    groups:
+      - "fim"
+      - "file_change"
+      - "file_deletion"
+    match:
+      type: "fim.deleted"
+      fields: {}
+    mitre:
+      - tactic_id: "TA0040"
+        tactic_name: "Impact"
+        technique_id: "T1485"
+        technique_name: "Data Destruction"
+    alert:
+      title: "FIM: File deleted"
+    enabled: true
+
+  - id: 5503
+    level: 10
+    description: "Critical system binary or configuration directory modified"
+    groups:
+      - "fim"
+      - "file_change"
+      - "system_integrity"
+      - "high_severity"
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "^/(etc|bin|sbin|usr/bin|usr/sbin)/"
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1562.001"
+        technique_name: "Impair Defenses: Disable or Modify Tools"
+    alert:
+      title: "FIM: Critical system path modified"
+    enabled: true
+
+  - id: 5504
+    level: 12
+    description: "Password or shadow file modified - possible credential tampering"
+    groups:
+      - "fim"
+      - "file_change"
+      - "credential_access"
+      - "critical"
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "^/etc/(passwd|shadow|gshadow|group)$"
+    cdb_lookup:
+      list: "audit-keys"
+      field: "path"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1003.008"
+        technique_name: "OS Credential Dumping: /etc/passwd and /etc/shadow"
+    alert:
+      title: "FIM: Authentication file modified"
+    enabled: true
+
+  - id: 5505
+    level: 10
+    description: "SSH configuration file modified"
+    groups:
+      - "fim"
+      - "file_change"
+      - "ssh"
+      - "lateral_movement"
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "^/etc/ssh/(sshd_config|ssh_config|ssh_host_.*_key)$"
+    mitre:
+      - tactic_id: "TA0008"
+        tactic_name: "Lateral Movement"
+        technique_id: "T1021.004"
+        technique_name: "Remote Services: SSH"
+    alert:
+      title: "FIM: SSH configuration changed"
+    enabled: true
+
+  - id: 5506
+    level: 8
+    description: "Cron directory or crontab modified - possible persistence mechanism"
+    groups:
+      - "fim"
+      - "file_change"
+      - "persistence"
+      - "scheduled_task"
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "^/(etc/cron\\.|etc/crontab|var/spool/cron)"
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1053.003"
+        technique_name: "Scheduled Task/Job: Cron"
+    alert:
+      title: "FIM: Cron schedule modified"
+    enabled: true
+
+  - id: 5507
+    level: 12
+    description: "Sudoers file modified - possible privilege escalation"
+    groups:
+      - "fim"
+      - "file_change"
+      - "privilege_escalation"
+      - "critical"
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "^/etc/sudoers(\\.d/.*)?$"
+    cdb_lookup:
+      list: "audit-keys"
+      field: "path"
+    mitre:
+      - tactic_id: "TA0004"
+        tactic_name: "Privilege Escalation"
+        technique_id: "T1548.003"
+        technique_name: "Abuse Elevation Control Mechanism: Sudo and Sudo Caching"
+    alert:
+      title: "FIM: Sudoers configuration modified"
+    enabled: true

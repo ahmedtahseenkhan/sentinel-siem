@@ -1,0 +1,15 @@
+/etc/passwd:critical
+/etc/shadow:critical
+/etc/sudoers:critical
+/etc/ssh/sshd_config:critical
+/etc/crontab:critical
+/etc/hosts:important
+/etc/resolv.conf:important
+/etc/fstab:important
+/etc/profile:important
+/etc/bashrc:important
+/bin/sh:critical
+/bin/bash:critical
+/usr/bin/sudo:critical
+/usr/bin/ssh:important
+/usr/sbin/sshd:critical
