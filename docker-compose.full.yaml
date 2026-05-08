@@ -60,6 +60,7 @@ services:
     build:
       context: ./WatchNode
       target: agent
+    image: go-watchnode
     pid: host
     network_mode: host
     depends_on:
