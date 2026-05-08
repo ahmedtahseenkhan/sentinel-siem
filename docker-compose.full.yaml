@@ -107,6 +107,26 @@ services:
       - watchtower
     restart: unless-stopped
 
+  dashboard:
+    build: ./sentinelCoreDashboard
+    ports:
+      - "5050:5050"
+    environment:
+      - SENTINEL_MANAGER_URL=http://watchtower:9400
+      - SENTINEL_INDEXER_URL=http://opensearch:9200
+      - SENTINEL_INDEXER_USER=admin
+      - SENTINEL_INDEXER_PASSWORD=admin
+      - VERIFY_SSL=false
+      - SECRET_KEY=sentinel-dev-key
+      - DASHBOARD_SUPER_ADMIN_USER=superadmin
+      - DASHBOARD_SUPER_ADMIN_PASSWORD=superadmin
+      - DASHBOARD_ADMIN_USER=admin
+      - DASHBOARD_ADMIN_PASSWORD=admin
+    depends_on:
+      - watchtower
+      - opensearch
+    restart: unless-stopped
+
 volumes:
   opensearch-data:
   watchtower-data:
