@@ -2585,6 +2585,75 @@ def api_cases_evidence_add(case_id):
         return _api_error(e)
 
 
+# ── Ticketing Integration ─────────────────────────────────────────────────────
+
+@app.route("/api/tickets/config", methods=["GET"])
+def api_tickets_config():
+    """Return ticketing provider config (no secrets)."""
+    try:
+        from ticketing import get_config_status
+        return jsonify(get_config_status())
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/tickets", methods=["GET"])
+def api_tickets_list():
+    """List created tickets, optionally filtered by alert_id or case_id."""
+    try:
+        from ticketing import list_tickets
+        alert_id = request.args.get("alert_id", type=int)
+        case_id  = request.args.get("case_id",  type=int)
+        limit    = request.args.get("limit",     type=int, default=100)
+        tickets  = list_tickets(alert_id=alert_id, case_id=case_id, limit=limit)
+        return jsonify({"data": tickets, "total": len(tickets)})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/tickets", methods=["POST"])
+def api_tickets_create():
+    """Create a ticket in the configured provider (Jira or ServiceNow)."""
+    try:
+        from ticketing import create_ticket
+        body      = request.get_json(force=True) or {}
+        summary   = body.get("summary", "Security Alert from Sentinel SIEM")
+        desc      = body.get("description", "")
+        priority  = body.get("priority", "medium")
+        alert_id  = body.get("alert_id")
+        case_id   = body.get("case_id")
+        user      = session.get("username", "anonymous")
+
+        ticket = create_ticket(
+            summary=summary,
+            description=desc,
+            priority=priority,
+            alert_id=alert_id,
+            case_id=case_id,
+            created_by=user,
+        )
+        return jsonify({"data": ticket}), 201
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/tickets/test", methods=["POST"])
+def api_tickets_test():
+    """Create a test ticket to verify configuration."""
+    try:
+        from ticketing import create_ticket
+        ticket = create_ticket(
+            summary="[TEST] Sentinel SIEM — Ticketing Integration Test",
+            description="This is an automated test ticket from Sentinel SIEM. You can safely close this ticket.",
+            priority="low",
+            created_by=session.get("username", "system"),
+        )
+        return jsonify({"data": ticket, "message": f"Test ticket created: {ticket['ticket_id']}"})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return _api_error(e)
+
+
 # ── SOAR Playbooks ────────────────────────────────────────────────────────────
 
 @app.route("/api/playbooks", methods=["GET"])

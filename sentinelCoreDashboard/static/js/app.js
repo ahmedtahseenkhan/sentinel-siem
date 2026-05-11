@@ -4855,16 +4855,147 @@ async function triggerReportNow(id) {
   alert('Report triggered — check your email shortly.');
 }
 
+// ── Ticketing Integration ─────────────────────────────────────────────────────
+
+async function loadTicketingPage() {
+  await Promise.all([loadTicketConfig(), loadTickets()]);
+}
+
+async function loadTicketConfig() {
+  const res = await fetch('/api/tickets/config').then(r => r.json()).catch(() => ({}));
+  const el = document.getElementById('ticketConfigStatus');
+  if (!el) return;
+
+  const providerLabel = { jira: 'Jira', servicenow: 'ServiceNow', none: 'None' };
+  const label = providerLabel[res.provider] || res.provider;
+
+  if (res.provider === 'none') {
+    el.innerHTML = `<span style="color:#f59e0b">⚠ No provider configured. Set TICKETING_PROVIDER in .env</span>`;
+    return;
+  }
+
+  const statusColor = res.configured ? '#10b981' : '#ef4444';
+  const statusText  = res.configured ? '✓ Configured' : '✗ Missing credentials';
+  const details = res.provider === 'jira'
+    ? `URL: ${res.url || '—'} &nbsp;·&nbsp; Email: ${res.email || '—'} &nbsp;·&nbsp; Project: ${res.project || '—'}`
+    : `URL: ${res.url || '—'} &nbsp;·&nbsp; User: ${res.username || '—'} &nbsp;·&nbsp; Table: ${res.table || '—'}`;
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="font-size:20px">${res.provider === 'jira' ? '🟦' : '🟩'}</span>
+      <div>
+        <div style="font-weight:600;font-size:13px">${label} <span style="color:${statusColor};font-size:12px">${statusText}</span></div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${details}</div>
+      </div>
+    </div>`;
+}
+
+async function loadTickets() {
+  const res = await fetch('/api/tickets').then(r => r.json()).catch(() => ({}));
+  const tickets = res.data || [];
+  const tbody = document.getElementById('ticketsTableBody');
+  if (!tbody) return;
+
+  if (!tickets.length) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted)">No tickets created yet.</td></tr>';
+    return;
+  }
+
+  const priorityColor = { critical:'#ef4444', high:'#f97316', medium:'#f59e0b', low:'#6b7280' };
+  const providerIcon  = { jira:'🟦', servicenow:'🟩' };
+
+  tbody.innerHTML = tickets.map(t => `
+    <tr>
+      <td>
+        ${t.ticket_url
+          ? `<a href="${escHtml(t.ticket_url)}" target="_blank" style="color:var(--accent);font-weight:600;font-size:12px">${escHtml(t.ticket_id)}</a>`
+          : `<span style="font-size:12px">${escHtml(t.ticket_id)}</span>`}
+      </td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px">${escHtml(t.summary)}</td>
+      <td><span style="color:${priorityColor[t.priority]||'#aaa'};font-size:11px;font-weight:600;text-transform:uppercase">${t.priority}</span></td>
+      <td style="font-size:12px">${providerIcon[t.provider]||''} ${t.provider}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${t.alert_id ? '#'+t.alert_id : '—'}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${t.case_id  ? '#'+t.case_id  : '—'}</td>
+      <td style="font-size:12px">${escHtml(t.created_by||'—')}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${t.created_at ? new Date(t.created_at).toLocaleString() : '—'}</td>
+      <td>
+        ${t.ticket_url ? `<a href="${escHtml(t.ticket_url)}" target="_blank" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:3px 10px;border-radius:4px;font-size:11px;text-decoration:none">Open ↗</a>` : ''}
+      </td>
+    </tr>`).join('');
+}
+
+async function testTicketConnection() {
+  const btn = event?.target;
+  if (btn) btn.textContent = 'Testing…';
+  const res = await fetch('/api/tickets/test', {method:'POST'}).then(r => r.json()).catch(() => ({}));
+  if (btn) btn.textContent = 'Test Connection';
+  if (res?.data?.ticket_id) {
+    alert(`✓ Success! Created test ticket: ${res.data.ticket_id}\nURL: ${res.data.ticket_url}`);
+    await loadTickets();
+  } else {
+    alert(`✗ Failed: ${res?.error || 'Unknown error. Check provider credentials.'}`);
+  }
+}
+
+function showCreateTicketModal(alertId, caseId, summary) {
+  document.getElementById('ticketSummary').value  = summary || '';
+  document.getElementById('ticketAlertId').value  = alertId || '';
+  document.getElementById('ticketCaseId').value   = caseId  || '';
+  document.getElementById('ticketPriority').value = 'medium';
+  document.getElementById('ticketDesc').value     = '';
+  document.getElementById('ticketModalStatus').textContent = '';
+  document.getElementById('createTicketModal').style.display = 'flex';
+}
+
+function hideCreateTicketModal() {
+  document.getElementById('createTicketModal').style.display = 'none';
+}
+
+async function submitCreateTicket() {
+  const summary  = document.getElementById('ticketSummary')?.value?.trim();
+  const desc     = document.getElementById('ticketDesc')?.value?.trim() || '';
+  const priority = document.getElementById('ticketPriority')?.value || 'medium';
+  const alertId  = parseInt(document.getElementById('ticketAlertId')?.value) || null;
+  const caseId   = parseInt(document.getElementById('ticketCaseId')?.value)  || null;
+
+  if (!summary) { alert('Summary is required'); return; }
+
+  const statusEl = document.getElementById('ticketModalStatus');
+  if (statusEl) statusEl.textContent = 'Creating ticket…';
+
+  const res = await fetch('/api/tickets', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({summary, description: desc, priority, alert_id: alertId, case_id: caseId})
+  }).then(r => r.json()).catch(() => ({}));
+
+  if (res?.data?.ticket_id) {
+    hideCreateTicketModal();
+    await loadTickets();
+    alert(`✓ Ticket created: ${res.data.ticket_id}\n${res.data.ticket_url}`);
+  } else {
+    if (statusEl) statusEl.textContent = `Error: ${res?.error || 'Failed to create ticket'}`;
+    statusEl.style.color = '#ef4444';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.nav-item[data-page="ticketing"]').forEach(el => {
+    el.addEventListener('click', () => loadTicketingPage());
+  });
+});
+
 // ── SOAR Playbooks ────────────────────────────────────────────────────────────
 
 const ACTION_TEMPLATES = {
-  block_ip:        { label: 'Block IP',           params: { ip: '{{src_ip}}' } },
-  kill_process:    { label: 'Kill Process',        params: { pid: '{{pid}}' } },
-  isolate_host:    { label: 'Isolate Host',        params: { reason: '{{title}}' } },
-  create_case:     { label: 'Create Case',         params: { title: 'Auto: {{title}}', priority: 'high' } },
-  notify_slack:    { label: 'Notify Slack',        params: { webhook_url: '', message: '🚨 [{{level}}] {{title}} — Agent: {{agent_id}}' } },
-  notify_email:    { label: 'Send Email',          params: { to: '', subject: '[Alert] {{title}}' } },
-  add_to_watchlist:{ label: 'Add to Watchlist',   params: { value: '{{src_ip}}', list: 'blocked_ips' } },
+  block_ip:        { label: 'Block IP',            params: { ip: '{{src_ip}}' } },
+  kill_process:    { label: 'Kill Process',         params: { pid: '{{pid}}' } },
+  isolate_host:    { label: 'Isolate Host',         params: { reason: '{{title}}' } },
+  create_case:     { label: 'Create Case',          params: { title: 'Auto: {{title}}', priority: 'high' } },
+  create_ticket:   { label: 'Create Ticket',        params: { dashboard_url: 'http://dashboard:5050', summary: 'Alert L{{level}}: {{title}}', priority: 'high' } },
+  notify_slack:    { label: 'Notify Slack',         params: { webhook_url: '', message: '🚨 [{{level}}] {{title}} — Agent: {{agent_id}}' } },
+  notify_email:    { label: 'Send Email',           params: { to: '', subject: '[Alert] {{title}}' } },
+  add_to_watchlist:{ label: 'Add to Watchlist',    params: { value: '{{src_ip}}', list: 'blocked_ips' } },
 };
 
 let _pbActions = [];

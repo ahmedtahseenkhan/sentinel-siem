@@ -78,6 +78,23 @@ ROLE_ADMINISTRATOR = "administrator"
 ROLE_SECURITY_ANALYST = "security_analyst"
 ROLE_COMPLIANCE_OFFICER = "compliance_officer"
 
+# Ticketing integration
+# TICKETING_PROVIDER = jira | servicenow | none
+TICKETING_PROVIDER = os.getenv("TICKETING_PROVIDER", "none")
+
+# Jira Cloud/Server
+JIRA_URL          = os.getenv("JIRA_URL", "")
+JIRA_EMAIL        = os.getenv("JIRA_EMAIL", "")
+JIRA_TOKEN        = os.getenv("JIRA_TOKEN", "")
+JIRA_PROJECT      = os.getenv("JIRA_PROJECT", "SEC")
+JIRA_ISSUE_TYPE   = os.getenv("JIRA_ISSUE_TYPE", "Task")
+
+# ServiceNow
+SNOW_INSTANCE_URL = os.getenv("SNOW_INSTANCE_URL", "")
+SNOW_USERNAME     = os.getenv("SNOW_USERNAME", "")
+SNOW_PASSWORD     = os.getenv("SNOW_PASSWORD", "")
+SNOW_TABLE        = os.getenv("SNOW_TABLE", "incident")
+
 # Roles that can save dashboard filters (Phase 6.3)
 ROLES_CAN_SAVE_DASHBOARD = (ROLE_SUPER_ADMIN, ROLE_ADMINISTRATOR, ROLE_ADMIN)
 

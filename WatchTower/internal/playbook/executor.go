@@ -202,6 +202,8 @@ func (e *Executor) executeAction(ctx context.Context, action models.PlaybookActi
 		return e.actionIsolateHost(alert.AgentID, params)
 	case "create_case":
 		return e.actionCreateCase(alert, params)
+	case "create_ticket":
+		return e.actionCreateTicket(ctx, alert, params)
 	case "notify_slack":
 		return e.actionNotifySlack(ctx, alert, params)
 	case "notify_email":
@@ -305,6 +307,40 @@ func (e *Executor) actionNotifySlack(ctx context.Context, alert *models.Alert, p
 		return "", fmt.Errorf("notify_slack: HTTP %d", resp.StatusCode)
 	}
 	return "slack notification sent", nil
+}
+
+// actionCreateTicket calls the dashboard's /api/tickets endpoint to create a
+// Jira or ServiceNow ticket. Requires DASHBOARD_URL in WatchTower env.
+func (e *Executor) actionCreateTicket(ctx context.Context, alert *models.Alert, params map[string]string) (string, error) {
+	dashURL := strings.TrimRight(params["dashboard_url"], "/")
+	if dashURL == "" {
+		return "", fmt.Errorf("create_ticket: dashboard_url param required (e.g. http://dashboard:5050)")
+	}
+	summary := params["summary"]
+	if summary == "" {
+		summary = fmt.Sprintf("[Alert L%d] %s — %s", alert.Level, alert.Title, alert.AgentID)
+	}
+	body, _ := json.Marshal(map[string]interface{}{
+		"summary":     summary,
+		"description": params["description"],
+		"priority":    defaultStr(params["priority"], "high"),
+		"alert_id":    alert.ID,
+	})
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, dashURL+"/api/tickets", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := e.httpCli.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("create_ticket: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("create_ticket: HTTP %d from dashboard", resp.StatusCode)
+	}
+	var result map[string]interface{}
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	data, _ := result["data"].(map[string]interface{})
+	ticketID, _ := data["ticket_id"].(string)
+	return fmt.Sprintf("ticket created: %s", ticketID), nil
 }
 
 func (e *Executor) actionNotifyEmail(alert *models.Alert, params map[string]string) (string, error) {

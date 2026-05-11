@@ -133,6 +133,10 @@
             <span class="nav-icon">🔔</span>
             <span class="nav-label">Notifications</span>
           </a>
+          <a href="#" class="nav-item" data-page="ticketing">
+            <span class="nav-icon">🎫</span>
+            <span class="nav-label">Ticketing</span>
+          </a>
           <a href="#" class="nav-item" data-page="data-sources">
             <span class="nav-icon">⎔</span>
             <span class="nav-label">Data Sources</span>
@@ -2003,6 +2007,89 @@ ALERT_THROTTLE_MINUTES=30</pre>
             <p style="font-size:13px;color:var(--text-muted)">Notifications are sent for alerts with rule_level &ge; 8 (HIGH or CRITICAL). Throttle: one notification per rule per agent per <span id="notifThrottle">30</span> minutes.</p>
           </div>
         </section>
+
+        <!-- TICKETING PAGE -->
+        <section id="page-ticketing" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">🎫 Ticketing Integration</h2>
+              <p class="agents-subtitle">Create and track tickets in Jira or ServiceNow from alerts and cases.</p>
+            </div>
+            <div class="agents-header-right">
+              <button class="btn btn-primary" onclick="showCreateTicketModal()">+ Create Ticket</button>
+            </div>
+          </header>
+
+          <!-- Provider config status -->
+          <div class="panel" style="margin-bottom:20px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+              <h3 style="margin:0">Provider Configuration</h3>
+              <button onclick="testTicketConnection()" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer">Test Connection</button>
+            </div>
+            <div id="ticketConfigStatus">Loading…</div>
+            <div style="margin-top:14px;padding:12px;background:var(--surface-2);border-radius:6px;font-size:12px;color:var(--text-muted)">
+              Configure via environment variables in <code>.env</code>:<br>
+              <code>TICKETING_PROVIDER=jira</code> then <code>JIRA_URL</code>, <code>JIRA_EMAIL</code>, <code>JIRA_TOKEN</code>, <code>JIRA_PROJECT</code><br>
+              — or — <code>TICKETING_PROVIDER=servicenow</code> then <code>SNOW_INSTANCE_URL</code>, <code>SNOW_USERNAME</code>, <code>SNOW_PASSWORD</code>
+            </div>
+          </div>
+
+          <!-- Recent tickets -->
+          <div class="panel" style="padding:0">
+            <div style="padding:16px 20px;border-bottom:1px solid var(--border)">
+              <h3 style="margin:0">Recent Tickets</h3>
+            </div>
+            <table class="data-table" id="ticketsTable">
+              <thead><tr>
+                <th>Ticket ID</th><th>Summary</th><th>Priority</th><th>Provider</th><th>Alert</th><th>Case</th><th>Created By</th><th>Created</th><th></th>
+              </tr></thead>
+              <tbody id="ticketsTableBody">
+                <tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted)">Loading tickets…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Create Ticket Modal -->
+        <div id="createTicketModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center">
+          <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:28px;width:540px;max-width:95vw">
+            <h3 style="margin:0 0 20px">Create Ticket</h3>
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div>
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Summary *</label>
+                <input id="ticketSummary" type="text" placeholder="Brief description of the security issue" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px 12px;border-radius:6px;font-size:13px;box-sizing:border-box">
+              </div>
+              <div>
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Description</label>
+                <textarea id="ticketDesc" rows="4" placeholder="Detailed description, impact, steps taken…" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box"></textarea>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+                <div>
+                  <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Priority</label>
+                  <select id="ticketPriority" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px;border-radius:6px;font-size:13px">
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Alert ID</label>
+                  <input id="ticketAlertId" type="number" placeholder="optional" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px;border-radius:6px;font-size:13px;box-sizing:border-box">
+                </div>
+                <div>
+                  <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Case ID</label>
+                  <input id="ticketCaseId" type="number" placeholder="optional" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px;border-radius:6px;font-size:13px;box-sizing:border-box">
+                </div>
+              </div>
+            </div>
+            <div id="ticketModalStatus" style="font-size:12px;color:var(--text-muted);margin-top:12px;min-height:16px"></div>
+            <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
+              <button onclick="hideCreateTicketModal()" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px 18px;border-radius:6px;cursor:pointer">Cancel</button>
+              <button onclick="submitCreateTicket()" class="btn btn-primary">Create Ticket</button>
+            </div>
+          </div>
+        </div>
 
         <!-- SOAR PLAYBOOKS PAGE -->
         <section id="page-playbooks" class="page">
