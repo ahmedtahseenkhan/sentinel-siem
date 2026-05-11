@@ -69,12 +69,15 @@ func main() {
 	}
 
 	// Store
-	st, err := store.New(cfg.Store.Path)
+	if cfg.Store.DatabaseURL == "" {
+		logger.Fatal("WATCHTOWER_DATABASE_URL is required — set a PostgreSQL connection string")
+	}
+	st, err := store.New(cfg.Store.DatabaseURL)
 	if err != nil {
 		logger.Fatal("failed to open store", zap.Error(err))
 	}
 	defer st.Close()
-	logger.Info("store opened", zap.String("path", cfg.Store.Path))
+	logger.Info("store connected", zap.String("driver", "postgresql"))
 
 	// Registry + heartbeat monitor
 	reg := registry.New(st, logger)

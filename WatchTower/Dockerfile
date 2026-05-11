@@ -2,7 +2,7 @@ FROM golang:1.23-alpine AS builder
 RUN apk add --no-cache git
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
+RUN go mod download || go mod tidy
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /watchtower ./cmd/watchtower
 RUN mkdir -p /var/lib/watchtower && chown 65532:65532 /var/lib/watchtower

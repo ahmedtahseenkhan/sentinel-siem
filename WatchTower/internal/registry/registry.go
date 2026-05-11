@@ -102,27 +102,11 @@ func (r *Registry) StartHeartbeatMonitor(interval time.Duration, timeout time.Du
 	}()
 }
 
+// checkDisconnected runs a single UPDATE query — O(1) regardless of agent count.
 func (r *Registry) checkDisconnected(timeout time.Duration) {
-	agents, err := r.store.ListAgents("active", 0, 0)
-	if err != nil {
-		r.logger.Error("failed to list agents for heartbeat check", zap.Error(err))
-		return
-	}
 	cutoff := time.Now().Add(-timeout).UnixMilli()
-	for _, a := range agents {
-		if a.LastHeartbeat > 0 && a.LastHeartbeat < cutoff {
-			r.logger.Info("agent disconnected", zap.String("agent_id", a.ID), zap.String("hostname", a.Hostname))
-			_ = r.store.UpdateAgentHeartbeat(a.ID, string(models.AgentStatusDisconnected))
-		}
-	}
-	agents, err = r.store.ListAgents("streaming", 0, 0)
-	if err != nil {
-		return
-	}
-	for _, a := range agents {
-		if a.LastHeartbeat > 0 && a.LastHeartbeat < cutoff {
-			_ = r.store.UpdateAgentHeartbeat(a.ID, string(models.AgentStatusDisconnected))
-		}
+	if err := r.store.MarkDisconnectedBefore(cutoff); err != nil {
+		r.logger.Error("heartbeat check failed", zap.Error(err))
 	}
 }
 

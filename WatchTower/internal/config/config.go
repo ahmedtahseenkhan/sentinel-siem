@@ -79,7 +79,8 @@ type WatchVaultConfig struct {
 }
 
 type StoreConfig struct {
-	Path string `yaml:"path"`
+	Path        string `yaml:"path"`         // legacy SQLite path (ignored when DatabaseURL is set)
+	DatabaseURL string `yaml:"database_url"` // PostgreSQL DSN e.g. postgres://user:pass@host:5432/db
 }
 
 type LoggingConfig struct {
@@ -200,5 +201,8 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("WATCHTOWER_WATCHVAULT_ADDRESS"); v != "" {
 		cfg.Forwarder.WatchVault.Address = v
+	}
+	if v := os.Getenv("WATCHTOWER_DATABASE_URL"); v != "" {
+		cfg.Store.DatabaseURL = v
 	}
 }
