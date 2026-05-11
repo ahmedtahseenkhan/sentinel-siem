@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -136,7 +137,19 @@ func ApplyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("WATCHVAULT_API_KEY"); v != "" {
 		cfg.Server.API.Auth.APIKey = v
 	}
-	if v := os.Getenv("WATCHVAULT_OPENSEARCH_URL"); v != "" {
+	// WATCHVAULT_OPENSEARCH_URLS accepts comma-separated addresses for cluster mode.
+	// Falls back to WATCHVAULT_OPENSEARCH_URL for single-node compatibility.
+	if v := os.Getenv("WATCHVAULT_OPENSEARCH_URLS"); v != "" {
+		var addrs []string
+		for _, a := range strings.Split(v, ",") {
+			if s := strings.TrimSpace(a); s != "" {
+				addrs = append(addrs, s)
+			}
+		}
+		if len(addrs) > 0 {
+			cfg.OpenSearch.Addresses = addrs
+		}
+	} else if v := os.Getenv("WATCHVAULT_OPENSEARCH_URL"); v != "" {
 		cfg.OpenSearch.Addresses = []string{v}
 	}
 	if v := os.Getenv("WATCHVAULT_OPENSEARCH_USER"); v != "" {
