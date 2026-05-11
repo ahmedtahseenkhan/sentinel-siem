@@ -218,4 +218,14 @@ func applyEnvOverrides(cfg *Config) {
 			}
 		}
 	}
+	// gRPC server TLS (WatchNode → WatchTower mTLS)
+	if v := os.Getenv("WATCHTOWER_GRPC_TLS_CERT"); v != "" {
+		cfg.Server.GRPC.TLS.Cert = v
+	}
+	if v := os.Getenv("WATCHTOWER_GRPC_TLS_KEY"); v != "" {
+		cfg.Server.GRPC.TLS.Key = v
+	}
+	if v := os.Getenv("WATCHTOWER_GRPC_TLS_CA"); v != "" {
+		cfg.Server.GRPC.TLS.CA = v
+	}
 }

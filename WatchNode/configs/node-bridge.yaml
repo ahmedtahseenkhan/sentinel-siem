@@ -8,10 +8,14 @@ agent:
 
 manager:
   url: "watchtower:50051"
+  tls:
+    cert: "/etc/sentinel/certs/watchnode.crt"
+    key:  "/etc/sentinel/certs/watchnode.key"
+    ca:   "/etc/sentinel/certs/ca.crt"
   reconnect:
     max_attempts: 0
-    initial_backoff: "1s"
-    max_backoff: "1m"
+    initial_backoff: "5s"
+    max_backoff: "2m"
 
 collectors:
   system:

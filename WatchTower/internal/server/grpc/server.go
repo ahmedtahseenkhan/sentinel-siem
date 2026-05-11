@@ -51,11 +51,19 @@ func (s *Server) Start() error {
 	}
 
 	if s.cfg.TLS.Cert != "" {
-		tlsCfg, err := s.loadTLS()
-		if err != nil {
-			return fmt.Errorf("grpc tls: %w", err)
+		if _, err := os.Stat(s.cfg.TLS.Cert); err != nil {
+			// Cert file configured but not yet present — start insecure so the
+			// system boots even before gen-mtls-certs.sh has been run.
+			s.logger.Warn("grpc tls cert not found, starting without TLS",
+				zap.String("cert", s.cfg.TLS.Cert))
+		} else {
+			tlsCfg, err := s.loadTLS()
+			if err != nil {
+				return fmt.Errorf("grpc tls: %w", err)
+			}
+			opts = append(opts, grpc.Creds(credentials.NewTLS(tlsCfg)))
+			s.logger.Info("gRPC mTLS enabled", zap.String("cert", s.cfg.TLS.Cert))
 		}
-		opts = append(opts, grpc.Creds(credentials.NewTLS(tlsCfg)))
 	}
 
 	s.grpc = grpc.NewServer(opts...)

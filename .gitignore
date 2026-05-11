@@ -70,3 +70,8 @@ node_modules/
 marketing/.next/
 marketing/out/
 .next/
+
+# ── mTLS certificates (never commit private keys) ────────────────────────────
+certs/*.key
+certs/*.crt
+certs/*.srl
