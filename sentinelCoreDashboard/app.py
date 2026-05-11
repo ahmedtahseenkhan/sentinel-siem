@@ -2585,6 +2585,69 @@ def api_cases_evidence_add(case_id):
         return _api_error(e)
 
 
+# ── Detection Versioning ──────────────────────────────────────────────────────
+
+@app.route("/api/rule-versions", methods=["GET"])
+def api_rv_list_files():
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request("/api/v1/rule-versions", method="GET")
+        return jsonify(res or {"data": [], "total": 0})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/rule-versions/history", methods=["GET"])
+def api_rv_history():
+    try:
+        from watchtower_client import watchtower_request
+        params = {"file": request.args.get("file", "")}
+        res = watchtower_request("/api/v1/rule-versions/history", method="GET", params=params)
+        return jsonify(res or {"data": []})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/rule-versions/content", methods=["GET"])
+def api_rv_content():
+    try:
+        from watchtower_client import watchtower_request
+        params = {"file": request.args.get("file", ""), "version": request.args.get("version", "")}
+        res = watchtower_request("/api/v1/rule-versions/content", method="GET", params=params)
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/rule-versions", methods=["POST"])
+def api_rv_save():
+    try:
+        from watchtower_client import watchtower_request
+        body = request.get_json(force=True) or {}
+        body.setdefault("author", session.get("username", "analyst"))
+        res = watchtower_request("/api/v1/rule-versions", method="POST", json_body=body)
+        return jsonify(res or {}), 201
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/rule-versions/diff", methods=["GET"])
+def api_rv_diff():
+    try:
+        from watchtower_client import watchtower_request
+        params = {k: request.args.get(k, "") for k in ("file", "v1", "v2")}
+        res = watchtower_request("/api/v1/rule-versions/diff", method="GET", params=params)
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/rule-versions/validate", methods=["POST"])
+def api_rv_validate():
+    try:
+        from watchtower_client import watchtower_request
+        body = request.get_json(force=True) or {}
+        res = watchtower_request("/api/v1/rule-versions/validate", method="POST", json_body=body)
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+
 # ── Ticketing Integration ─────────────────────────────────────────────────────
 
 @app.route("/api/tickets/config", methods=["GET"])

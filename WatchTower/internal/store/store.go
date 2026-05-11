@@ -60,6 +60,7 @@ func (s *Store) migrate() error {
 		"migrations/001_initial.sql",
 		"migrations/002_cases.sql",
 		"migrations/003_playbooks.sql",
+		"migrations/004_rule_versions.sql",
 	}
 	for _, f := range files {
 		data, err := migrations.ReadFile(f)
@@ -663,6 +664,119 @@ func (s *Store) ListExecutions(playbookID int64, limit int) ([]*models.PlaybookE
 		execs = append(execs, ex)
 	}
 	return execs, rows.Err()
+}
+
+// === Rule Version operations ===
+
+// RuleVersionMeta holds version metadata without the full content.
+type RuleVersionMeta struct {
+	ID        int64  `json:"id"`
+	RuleFile  string `json:"rule_file"`
+	Version   int    `json:"version"`
+	CommitMsg string `json:"commit_msg"`
+	Author    string `json:"author"`
+	CreatedAt int64  `json:"created_at"`
+	IsActive  bool   `json:"is_active"`
+}
+
+// RuleVersion holds the full version record including YAML content.
+type RuleVersion struct {
+	RuleVersionMeta
+	Content string `json:"content"`
+}
+
+// SaveRuleVersion increments the version counter and inserts a new record.
+func (s *Store) SaveRuleVersion(ruleFile, content, commitMsg, author string) (*RuleVersion, error) {
+	var maxVer int
+	_ = s.pool.QueryRow(context.Background(),
+		`SELECT COALESCE(MAX(version), 0) FROM rule_versions WHERE rule_file = $1`, ruleFile,
+	).Scan(&maxVer)
+
+	now := time.Now().UnixMilli()
+	v := maxVer + 1
+	var id int64
+	err := s.pool.QueryRow(context.Background(), `
+		INSERT INTO rule_versions (rule_file, version, content, commit_msg, author, created_at, is_active)
+		VALUES ($1,$2,$3,$4,$5,$6,TRUE) RETURNING id`,
+		ruleFile, v, content, commitMsg, author, now,
+	).Scan(&id)
+	if err != nil {
+		return nil, err
+	}
+	return &RuleVersion{
+		RuleVersionMeta: RuleVersionMeta{
+			ID: id, RuleFile: ruleFile, Version: v,
+			CommitMsg: commitMsg, Author: author, CreatedAt: now, IsActive: true,
+		},
+		Content: content,
+	}, nil
+}
+
+// ListRuleVersions returns all versions for a file, newest first (no content).
+func (s *Store) ListRuleVersions(ruleFile string) ([]*RuleVersionMeta, error) {
+	rows, err := s.pool.Query(context.Background(), `
+		SELECT id, rule_file, version, commit_msg, author, created_at, is_active
+		FROM rule_versions WHERE rule_file = $1 ORDER BY version DESC`, ruleFile)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var versions []*RuleVersionMeta
+	for rows.Next() {
+		v := &RuleVersionMeta{}
+		if err := rows.Scan(&v.ID, &v.RuleFile, &v.Version, &v.CommitMsg, &v.Author, &v.CreatedAt, &v.IsActive); err != nil {
+			return nil, err
+		}
+		versions = append(versions, v)
+	}
+	return versions, rows.Err()
+}
+
+// GetRuleVersion fetches the full content of a specific version.
+func (s *Store) GetRuleVersion(ruleFile string, version int) (*RuleVersion, error) {
+	v := &RuleVersion{}
+	err := s.pool.QueryRow(context.Background(), `
+		SELECT id, rule_file, version, content, commit_msg, author, created_at, is_active
+		FROM rule_versions WHERE rule_file = $1 AND version = $2`, ruleFile, version,
+	).Scan(&v.ID, &v.RuleFile, &v.Version, &v.Content, &v.CommitMsg, &v.Author, &v.CreatedAt, &v.IsActive)
+	if err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+// ListVersionedFiles returns all unique rule files in the version store with their version count.
+func (s *Store) ListVersionedFiles() ([]map[string]interface{}, error) {
+	rows, err := s.pool.Query(context.Background(), `
+		SELECT rule_file, COUNT(*) as version_count, MAX(version) as latest_version,
+		       MAX(created_at) as last_updated,
+		       (SELECT author FROM rule_versions rv2
+		        WHERE rv2.rule_file = rv.rule_file ORDER BY version DESC LIMIT 1) as last_author,
+		       (SELECT commit_msg FROM rule_versions rv3
+		        WHERE rv3.rule_file = rv.rule_file ORDER BY version DESC LIMIT 1) as last_msg
+		FROM rule_versions rv GROUP BY rule_file ORDER BY rule_file`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []map[string]interface{}
+	for rows.Next() {
+		var file, lastAuthor, lastMsg string
+		var count, latest int
+		var lastUpdated int64
+		if err := rows.Scan(&file, &count, &latest, &lastUpdated, &lastAuthor, &lastMsg); err != nil {
+			return nil, err
+		}
+		result = append(result, map[string]interface{}{
+			"rule_file":      file,
+			"version_count":  count,
+			"latest_version": latest,
+			"last_updated":   lastUpdated,
+			"last_author":    lastAuthor,
+			"last_msg":       lastMsg,
+		})
+	}
+	return result, rows.Err()
 }
 
 func scanPlaybook(row pgx.Row) (*models.Playbook, error) {

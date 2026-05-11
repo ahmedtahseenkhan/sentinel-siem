@@ -61,6 +61,10 @@
             <span class="nav-icon">🔍</span>
             <span class="nav-label">Discover</span>
           </a>
+          <a href="#" class="nav-item" data-page="rule-versions">
+            <span class="nav-icon">🗂</span>
+            <span class="nav-label">Detection Studio</span>
+          </a>
 
           <!-- RESPONSE -->
           <div class="nav-section-label">Response</div>
@@ -2005,6 +2009,69 @@ ALERT_THROTTLE_MINUTES=30</pre>
           <div class="panel" style="margin-top:20px;max-width:680px">
             <h3>Alert Rules</h3>
             <p style="font-size:13px;color:var(--text-muted)">Notifications are sent for alerts with rule_level &ge; 8 (HIGH or CRITICAL). Throttle: one notification per rule per agent per <span id="notifThrottle">30</span> minutes.</p>
+          </div>
+        </section>
+
+        <!-- DETECTION STUDIO / RULE VERSIONING PAGE -->
+        <section id="page-rule-versions" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">🗂 Detection Studio</h2>
+              <p class="agents-subtitle">Version-controlled Sigma rule management — edit, validate, diff, and rollback.</p>
+            </div>
+          </header>
+
+          <div style="display:grid;grid-template-columns:300px 1fr;gap:20px;height:calc(100vh - 180px)">
+
+            <!-- Left: rule file list -->
+            <div style="display:flex;flex-direction:column;gap:0;overflow:hidden">
+              <div style="padding:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px 8px 0 0;font-size:12px;font-weight:600;color:var(--text-muted)">RULE FILES</div>
+              <div id="rvFileList" style="flex:1;overflow-y:auto;border:1px solid var(--border);border-top:none;border-radius:0 0 8px 8px">
+                <div style="padding:16px;color:var(--text-muted);font-size:13px">Loading…</div>
+              </div>
+            </div>
+
+            <!-- Right: version detail panel -->
+            <div id="rvDetailPanel" style="display:flex;flex-direction:column;gap:0;overflow:hidden;border:1px solid var(--border);border-radius:8px">
+              <div style="padding:14px 20px;background:var(--surface-2);border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:center">
+                <span id="rvSelectedFile" style="font-size:13px;font-weight:600;color:var(--text-muted)">Select a rule file →</span>
+                <div style="margin-left:auto;display:flex;gap:8px" id="rvActionBar" style="display:none">
+                  <button onclick="showRvEditor()" style="background:var(--surface-1);border:1px solid var(--border);color:var(--text-primary);padding:5px 12px;border-radius:5px;font-size:12px;cursor:pointer">✎ Edit</button>
+                  <button onclick="showRvDiff()" style="background:var(--surface-1);border:1px solid var(--border);color:var(--text-primary);padding:5px 12px;border-radius:5px;font-size:12px;cursor:pointer">⇄ Diff</button>
+                </div>
+              </div>
+
+              <!-- Version history table -->
+              <div id="rvVersionPane" style="flex:1;overflow-y:auto;padding:0">
+                <div style="padding:20px;color:var(--text-muted);font-size:13px;font-style:italic">Select a rule file from the left panel to view its version history.</div>
+              </div>
+
+              <!-- YAML Editor (hidden by default) -->
+              <div id="rvEditorPane" style="display:none;flex:1;flex-direction:column;overflow:hidden">
+                <div style="padding:10px 16px;background:var(--surface-2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center">
+                  <span style="font-size:12px;color:var(--text-muted)">Edit YAML · Changes create a new version</span>
+                  <input id="rvCommitMsg" type="text" placeholder="Describe your change…" style="flex:1;background:var(--surface-1);border:1px solid var(--border);color:var(--text-primary);padding:5px 10px;border-radius:5px;font-size:12px">
+                  <button onclick="rvValidate()" style="background:var(--surface-1);border:1px solid var(--border);color:var(--text-primary);padding:5px 12px;border-radius:5px;font-size:12px;cursor:pointer">Validate</button>
+                  <button onclick="rvSaveVersion()" class="btn btn-primary" style="font-size:12px;padding:5px 14px">Save Version</button>
+                  <button onclick="closeRvEditor()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px">✕</button>
+                </div>
+                <div id="rvValidationMsg" style="padding:6px 16px;font-size:12px;min-height:20px"></div>
+                <textarea id="rvEditorContent" style="flex:1;background:#0d1117;color:#e6edf3;border:none;outline:none;padding:14px 16px;font-family:JetBrains Mono,monospace;font-size:12px;resize:none;line-height:1.6"></textarea>
+              </div>
+
+              <!-- Diff viewer (hidden by default) -->
+              <div id="rvDiffPane" style="display:none;flex:1;flex-direction:column;overflow:hidden">
+                <div style="padding:10px 16px;background:var(--surface-2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center">
+                  <span style="font-size:12px;color:var(--text-muted)">Compare versions:</span>
+                  <select id="rvDiffV1" style="background:var(--surface-1);border:1px solid var(--border);color:var(--text-primary);padding:4px 8px;border-radius:5px;font-size:12px"></select>
+                  <span style="color:var(--text-muted)">→</span>
+                  <select id="rvDiffV2" style="background:var(--surface-1);border:1px solid var(--border);color:var(--text-primary);padding:4px 8px;border-radius:5px;font-size:12px"></select>
+                  <button onclick="rvRunDiff()" class="btn btn-primary" style="font-size:12px;padding:4px 12px">Compare</button>
+                  <button onclick="closeRvDiff()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;margin-left:auto">✕</button>
+                </div>
+                <div id="rvDiffContent" style="flex:1;overflow-y:auto;padding:12px 16px;font-family:JetBrains Mono,monospace;font-size:12px;line-height:1.6;background:#0d1117"></div>
+              </div>
+            </div>
           </div>
         </section>
 

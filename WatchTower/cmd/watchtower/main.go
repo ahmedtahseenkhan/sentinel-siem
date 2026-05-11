@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -80,6 +81,9 @@ func main() {
 	}
 	defer st.Close()
 	logger.Info("store connected", zap.String("driver", "postgresql"))
+
+	// Seed rule files into version store (idempotent — skips if already versioned)
+	go seedRuleVersions(cfg.Engine.RulesDir, st, logger)
 
 	// Registry + heartbeat monitor
 	reg := registry.New(st, logger)
@@ -199,6 +203,48 @@ func main() {
 	}
 
 	logger.Info("WatchTower Manager stopped")
+}
+
+// seedRuleVersions imports existing rule files into the version store so they
+// immediately appear in the versioning UI. Runs once — files already versioned
+// are skipped because ListVersionedFiles will show them.
+func seedRuleVersions(rulesDir string, st *store.Store, logger *zap.Logger) {
+	if rulesDir == "" {
+		return
+	}
+	existing, err := st.ListVersionedFiles()
+	if err != nil {
+		return
+	}
+	seeded := make(map[string]bool)
+	for _, f := range existing {
+		if name, ok := f["rule_file"].(string); ok {
+			seeded[name] = true
+		}
+	}
+
+	entries, err := os.ReadDir(rulesDir)
+	if err != nil {
+		logger.Warn("rule versioning: cannot read rules dir", zap.Error(err))
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
+			continue
+		}
+		if seeded[entry.Name()] {
+			continue
+		}
+		content, err := os.ReadFile(rulesDir + "/" + entry.Name())
+		if err != nil {
+			continue
+		}
+		if _, err := st.SaveRuleVersion(entry.Name(), string(content), "Initial import", "system"); err != nil {
+			logger.Warn("rule versioning: seed failed", zap.String("file", entry.Name()), zap.Error(err))
+		} else {
+			logger.Info("rule versioning: seeded", zap.String("file", entry.Name()))
+		}
+	}
 }
 
 func loadConfig(path string) (*config.Config, error) {

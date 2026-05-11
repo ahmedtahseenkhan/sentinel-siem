@@ -4855,6 +4855,206 @@ async function triggerReportNow(id) {
   alert('Report triggered — check your email shortly.');
 }
 
+// ── Detection Studio (Rule Versioning) ───────────────────────────────────────
+
+let _rvSelectedFile = null;
+let _rvVersions     = [];
+
+async function loadRuleVersionsPage() {
+  const res = await fetch('/api/rule-versions').then(r => r.json()).catch(() => ({}));
+  const files = res.data || [];
+  const el = document.getElementById('rvFileList');
+  if (!el) return;
+
+  if (!files.length) {
+    el.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:12px;font-style:italic">No versioned rules found.<br>WatchTower auto-imports rules on startup.</div>';
+    return;
+  }
+
+  el.innerHTML = files.map(f => `
+    <div class="rv-file-item" onclick="selectRvFile('${escHtml(f.rule_file)}')"
+         style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);transition:background 0.1s"
+         onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">
+      <div style="font-size:12px;font-weight:600;color:var(--text-primary)">${escHtml(f.rule_file)}</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:2px">
+        v${f.latest_version} · ${f.version_count} version${f.version_count===1?'':'s'}
+        · ${escHtml(f.last_author||'system')}
+      </div>
+    </div>`).join('');
+}
+
+async function selectRvFile(file) {
+  _rvSelectedFile = file;
+  document.getElementById('rvSelectedFile').textContent = file;
+  document.getElementById('rvActionBar').style.display = 'flex';
+  closeRvEditor();
+  closeRvDiff();
+
+  const res = await fetch(`/api/rule-versions/history?file=${encodeURIComponent(file)}`).then(r => r.json()).catch(() => ({}));
+  _rvVersions = res.data || [];
+
+  const pane = document.getElementById('rvVersionPane');
+  if (!pane) return;
+
+  if (!_rvVersions.length) {
+    pane.innerHTML = '<div style="padding:20px;color:var(--text-muted);font-size:13px">No versions found.</div>';
+    return;
+  }
+
+  pane.innerHTML = `
+    <table class="data-table">
+      <thead><tr><th>Version</th><th>Commit Message</th><th>Author</th><th>Date</th><th>Actions</th></tr></thead>
+      <tbody>
+        ${_rvVersions.map((v, i) => `
+          <tr>
+            <td style="font-size:12px;font-weight:600">
+              v${v.version}
+              ${i===0 ? '<span style="background:#10b98122;color:#10b981;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:4px">LATEST</span>' : ''}
+            </td>
+            <td style="font-size:12px">${escHtml(v.commit_msg||'—')}</td>
+            <td style="font-size:12px;color:var(--text-muted)">${escHtml(v.author||'—')}</td>
+            <td style="font-size:12px;color:var(--text-muted)">${fmtTs(v.created_at)}</td>
+            <td>
+              <button onclick="rvViewContent('${escHtml(file)}',${v.version})" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer">View</button>
+              ${i > 0 ? `<button onclick="rvRollback('${escHtml(file)}',${v.version})" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);color:#f59e0b;padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;margin-left:4px">Rollback</button>` : ''}
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+
+  // Populate diff version selects
+  const v1 = document.getElementById('rvDiffV1');
+  const v2 = document.getElementById('rvDiffV2');
+  if (v1 && v2) {
+    const opts = _rvVersions.map(v => `<option value="${v.version}">v${v.version} — ${escHtml(v.commit_msg||'')}</option>`).join('');
+    v1.innerHTML = opts;
+    v2.innerHTML = opts;
+    if (_rvVersions.length >= 2) v1.selectedIndex = 1;
+  }
+}
+
+async function rvViewContent(file, version) {
+  const res = await fetch(`/api/rule-versions/content?file=${encodeURIComponent(file)}&version=${version}`).then(r => r.json()).catch(() => ({}));
+  const content = res.data?.content || '';
+  document.getElementById('rvEditorContent').value = content;
+  document.getElementById('rvCommitMsg').value = '';
+  document.getElementById('rvValidationMsg').textContent = '';
+  showRvEditor();
+}
+
+function showRvEditor() {
+  document.getElementById('rvVersionPane').style.display = 'none';
+  document.getElementById('rvEditorPane').style.display  = 'flex';
+  document.getElementById('rvDiffPane').style.display    = 'none';
+}
+
+function closeRvEditor() {
+  document.getElementById('rvVersionPane').style.display = 'block';
+  document.getElementById('rvEditorPane').style.display  = 'none';
+}
+
+function showRvDiff() {
+  document.getElementById('rvVersionPane').style.display = 'none';
+  document.getElementById('rvEditorPane').style.display  = 'none';
+  document.getElementById('rvDiffPane').style.display    = 'flex';
+}
+
+function closeRvDiff() {
+  document.getElementById('rvVersionPane').style.display = 'block';
+  document.getElementById('rvDiffPane').style.display    = 'none';
+}
+
+async function rvValidate() {
+  const content = document.getElementById('rvEditorContent')?.value;
+  const msgEl   = document.getElementById('rvValidationMsg');
+  if (!content || !msgEl) return;
+
+  msgEl.textContent = 'Validating…';
+  const res = await fetch('/api/rule-versions/validate', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({content})
+  }).then(r => r.json()).catch(() => ({}));
+
+  if (res.valid) {
+    msgEl.textContent = '✓ Valid Sigma YAML';
+    msgEl.style.color = '#10b981';
+  } else {
+    msgEl.textContent = '✗ ' + (res.errors?.[0] || 'Invalid YAML');
+    msgEl.style.color = '#ef4444';
+  }
+}
+
+async function rvSaveVersion() {
+  if (!_rvSelectedFile) return;
+  const content   = document.getElementById('rvEditorContent')?.value;
+  const commitMsg = document.getElementById('rvCommitMsg')?.value?.trim() || 'Manual update';
+  if (!content) return;
+
+  const res = await fetch('/api/rule-versions', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({file: _rvSelectedFile, content, commit_msg: commitMsg})
+  }).then(r => r.json()).catch(() => ({}));
+
+  if (res?.data?.version) {
+    closeRvEditor();
+    await selectRvFile(_rvSelectedFile);
+    await loadRuleVersionsPage();
+    alert(`✓ Saved as v${res.data.version}`);
+  }
+}
+
+async function rvRollback(file, version) {
+  if (!confirm(`Roll back ${file} to v${version}? This creates a new version with the old content.`)) return;
+  const rv = await fetch(`/api/rule-versions/content?file=${encodeURIComponent(file)}&version=${version}`)
+    .then(r => r.json()).catch(() => ({}));
+  const content = rv.data?.content;
+  if (!content) { alert('Could not fetch version content'); return; }
+
+  const res = await fetch('/api/rule-versions', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({file, content, commit_msg: `Rollback to v${version}`})
+  }).then(r => r.json()).catch(() => ({}));
+
+  if (res?.data?.version) {
+    await selectRvFile(file);
+    await loadRuleVersionsPage();
+    alert(`✓ Rolled back — saved as v${res.data.version}`);
+  }
+}
+
+async function rvRunDiff() {
+  if (!_rvSelectedFile) return;
+  const v1 = parseInt(document.getElementById('rvDiffV1')?.value);
+  const v2 = parseInt(document.getElementById('rvDiffV2')?.value);
+  if (v1 === v2) { alert('Select two different versions to compare'); return; }
+
+  const res = await fetch(`/api/rule-versions/diff?file=${encodeURIComponent(_rvSelectedFile)}&v1=${v1}&v2=${v2}`)
+    .then(r => r.json()).catch(() => ({}));
+  const diff = res.diff || [];
+  const el   = document.getElementById('rvDiffContent');
+  if (!el) return;
+
+  if (!diff.length) {
+    el.innerHTML = '<div style="color:var(--text-muted)">No differences found.</div>';
+    return;
+  }
+
+  el.innerHTML = diff.filter(d => d.type !== 'equal' || Math.random() < 0.05).map(d => {
+    const color  = d.type === 'added' ? '#10b981' : d.type === 'removed' ? '#ef4444' : 'var(--text-muted)';
+    const prefix = d.type === 'added' ? '+ ' : d.type === 'removed' ? '- ' : '  ';
+    return `<div style="color:${color};white-space:pre"><span style="user-select:none;color:var(--text-muted)">${String(d.line).padStart(4)} </span>${prefix}${escHtml(d.content)}</div>`;
+  }).join('');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.nav-item[data-page="rule-versions"]').forEach(el => {
+    el.addEventListener('click', () => loadRuleVersionsPage());
+  });
+});
+
 // ── Ticketing Integration ─────────────────────────────────────────────────────
 
 async function loadTicketingPage() {

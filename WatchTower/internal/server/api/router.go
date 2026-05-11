@@ -96,6 +96,16 @@ func (s *Server) routes() *chi.Mux {
 			r.Post("/import", sigh.ConvertAndStore)
 		})
 
+		rvh := handlers.NewRuleVersionHandler(s.store)
+		r.Route("/rule-versions", func(r chi.Router) {
+			r.Get("/", rvh.ListFiles)
+			r.Get("/history", rvh.ListVersions)
+			r.Get("/content", rvh.GetVersion)
+			r.Post("/", rvh.SaveVersion)
+			r.Get("/diff", rvh.Diff)
+			r.Post("/validate", rvh.Validate)
+		})
+
 		pbh := handlers.NewPlaybookHandler(s.store)
 		r.Route("/playbooks", func(r chi.Router) {
 			r.Get("/", pbh.List)
