@@ -18,6 +18,11 @@ type IdentitySyncer interface {
 	Sync() error
 }
 
+// UebaRunner is satisfied by *ueba.Analyzer (avoids import cycle).
+type UebaRunner interface {
+	Analyze()
+}
+
 type Server struct {
 	cfg            config.APIConfig
 	logger         *zap.Logger
@@ -26,6 +31,7 @@ type Server struct {
 	engine         *engine.Engine
 	audit          *audit.Logger
 	identitySyncer IdentitySyncer
+	uebaAnalyzer   UebaRunner
 	http           *http.Server
 }
 
@@ -53,6 +59,11 @@ func NewServer(cfg config.APIConfig, logger *zap.Logger, reg *registry.Registry,
 		IdleTimeout:  60 * time.Second,
 	}
 	return s
+}
+
+// SetUebaAnalyzer wires the UEBA analyzer into the API server.
+func (s *Server) SetUebaAnalyzer(a UebaRunner) {
+	s.uebaAnalyzer = a
 }
 
 // SetIdentitySyncer wires the LDAP sync manager into the API server.

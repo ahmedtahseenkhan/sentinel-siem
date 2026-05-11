@@ -20,6 +20,7 @@ import (
 	"github.com/watchtower/watchtower/internal/server/api"
 	"github.com/watchtower/watchtower/internal/identity"
 	"github.com/watchtower/watchtower/internal/playbook"
+	"github.com/watchtower/watchtower/internal/ueba"
 	grpcserver "github.com/watchtower/watchtower/internal/server/grpc"
 	syslogserver "github.com/watchtower/watchtower/internal/server/syslog"
 	"github.com/watchtower/watchtower/internal/store"
@@ -182,8 +183,13 @@ func main() {
 	idMgr := identity.NewManager(cfg.Identity, st, logger)
 	go idMgr.Start(ctx)
 
+	// UEBA analyzer (runs hourly)
+	uebaAnalyzer := ueba.NewAnalyzer(st, logger)
+	go uebaAnalyzer.Start(ctx)
+
 	// API server
 	apiSrv := api.NewServer(cfg.Server.API, logger, reg, st, eng, auditLogger)
+	apiSrv.SetUebaAnalyzer(uebaAnalyzer)
 	if cfg.Identity.Enabled {
 		apiSrv.SetIdentitySyncer(idMgr)
 	}

@@ -96,6 +96,14 @@ func (s *Server) routes() *chi.Mux {
 			r.Post("/import", sigh.ConvertAndStore)
 		})
 
+		uebah := handlers.NewUebaHandler(s.store, s.uebaAnalyzer)
+		r.Route("/ueba", func(r chi.Router) {
+			r.Get("/risk-scores", uebah.RiskScores)
+			r.Get("/anomalies", uebah.Anomalies)
+			r.Get("/entity/{id}", uebah.EntityRisk)
+			r.Post("/analyze", uebah.TriggerAnalysis)
+		})
+
 		idh := handlers.NewIdentityHandler(s.store, s.identitySyncer)
 		r.Route("/identity", func(r chi.Router) {
 			r.Get("/status", idh.Status)

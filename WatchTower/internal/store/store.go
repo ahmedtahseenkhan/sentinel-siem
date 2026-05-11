@@ -62,6 +62,7 @@ func (s *Store) migrate() error {
 		"migrations/003_playbooks.sql",
 		"migrations/004_rule_versions.sql",
 		"migrations/005_identity.sql",
+		"migrations/006_ueba.sql",
 	}
 	for _, f := range files {
 		data, err := migrations.ReadFile(f)
@@ -665,6 +666,187 @@ func (s *Store) ListExecutions(playbookID int64, limit int) ([]*models.PlaybookE
 		execs = append(execs, ex)
 	}
 	return execs, rows.Err()
+}
+
+// === UEBA operations ===
+
+// UebaBaseline holds a computed behavioral baseline for one entity+metric.
+type UebaBaseline struct {
+	EntityID    string  `json:"entity_id"`
+	EntityType  string  `json:"entity_type"`
+	Metric      string  `json:"metric"`
+	AvgValue    float64 `json:"avg_value"`
+	StdDev      float64 `json:"std_dev"`
+	SampleCount int     `json:"sample_count"`
+	ComputedAt  int64   `json:"computed_at"`
+}
+
+// UebaAnomaly is a single detected behavioral anomaly.
+type UebaAnomaly struct {
+	ID          int64  `json:"id"`
+	EntityID    string `json:"entity_id"`
+	EntityType  string `json:"entity_type"`
+	AnomalyType string `json:"anomaly_type"`
+	Description string `json:"description"`
+	Severity    string `json:"severity"`
+	Score       int    `json:"score"`
+	DetectedAt  int64  `json:"detected_at"`
+	AlertID     int64  `json:"alert_id"`
+	Resolved    bool   `json:"resolved"`
+}
+
+// UebaRiskScore is the aggregated risk for one entity.
+type UebaRiskScore struct {
+	EntityID         string `json:"entity_id"`
+	EntityType       string `json:"entity_type"`
+	RiskScore        int    `json:"risk_score"`
+	RiskLevel        string `json:"risk_level"`
+	AlertCount7d     int    `json:"alert_count_7d"`
+	CriticalCount7d  int    `json:"critical_count_7d"`
+	AnomalyCount7d   int    `json:"anomaly_count_7d"`
+	LastAlert        int64  `json:"last_alert"`
+	UpdatedAt        int64  `json:"updated_at"`
+}
+
+func (s *Store) UpsertUebaBaseline(b *UebaBaseline) error {
+	b.ComputedAt = time.Now().UnixMilli()
+	_, err := s.pool.Exec(context.Background(), `
+		INSERT INTO ueba_baselines (entity_id, entity_type, metric, avg_value, std_dev, sample_count, computed_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		ON CONFLICT (entity_id, metric) DO UPDATE SET
+		  entity_type=$2, avg_value=$4, std_dev=$5, sample_count=$6, computed_at=$7`,
+		b.EntityID, b.EntityType, b.Metric, b.AvgValue, b.StdDev, b.SampleCount, b.ComputedAt)
+	return err
+}
+
+func (s *Store) GetUebaBaseline(entityID, metric string) (*UebaBaseline, error) {
+	b := &UebaBaseline{}
+	err := s.pool.QueryRow(context.Background(), `
+		SELECT entity_id, entity_type, metric, avg_value, std_dev, sample_count, computed_at
+		FROM ueba_baselines WHERE entity_id=$1 AND metric=$2`, entityID, metric,
+	).Scan(&b.EntityID, &b.EntityType, &b.Metric, &b.AvgValue, &b.StdDev, &b.SampleCount, &b.ComputedAt)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+func (s *Store) InsertUebaAnomaly(a *UebaAnomaly) (int64, error) {
+	a.DetectedAt = time.Now().UnixMilli()
+	var id int64
+	err := s.pool.QueryRow(context.Background(), `
+		INSERT INTO ueba_anomalies (entity_id, entity_type, anomaly_type, description, severity, score, detected_at, alert_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+		a.EntityID, a.EntityType, a.AnomalyType, a.Description, a.Severity, a.Score, a.DetectedAt, a.AlertID,
+	).Scan(&id)
+	return id, err
+}
+
+func (s *Store) ListUebaAnomalies(entityID string, limit int) ([]*UebaAnomaly, error) {
+	var args []interface{}
+	query := `SELECT id, entity_id, entity_type, anomaly_type, description, severity, score, detected_at, alert_id, resolved
+	           FROM ueba_anomalies`
+	if entityID != "" {
+		args = append(args, entityID)
+		query += fmt.Sprintf(" WHERE entity_id = $%d", len(args))
+	}
+	query += " ORDER BY detected_at DESC"
+	if limit > 0 {
+		args = append(args, limit)
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
+	rows, err := s.pool.Query(context.Background(), query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var anomalies []*UebaAnomaly
+	for rows.Next() {
+		a := &UebaAnomaly{}
+		if err := rows.Scan(&a.ID, &a.EntityID, &a.EntityType, &a.AnomalyType,
+			&a.Description, &a.Severity, &a.Score, &a.DetectedAt, &a.AlertID, &a.Resolved); err != nil {
+			return nil, err
+		}
+		anomalies = append(anomalies, a)
+	}
+	return anomalies, rows.Err()
+}
+
+func (s *Store) UpsertUebaRiskScore(r *UebaRiskScore) error {
+	r.UpdatedAt = time.Now().UnixMilli()
+	_, err := s.pool.Exec(context.Background(), `
+		INSERT INTO ueba_risk_scores
+		  (entity_id, entity_type, risk_score, risk_level, alert_count_7d, critical_count_7d,
+		   anomaly_count_7d, last_alert, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		ON CONFLICT (entity_id) DO UPDATE SET
+		  entity_type=$2, risk_score=$3, risk_level=$4, alert_count_7d=$5,
+		  critical_count_7d=$6, anomaly_count_7d=$7, last_alert=$8, updated_at=$9`,
+		r.EntityID, r.EntityType, r.RiskScore, r.RiskLevel,
+		r.AlertCount7d, r.CriticalCount7d, r.AnomalyCount7d, r.LastAlert, r.UpdatedAt)
+	return err
+}
+
+func (s *Store) ListUebaRiskScores(limit int) ([]*UebaRiskScore, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.pool.Query(context.Background(), `
+		SELECT entity_id, entity_type, risk_score, risk_level, alert_count_7d,
+		       critical_count_7d, anomaly_count_7d, last_alert, updated_at
+		FROM ueba_risk_scores ORDER BY risk_score DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var scores []*UebaRiskScore
+	for rows.Next() {
+		r := &UebaRiskScore{}
+		if err := rows.Scan(&r.EntityID, &r.EntityType, &r.RiskScore, &r.RiskLevel,
+			&r.AlertCount7d, &r.CriticalCount7d, &r.AnomalyCount7d, &r.LastAlert, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		scores = append(scores, r)
+	}
+	return scores, rows.Err()
+}
+
+// AlertStatsPerEntity returns alert aggregates per agent for the last N days.
+// Used by the UEBA analyzer to compute baselines.
+func (s *Store) AlertStatsPerEntity(days int) ([]map[string]interface{}, error) {
+	cutoff := time.Now().AddDate(0, 0, -days).UnixMilli()
+	rows, err := s.pool.Query(context.Background(), `
+		SELECT
+			agent_id,
+			COUNT(*) AS total,
+			MAX(level) AS max_level,
+			SUM(CASE WHEN level >= 10 THEN 1 ELSE 0 END) AS critical_count,
+			MAX(timestamp) AS last_alert
+		FROM alerts
+		WHERE timestamp > $1
+		GROUP BY agent_id
+		ORDER BY total DESC`, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []map[string]interface{}
+	for rows.Next() {
+		var agentID string
+		var total, maxLevel, critCount int
+		var lastAlert int64
+		if err := rows.Scan(&agentID, &total, &maxLevel, &critCount, &lastAlert); err != nil {
+			return nil, err
+		}
+		result = append(result, map[string]interface{}{
+			"agent_id":      agentID,
+			"total":         total,
+			"max_level":     maxLevel,
+			"critical_count": critCount,
+			"last_alert":    lastAlert,
+		})
+	}
+	return result, rows.Err()
 }
 
 // === Identity operations ===

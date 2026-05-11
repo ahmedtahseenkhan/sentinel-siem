@@ -4855,6 +4855,116 @@ async function triggerReportNow(id) {
   alert('Report triggered — check your email shortly.');
 }
 
+// ── UEBA ─────────────────────────────────────────────────────────────────────
+
+async function loadUebaPage() {
+  await Promise.all([loadUebaRiskScores(), loadUebaAnomalies()]);
+}
+
+async function loadUebaRiskScores() {
+  const res = await fetch('/api/ueba/risk-scores?limit=50').then(r => r.json()).catch(() => ({}));
+  const scores = res.data || [];
+  const tbody  = document.getElementById('uebaRiskTableBody');
+  if (!tbody) return;
+
+  if (!scores.length) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted)">
+      No risk data yet. Click <strong>⟳ Run Analysis</strong> to compute baselines.
+    </td></tr>`;
+    return;
+  }
+
+  const riskColor = { critical:'#ef4444', high:'#f97316', medium:'#f59e0b', low:'#10b981' };
+  tbody.innerHTML = scores.map((s, i) => {
+    const rc = riskColor[s.risk_level] || '#6b7280';
+    const bar = `<div style="display:inline-block;width:${s.risk_score}px;max-width:100px;height:6px;background:${rc};border-radius:3px;vertical-align:middle"></div>`;
+    return `<tr onclick="loadUebaEntity('${escHtml(s.entity_id)}')" style="cursor:pointer">
+      <td style="font-size:12px;color:var(--text-muted)">#${i+1}</td>
+      <td style="font-weight:600;font-size:12px">${escHtml(s.entity_id)}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${s.entity_type}</td>
+      <td>
+        ${bar}
+        <span style="color:${rc};font-weight:600;font-size:13px;margin-left:8px">${s.risk_score}</span>
+        <span style="background:${rc}22;color:${rc};padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;margin-left:4px;text-transform:uppercase">${s.risk_level}</span>
+      </td>
+      <td style="font-size:12px">${s.alert_count_7d}</td>
+      <td style="font-size:12px;color:${s.critical_count_7d > 0 ? '#ef4444' : 'var(--text-muted)'}">${s.critical_count_7d}</td>
+      <td style="font-size:12px;color:${s.anomaly_count_7d > 0 ? '#f59e0b' : 'var(--text-muted)'}">${s.anomaly_count_7d}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${fmtTs(s.last_alert)}</td>
+      <td>
+        <button onclick="event.stopPropagation();loadUebaEntity('${escHtml(s.entity_id)}')" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer">Detail</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadUebaAnomalies() {
+  const res = await fetch('/api/ueba/anomalies?limit=100').then(r => r.json()).catch(() => ({}));
+  const anomalies = res.data || [];
+  const tbody = document.getElementById('uebaAnomalyTableBody');
+  if (!tbody) return;
+
+  if (!anomalies.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">No anomalies detected yet.</td></tr>';
+    return;
+  }
+
+  const sevColor = { critical:'#ef4444', high:'#f97316', medium:'#f59e0b', low:'#10b981' };
+  const typeLabel = { alert_spike:'⚡ Alert Spike', critical_alert_burst:'🔴 Critical Burst', off_hours:'🌙 Off-Hours' };
+  tbody.innerHTML = anomalies.map(a => `
+    <tr>
+      <td style="font-weight:600;font-size:12px">${escHtml(a.entity_id)}</td>
+      <td style="font-size:12px">${typeLabel[a.anomaly_type] || escHtml(a.anomaly_type)}</td>
+      <td style="font-size:12px;color:var(--text-secondary)">${escHtml(a.description)}</td>
+      <td><span style="background:${sevColor[a.severity]||'#666'}22;color:${sevColor[a.severity]||'#aaa'};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase">${a.severity}</span></td>
+      <td style="font-size:12px;font-weight:600;color:${sevColor[a.severity]||'#aaa'}">${a.score}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${fmtTs(a.detected_at)}</td>
+    </tr>`).join('');
+}
+
+async function loadUebaEntity(entityId) {
+  const res = await fetch(`/api/ueba/entity/${encodeURIComponent(entityId)}`).then(r => r.json()).catch(() => ({}));
+  const risk = res.risk;
+  const anomalies = res.anomalies || [];
+
+  const details = risk
+    ? `Risk Score: ${risk.risk_score} (${risk.risk_level.toUpperCase()}) · ` +
+      `Alerts 7d: ${risk.alert_count_7d} · Critical: ${risk.critical_count_7d} · Anomalies: ${risk.anomaly_count_7d}`
+    : 'No risk data computed yet';
+
+  const anomalyList = anomalies.length
+    ? anomalies.map(a => `• ${a.anomaly_type}: ${a.description} (${a.severity})`).join('\n')
+    : 'No anomalies detected.';
+
+  alert(`Entity: ${entityId}\n\n${details}\n\nAnomalies:\n${anomalyList}`);
+}
+
+function switchUebaTab(tab) {
+  const isRisk = tab === 'risk';
+  document.getElementById('uebaPaneRisk').style.display      = isRisk ? '' : 'none';
+  document.getElementById('uebaPaneAnomalies').style.display = isRisk ? 'none' : '';
+  document.getElementById('uebaTabRisk').style.borderBottomColor      = isRisk ? 'var(--accent)' : 'transparent';
+  document.getElementById('uebaTabRisk').style.color                  = isRisk ? 'var(--text-primary)' : 'var(--text-muted)';
+  document.getElementById('uebaTabAnomalies').style.borderBottomColor = !isRisk ? 'var(--accent)' : 'transparent';
+  document.getElementById('uebaTabAnomalies').style.color             = !isRisk ? 'var(--text-primary)' : 'var(--text-muted)';
+}
+
+async function triggerUebaAnalysis() {
+  const btn = event?.target;
+  if (btn) btn.textContent = 'Running…';
+  const res = await fetch('/api/ueba/analyze', {method:'POST'}).then(r => r.json()).catch(() => ({}));
+  if (btn) btn.textContent = '⟳ Run Analysis';
+  if (res?.message) {
+    setTimeout(() => loadUebaPage(), 3000); // reload after 3s for results
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.nav-item[data-page="ueba"]').forEach(el => {
+    el.addEventListener('click', () => { loadUebaPage(); switchUebaTab('risk'); });
+  });
+});
+
 // ── Identity Management ───────────────────────────────────────────────────────
 
 let _allIdentityUsers = [];

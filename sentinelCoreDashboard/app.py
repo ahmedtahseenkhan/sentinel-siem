@@ -2585,6 +2585,47 @@ def api_cases_evidence_add(case_id):
         return _api_error(e)
 
 
+# ── UEBA ──────────────────────────────────────────────────────────────────────
+
+@app.route("/api/ueba/risk-scores", methods=["GET"])
+def api_ueba_risk_scores():
+    try:
+        from watchtower_client import watchtower_request
+        params = {k: v for k, v in request.args.items()}
+        res = watchtower_request("/api/v1/ueba/risk-scores", method="GET", params=params)
+        return jsonify(res or {"data": [], "total": 0})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/ueba/anomalies", methods=["GET"])
+def api_ueba_anomalies():
+    try:
+        from watchtower_client import watchtower_request
+        params = {k: v for k, v in request.args.items()}
+        res = watchtower_request("/api/v1/ueba/anomalies", method="GET", params=params)
+        return jsonify(res or {"data": [], "total": 0})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/ueba/entity/<entity_id>", methods=["GET"])
+def api_ueba_entity(entity_id):
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request(f"/api/v1/ueba/entity/{entity_id}", method="GET")
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/ueba/analyze", methods=["POST"])
+def api_ueba_analyze():
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request("/api/v1/ueba/analyze", method="POST")
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+
 # ── Identity Management ───────────────────────────────────────────────────────
 
 @app.route("/api/identity/status", methods=["GET"])
