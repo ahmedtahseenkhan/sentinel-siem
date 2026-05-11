@@ -2585,6 +2585,130 @@ def api_cases_evidence_add(case_id):
         return _api_error(e)
 
 
+# ── Geo Threat Map ────────────────────────────────────────────────────────────
+
+@app.route("/api/geo/map-data", methods=["GET"])
+def api_geo_map_data():
+    """
+    Returns geo-enriched source IP data for the threat map.
+    Queries OpenSearch for top source IPs from recent alerts,
+    then enriches with geolocation via ip-api.com (cached).
+    """
+    try:
+        from watchtower_client import _os_search, INDEX_PREFIX
+        from geo import bulk_lookup
+
+        hours = int(request.args.get("hours", 168))  # default 7 days
+        limit = int(request.args.get("limit", 100))
+
+        since_ms = int((_to_epoch_ms(f"now-{hours}h") if hours < 8760
+                        else _to_epoch_ms("now-30d")))
+
+        # Aggregate top source IPs from OpenSearch alerts index.
+        body = {
+            "size": 0,
+            "query": {
+                "range": {
+                    "timestamp": {"gte": since_ms}
+                }
+            },
+            "aggs": {
+                "by_src_ip": {
+                    "terms": {
+                        "field": "event_data.src_ip",
+                        "size": limit,
+                        "min_doc_count": 1
+                    },
+                    "aggs": {
+                        "max_level": {"max": {"field": "rule_level"}},
+                        "last_seen":  {"max": {"field": "timestamp"}}
+                    }
+                }
+            }
+        }
+
+        res = _os_search(f"{INDEX_PREFIX}-alerts-*", body)
+        buckets = ((res.get("aggregations") or {})
+                   .get("by_src_ip", {})
+                   .get("buckets", []))
+
+        # Collect unique IPs from alert data.
+        ip_counts = {}
+        for b in buckets:
+            ip = b.get("key", "")
+            if ip:
+                ip_counts[ip] = {
+                    "count":     b.get("doc_count", 0),
+                    "max_level": int((b.get("max_level") or {}).get("value") or 0),
+                    "last_seen": int((b.get("last_seen") or {}).get("value") or 0),
+                }
+
+        # Geo-enrich all IPs (respects cache + rate limit).
+        geo_data = bulk_lookup(list(ip_counts.keys()), max_ips=50)
+
+        # Merge counts with geo.
+        points = []
+        for ip, geo in geo_data.items():
+            counts = ip_counts.get(ip, {})
+            points.append({
+                **geo,
+                "alert_count": counts.get("count", 1),
+                "max_level":   counts.get("max_level", 0),
+                "last_seen":   counts.get("last_seen", 0),
+            })
+
+        # Sort by alert count descending.
+        points.sort(key=lambda x: x["alert_count"], reverse=True)
+
+        # Country summary (for the pie/table).
+        by_country = {}
+        for p in points:
+            cc = p.get("country_code") or "XX"
+            cn = p.get("country") or "Unknown"
+            if cc not in by_country:
+                by_country[cc] = {"country": cn, "country_code": cc, "count": 0}
+            by_country[cc]["count"] += p["alert_count"]
+
+        countries = sorted(by_country.values(), key=lambda x: x["count"], reverse=True)
+
+        return jsonify({
+            "points":    points,
+            "countries": countries[:20],
+            "total_ips": len(points),
+        })
+
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/geo/lookup", methods=["GET"])
+def api_geo_lookup():
+    """Geo-lookup a single IP address."""
+    try:
+        from geo import lookup
+        ip  = request.args.get("ip", "").strip()
+        if not ip:
+            return jsonify({"error": "ip param required"}), 400
+        result = lookup(ip)
+        if not result:
+            return jsonify({"error": "private or unknown IP"}), 404
+        return jsonify({"data": result})
+    except Exception as e:
+        return _api_error(e)
+
+
+def _to_epoch_ms(expr: str) -> int:
+    """Convert simple relative time expressions to epoch ms."""
+    import re
+    now_ms = int(time.time() * 1000)
+    m = re.match(r'now-(\d+)([hdwm])', expr)
+    if not m:
+        return now_ms
+    n, unit = int(m.group(1)), m.group(2)
+    multipliers = {'h': 3_600_000, 'd': 86_400_000, 'w': 604_800_000, 'm': 2_592_000_000}
+    return now_ms - n * multipliers.get(unit, 3_600_000)
+
+
 # ── Risk-Based Alerting (RBA) ─────────────────────────────────────────────────
 
 @app.route("/api/rba/entities", methods=["GET"])

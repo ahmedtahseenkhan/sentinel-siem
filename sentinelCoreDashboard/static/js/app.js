@@ -4855,6 +4855,149 @@ async function triggerReportNow(id) {
   alert('Report triggered — check your email shortly.');
 }
 
+// ── Geo Threat Map ────────────────────────────────────────────────────────────
+
+let _geoMap     = null;
+let _geoMarkers = [];
+
+function initGeoMap() {
+  if (_geoMap) return;
+  try {
+    _geoMap = L.map('threatMap', {
+      center: [20, 0],
+      zoom: 2,
+      minZoom: 1,
+      maxZoom: 8,
+      zoomControl: true,
+    });
+
+    // Dark-themed tiles from CartoDB.
+    L.tileLayer(
+      'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+      {
+        attribution: '&copy; <a href="https://carto.com">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 19,
+      }
+    ).addTo(_geoMap);
+  } catch (e) {
+    // Leaflet not loaded (e.g. offline) — degrade gracefully.
+    console.warn('Leaflet not available:', e);
+  }
+}
+
+async function loadGeoMap() {
+  initGeoMap();
+
+  const hours = document.getElementById('geoTimeRange')?.value || '168';
+  const statusEl = document.getElementById('geoStatusMsg');
+  if (statusEl) statusEl.textContent = 'Fetching geo data (may take a moment for new IPs)…';
+
+  const res = await fetch(`/api/geo/map-data?hours=${hours}&limit=100`)
+    .then(r => r.json())
+    .catch(() => ({}));
+
+  const points    = res.points    || [];
+  const countries = res.countries || [];
+
+  if (statusEl) {
+    statusEl.textContent = points.length
+      ? `${points.length} unique IPs geo-located from recent alerts.`
+      : 'No geo data yet. Alerts with source IPs will appear here.';
+  }
+
+  // Clear old markers.
+  _geoMarkers.forEach(m => m.remove());
+  _geoMarkers = [];
+
+  if (_geoMap && points.length) {
+    const maxCount = Math.max(...points.map(p => p.alert_count), 1);
+
+    points.forEach(p => {
+      if (!p.lat || !p.lng) return;
+
+      // Circle radius scales with alert count (log scale).
+      const radius   = Math.max(4, Math.log(p.alert_count + 1) * 6);
+      const severity = p.max_level >= 10 ? '#ef4444'
+                     : p.max_level >= 6  ? '#f97316'
+                     : p.max_level >= 3  ? '#f59e0b'
+                     :                     '#3b82f6';
+
+      const circle = L.circleMarker([p.lat, p.lng], {
+        radius,
+        fillColor:   severity,
+        color:       severity,
+        weight:      1,
+        opacity:     0.9,
+        fillOpacity: 0.5,
+      });
+
+      circle.bindPopup(`
+        <div style="font-family:monospace;min-width:180px">
+          <strong>${p.ip}</strong><br>
+          <span style="color:#666">${p.city ? p.city + ', ' : ''}${p.country}</span><br>
+          <span style="color:#666">ISP: ${p.isp || '—'}</span><br>
+          <hr style="margin:6px 0;border:none;border-top:1px solid #eee">
+          Alerts: <strong style="color:${severity}">${p.alert_count}</strong><br>
+          Max level: ${p.max_level}
+        </div>
+      `);
+
+      circle.addTo(_geoMap);
+      _geoMarkers.push(circle);
+    });
+  }
+
+  // Country list.
+  const countryEl = document.getElementById('geoCountryList');
+  if (countryEl) {
+    if (!countries.length) {
+      countryEl.innerHTML = '<div style="color:var(--text-muted);font-size:12px;font-style:italic">No data yet.</div>';
+    } else {
+      const maxC = Math.max(...countries.map(c => c.count), 1);
+      countryEl.innerHTML = countries.slice(0, 12).map(c => `
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+            <span>${c.country_code ? `<img src="https://flagcdn.com/16x12/${c.country_code.toLowerCase()}.png" style="margin-right:5px;vertical-align:middle" onerror="this.style.display='none'">` : ''}${escHtml(c.country)}</span>
+            <span style="font-weight:600;color:var(--accent)">${c.count}</span>
+          </div>
+          <div style="height:4px;background:var(--surface-2);border-radius:2px">
+            <div style="width:${Math.round(c.count/maxC*100)}%;height:100%;background:var(--accent);border-radius:2px"></div>
+          </div>
+        </div>`).join('');
+    }
+  }
+
+  // IP table.
+  const tbody = document.getElementById('geoIpTableBody');
+  if (tbody) {
+    if (!points.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted)">No geo data available.</td></tr>';
+    } else {
+      const levelColor = l => l >= 10 ? '#ef4444' : l >= 6 ? '#f97316' : l >= 3 ? '#f59e0b' : '#10b981';
+      tbody.innerHTML = points.slice(0, 50).map(p => `
+        <tr>
+          <td style="font-family:monospace;font-size:12px;font-weight:600">${escHtml(p.ip)}</td>
+          <td style="font-size:12px">${p.country_code ? `<img src="https://flagcdn.com/16x12/${p.country_code.toLowerCase()}.png" style="margin-right:5px;vertical-align:middle" onerror="this.style.display='none'">` : ''}${escHtml(p.country||'—')}</td>
+          <td style="font-size:12px;color:var(--text-muted)">${escHtml(p.city||'—')}</td>
+          <td style="font-size:12px;color:var(--text-muted);max-width:160px;overflow:hidden;text-overflow:ellipsis">${escHtml(p.isp||'—')}</td>
+          <td style="font-size:12px;font-weight:600;color:var(--accent)">${p.alert_count}</td>
+          <td><span style="color:${levelColor(p.max_level)};font-weight:600;font-size:12px">${p.max_level}</span></td>
+          <td style="font-size:12px;color:var(--text-muted)">${fmtTs(p.last_seen)}</td>
+        </tr>`).join('');
+    }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.nav-item[data-page="geo-map"]').forEach(el => {
+    el.addEventListener('click', () => {
+      // Small delay to let the page section become visible before Leaflet renders.
+      setTimeout(loadGeoMap, 100);
+    });
+  });
+});
+
 // ── Risk-Based Alerting ───────────────────────────────────────────────────────
 
 async function loadRbaPage() {
