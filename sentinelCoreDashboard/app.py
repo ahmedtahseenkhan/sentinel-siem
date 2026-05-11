@@ -3071,17 +3071,68 @@ def api_all_executions():
         return _api_error(e)
 
 
-# ── Scheduled Reports ─────────────────────────────────────────────────────────
+# ── Scheduled Reports & Cloud Connectors ──────────────────────────────────────
 
 try:
-    from scheduler import init_scheduler, list_schedules, create_schedule, delete_schedule, run_now
+    from scheduler import init_scheduler, list_schedules, create_schedule, delete_schedule, run_now, _scheduler as _bg_scheduler
     init_scheduler()
+    # Wire cloud connectors into the same scheduler after it starts.
+    try:
+        from cloud_connectors.manager import init_cloud_connectors
+        init_cloud_connectors(_bg_scheduler)
+    except Exception as _ce:
+        _logger.warning("Cloud connectors init failed: %s", _ce)
 except Exception as _sched_err:
     _logger.warning("Scheduler init failed: %s", _sched_err)
     def list_schedules(): return []
     def create_schedule(*a, **kw): return {}
     def delete_schedule(i): return False
     def run_now(i): pass
+
+
+# ── Cloud Monitoring Routes ───────────────────────────────────────────────────
+
+@app.route("/api/cloud/status", methods=["GET"])
+def api_cloud_status():
+    try:
+        from cloud_connectors.manager import get_all_statuses
+        return jsonify({"data": get_all_statuses()})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/cloud/sync/<provider>", methods=["POST"])
+def api_cloud_sync(provider):
+    try:
+        from cloud_connectors.manager import trigger_sync
+        result = trigger_sync(provider)
+        return jsonify(result)
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/cloud/events", methods=["GET"])
+def api_cloud_events():
+    try:
+        import time as _time
+        provider = request.args.get("provider", "")
+        limit    = int(request.args.get("limit", 50))
+        hours    = int(request.args.get("hours", 24))
+        since_ms = int(_time.time() * 1000) - hours * 3600 * 1000
+        index_pattern = f"watchvault-cloud-{provider}-*" if provider else "watchvault-cloud-*"
+        body = {
+            "size": limit,
+            "sort": [{"timestamp": {"order": "desc"}}],
+            "query": {"range": {"timestamp": {"gte": since_ms}}},
+        }
+        from watchtower_client import opensearch_request
+        res = opensearch_request(
+            f"/{index_pattern}/_search?ignore_unavailable=true&allow_no_indices=true",
+            method="POST", json_body=body
+        )
+        hits = (res.get("hits") or {}).get("hits") or []
+        events = [h.get("_source", {}) for h in hits]
+        return jsonify({"data": events, "total": len(events)})
+    except Exception as e:
+        return _api_error(e)
 
 
 @app.route("/api/reports/schedules", methods=["GET"])

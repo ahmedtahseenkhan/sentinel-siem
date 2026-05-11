@@ -4855,6 +4855,101 @@ async function triggerReportNow(id) {
   alert('Report triggered — check your email shortly.');
 }
 
+// ── Cloud Monitoring ──────────────────────────────────────────────────────────
+
+async function loadCloudMonitoringPage() {
+  await Promise.all([loadCloudStatus(), loadCloudEvents()]);
+}
+
+async function loadCloudStatus() {
+  const res = await fetch('/api/cloud/status').then(r => r.json()).catch(() => ({}));
+  const providers = res.data || [];
+  const el = document.getElementById('cloudProviderCards');
+  if (!el) return;
+
+  const icons  = { aws:'🟨', azure:'🟦', gcp:'🟩' };
+  const labels = { aws:'AWS CloudTrail', azure:'Azure Activity Log', gcp:'GCP Cloud Logging' };
+  const colors = { aws:'#f59e0b', azure:'#3b82f6', gcp:'#10b981' };
+
+  el.innerHTML = providers.map(p => {
+    const col = colors[p.provider] || '#6b7280';
+    const ok  = p.configured;
+    return `
+      <div class="panel" style="border-left:3px solid ${col};padding:16px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+          <div>
+            <div style="font-size:13px;font-weight:600">${icons[p.provider]||'☁'} ${labels[p.provider]||p.provider}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">
+              ${p.region||p.subscription||p.project||''}
+            </div>
+          </div>
+          <span style="background:${ok ? '#10b98122':'#6b728022'};color:${ok ? '#10b981':'#6b7280'};padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">${ok ? 'ACTIVE':'NOT CONFIGURED'}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted)">
+          Last sync: ${p.last_sync ? new Date(p.last_sync).toLocaleString() : 'Never'}<br>
+          Events indexed: ${p.events_indexed || 0}
+        </div>
+        ${ok ? `<button onclick="syncCloud('${p.provider}')" style="margin-top:10px;background:${col}22;border:1px solid ${col}44;color:${col};padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer;width:100%">⟳ Sync Now</button>` : ''}
+      </div>`;
+  }).join('');
+}
+
+async function syncCloud(provider) {
+  const btn = event?.target;
+  if (btn) btn.textContent = 'Syncing…';
+  const res = await fetch(`/api/cloud/sync/${provider}`, {method:'POST'}).then(r => r.json()).catch(() => ({}));
+  if (btn) btn.textContent = '⟳ Sync Now';
+  if (res?.events_indexed !== undefined) {
+    alert(`✓ ${provider.toUpperCase()} sync complete — ${res.events_indexed} events indexed`);
+    await loadCloudStatus();
+    await loadCloudEvents();
+  } else {
+    alert(`✗ Sync failed: ${res?.error || 'Check cloud credentials'}`);
+  }
+}
+
+async function loadCloudEvents() {
+  const provider = document.getElementById('cloudProviderFilter')?.value || '';
+  const hours    = document.getElementById('cloudHoursFilter')?.value   || '24';
+  const params   = new URLSearchParams({limit: 100, hours});
+  if (provider) params.set('provider', provider);
+
+  const res = await fetch(`/api/cloud/events?${params}`).then(r => r.json()).catch(() => ({}));
+  const events = res.data || [];
+  const tbody  = document.getElementById('cloudEventsBody');
+  if (!tbody) return;
+
+  if (!events.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">
+      No cloud events found. Configure credentials and click Sync Now.
+    </td></tr>`;
+    return;
+  }
+
+  const providerColor = { aws:'#f59e0b', azure:'#3b82f6', gcp:'#10b981' };
+  tbody.innerHTML = events.map(e => {
+    const prov = (e.cloud_provider || '').toLowerCase();
+    const pc   = providerColor[prov] || '#6b7280';
+    const sev  = e.severity || e.level || '';
+    const caller = e.caller || e.username || '—';
+    const resource = e.resource_name || e.resource_id || e.operation_name || '—';
+    return `<tr>
+      <td style="font-size:11px;color:var(--text-muted);white-space:nowrap">${fmtTs(e.timestamp)}</td>
+      <td><span style="background:${pc}22;color:${pc};padding:2px 6px;border-radius:3px;font-size:10px;font-weight:600;text-transform:uppercase">${prov||'cloud'}</span></td>
+      <td style="font-size:12px;font-weight:600">${escHtml(e.event_type||e.event_name||'—')}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${escHtml(caller)}</td>
+      <td style="font-size:11px;color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(resource)}">${escHtml(resource)}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${escHtml(sev)}</td>
+    </tr>`;
+  }).join('');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.nav-item[data-page="cloud-monitoring"]').forEach(el => {
+    el.addEventListener('click', () => loadCloudMonitoringPage());
+  });
+});
+
 // ── Geo Threat Map ────────────────────────────────────────────────────────────
 
 let _geoMap     = null;

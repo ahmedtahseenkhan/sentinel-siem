@@ -130,6 +130,11 @@
             <span class="nav-label">Identity</span>
           </a>
 
+          <a href="#" class="nav-item" data-page="cloud-monitoring">
+            <span class="nav-icon">☁</span>
+            <span class="nav-label">Cloud Monitoring</span>
+          </a>
+
           <!-- MANAGEMENT -->
           <div class="nav-section-label">Management</div>
           <a href="#" class="nav-item" data-page="rules">
@@ -2028,6 +2033,80 @@ ALERT_THROTTLE_MINUTES=30</pre>
           <div class="panel" style="margin-top:20px;max-width:680px">
             <h3>Alert Rules</h3>
             <p style="font-size:13px;color:var(--text-muted)">Notifications are sent for alerts with rule_level &ge; 8 (HIGH or CRITICAL). Throttle: one notification per rule per agent per <span id="notifThrottle">30</span> minutes.</p>
+          </div>
+        </section>
+
+        <!-- CLOUD MONITORING PAGE -->
+        <section id="page-cloud-monitoring" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">☁ Cloud Monitoring</h2>
+              <p class="agents-subtitle">AWS CloudTrail, Azure Activity Log, and GCP Cloud Logging — unified into Sentinel SIEM.</p>
+            </div>
+          </header>
+
+          <!-- Provider cards -->
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px" id="cloudProviderCards">
+            <!-- Cards injected by JS -->
+          </div>
+
+          <!-- Cloud events feed -->
+          <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center">
+            <select id="cloudProviderFilter" onchange="loadCloudEvents()" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:6px 12px;border-radius:6px;font-size:13px">
+              <option value="">All Providers</option>
+              <option value="aws">AWS</option>
+              <option value="azure">Azure</option>
+              <option value="gcp">GCP</option>
+            </select>
+            <select id="cloudHoursFilter" onchange="loadCloudEvents()" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:6px 12px;border-radius:6px;font-size:13px">
+              <option value="1">Last 1 hour</option>
+              <option value="24" selected>Last 24 hours</option>
+              <option value="168">Last 7 days</option>
+            </select>
+          </div>
+
+          <div class="panel" style="padding:0">
+            <table class="data-table">
+              <thead><tr>
+                <th>Time</th><th>Provider</th><th>Event Type</th><th>User/Caller</th><th>Resource</th><th>Severity</th>
+              </tr></thead>
+              <tbody id="cloudEventsBody">
+                <tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">Loading cloud events…</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Config instructions -->
+          <div class="panel" style="margin-top:20px">
+            <h3 style="margin:0 0 12px">Configuration</h3>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;font-size:12px">
+              <div>
+                <div style="font-weight:600;color:#f59e0b;margin-bottom:8px">☁ AWS CloudTrail</div>
+                <code style="background:var(--surface-2);display:block;padding:10px;border-radius:6px;line-height:1.8;color:var(--text-secondary)">
+                  AWS_ACCESS_KEY_ID=xxx<br>
+                  AWS_SECRET_ACCESS_KEY=xxx<br>
+                  AWS_REGION=us-east-1<br>
+                  AWS_ACCOUNT_ALIAS=prod
+                </code>
+              </div>
+              <div>
+                <div style="font-weight:600;color:#3b82f6;margin-bottom:8px">☁ Azure Activity Log</div>
+                <code style="background:var(--surface-2);display:block;padding:10px;border-radius:6px;line-height:1.8;color:var(--text-secondary)">
+                  AZURE_TENANT_ID=xxx<br>
+                  AZURE_CLIENT_ID=xxx<br>
+                  AZURE_CLIENT_SECRET=xxx<br>
+                  AZURE_SUBSCRIPTION_ID=xxx
+                </code>
+              </div>
+              <div>
+                <div style="font-weight:600;color:#10b981;margin-bottom:8px">☁ GCP Cloud Logging</div>
+                <code style="background:var(--surface-2);display:block;padding:10px;border-radius:6px;line-height:1.8;color:var(--text-secondary)">
+                  GCP_PROJECT_ID=my-project<br>
+                  GCP_SERVICE_ACCOUNT_JSON=...<br>
+                  CLOUD_SYNC_INTERVAL_MINUTES=15
+                </code>
+              </div>
+            </div>
           </div>
         </section>
 
