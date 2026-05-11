@@ -1,0 +1,42 @@
+{
+  "policy": {
+    "description": "System metrics: hot 1d → warm → delete after 14d (highest volume)",
+    "default_state": "hot",
+    "states": [
+      {
+        "name": "hot",
+        "actions": [
+          {
+            "rollover": {
+              "min_index_age": "1d",
+              "min_doc_count": 50000000
+            }
+          }
+        ],
+        "transitions": [
+          {
+            "state_name": "warm",
+            "conditions": { "min_index_age": "2d" }
+          }
+        ]
+      },
+      {
+        "name": "warm",
+        "actions": [
+          { "replica_count": { "number_of_replicas": 0 } },
+          { "force_merge": { "max_num_segments": 1 } }
+        ],
+        "transitions": [
+          {
+            "state_name": "delete",
+            "conditions": { "min_index_age": "14d" }
+          }
+        ]
+      },
+      {
+        "name": "delete",
+        "actions": [ { "delete": {} } ]
+      }
+    ]
+  }
+}

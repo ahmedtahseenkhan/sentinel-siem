@@ -2,9 +2,10 @@
   "index_patterns": ["watchvault-fim-*"],
   "template": {
     "settings": {
-      "number_of_shards": 1,
+      "number_of_shards": 2,
       "number_of_replicas": 1,
-      "index.refresh_interval": "5s"
+      "index.refresh_interval": "30s",
+      "plugins.index_state_management.policy_id": "watchvault-fim-policy"
     },
     "mappings": {
       "properties": {

@@ -4,7 +4,8 @@
     "settings": {
       "number_of_shards": 1,
       "number_of_replicas": 1,
-      "index.refresh_interval": "5s"
+      "index.refresh_interval": "10s",
+      "plugins.index_state_management.policy_id": "watchvault-audit-policy"
     },
     "mappings": {
       "properties": {

@@ -3,7 +3,6 @@ package index
 import (
 	"embed"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/watchvault/watchvault/internal/config"
@@ -79,74 +78,52 @@ func (m *Manager) SetupTemplates() error {
 	return nil
 }
 
-// ApplyISMPolicy loads the bundled default ISM lifecycle policy from
-// lifecycle/default_policy.json and upserts it into OpenSearch.
-// If the configured index prefix differs from "watchvault", the policy ID is
-// adjusted accordingly so that ISM index patterns still match.
+// ApplyISMPolicy loads and upserts all per-type ISM lifecycle policies.
+// Each index type (alerts, events, fim, system, vulnerability, audit) gets
+// its own policy with appropriate retention and rollover settings.
 func (m *Manager) ApplyISMPolicy() error {
-	data, err := lifecycleFS.ReadFile("lifecycle/default_policy.json")
-	if err != nil {
-		return err
+	policies := []struct {
+		file     string
+		policyID string
+	}{
+		{"lifecycle/alerts_policy.json", "watchvault-alerts-policy"},
+		{"lifecycle/events_policy.json", "watchvault-events-policy"},
+		{"lifecycle/fim_policy.json", "watchvault-fim-policy"},
+		{"lifecycle/system_policy.json", "watchvault-system-policy"},
+		{"lifecycle/vulnerability_policy.json", "watchvault-vulnerability-policy"},
+		{"lifecycle/audit_policy.json", "watchvault-audit-policy"},
 	}
 
-	// Rewrite prefix references if a custom prefix is configured.
-	if m.cfg.Prefix != "" && m.cfg.Prefix != "watchvault" {
-		replaced := strings.ReplaceAll(string(data), "watchvault", m.cfg.Prefix)
-		data = []byte(replaced)
+	prefix := m.cfg.Prefix
+	if prefix == "" {
+		prefix = "watchvault"
 	}
 
-	var policy map[string]interface{}
-	if err := json.Unmarshal(data, &policy); err != nil {
-		return err
-	}
-
-	// Inject configured retention days into the delete transition when set.
-	if m.cfg.RetentionDays > 0 {
-		injectRetention(policy, m.cfg.RetentionDays)
-	}
-
-	policyID := "watchvault-default"
-	if m.cfg.Prefix != "" && m.cfg.Prefix != "watchvault" {
-		policyID = m.cfg.Prefix + "-default"
-	}
-
-	return m.client.PutISMPolicy(policyID, policy)
-}
-
-// injectRetention overwrites the delete-state transition age with the given
-// number of days so operators can tune retention via config rather than
-// editing the embedded JSON.
-func injectRetention(policy map[string]interface{}, days int) {
-	p, ok := policy["policy"].(map[string]interface{})
-	if !ok {
-		return
-	}
-	states, ok := p["states"].([]interface{})
-	if !ok {
-		return
-	}
-	age := fmt.Sprintf("%dd", days)
-	for _, s := range states {
-		state, ok := s.(map[string]interface{})
-		if !ok {
+	for _, p := range policies {
+		data, err := lifecycleFS.ReadFile(p.file)
+		if err != nil {
+			m.logger.Warn("lifecycle policy file not found", zap.String("file", p.file))
 			continue
 		}
-		if state["name"] == "warm" {
-			transitions, ok := state["transitions"].([]interface{})
-			if !ok {
-				continue
-			}
-			for _, t := range transitions {
-				tr, ok := t.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				if tr["state_name"] == "delete" {
-					if cond, ok := tr["conditions"].(map[string]interface{}); ok {
-						cond["min_index_age"] = age
-					}
-				}
-			}
+
+		policyID := p.policyID
+		if prefix != "watchvault" {
+			data = []byte(strings.ReplaceAll(string(data), "watchvault", prefix))
+			policyID = strings.ReplaceAll(p.policyID, "watchvault", prefix)
+		}
+
+		var policy map[string]interface{}
+		if err := json.Unmarshal(data, &policy); err != nil {
+			m.logger.Warn("invalid policy json", zap.String("file", p.file), zap.Error(err))
+			continue
+		}
+
+		if err := m.client.PutISMPolicy(policyID, policy); err != nil {
+			m.logger.Warn("failed to apply ISM policy", zap.String("policy_id", policyID), zap.Error(err))
+		} else {
+			m.logger.Info("ISM policy applied", zap.String("policy_id", policyID))
 		}
 	}
+	return nil
 }
+
