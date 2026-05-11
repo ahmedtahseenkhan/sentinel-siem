@@ -2585,6 +2585,75 @@ def api_cases_evidence_add(case_id):
         return _api_error(e)
 
 
+# ── SOAR Playbooks ────────────────────────────────────────────────────────────
+
+@app.route("/api/playbooks", methods=["GET"])
+def api_playbooks_list():
+    try:
+        from watchtower_client import watchtower_request
+        params = {k: v for k, v in request.args.items()}
+        res = watchtower_request("/api/v1/playbooks", method="GET", params=params)
+        return jsonify(res or {"data": [], "total": 0})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/playbooks", methods=["POST"])
+def api_playbooks_create():
+    try:
+        from watchtower_client import watchtower_request
+        body = request.get_json(force=True) or {}
+        res = watchtower_request("/api/v1/playbooks", method="POST", json_body=body)
+        return jsonify(res or {}), 201
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/playbooks/<int:pb_id>", methods=["GET"])
+def api_playbooks_get(pb_id):
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request(f"/api/v1/playbooks/{pb_id}", method="GET")
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/playbooks/<int:pb_id>", methods=["PUT"])
+def api_playbooks_update(pb_id):
+    try:
+        from watchtower_client import watchtower_request
+        body = request.get_json(force=True) or {}
+        res = watchtower_request(f"/api/v1/playbooks/{pb_id}", method="PUT", json_body=body)
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/playbooks/<int:pb_id>", methods=["DELETE"])
+def api_playbooks_delete(pb_id):
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request(f"/api/v1/playbooks/{pb_id}", method="DELETE")
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/playbooks/<int:pb_id>/executions", methods=["GET"])
+def api_playbooks_executions(pb_id):
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request(f"/api/v1/playbooks/{pb_id}/executions", method="GET")
+        return jsonify(res or {"data": []})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/playbook-executions", methods=["GET"])
+def api_all_executions():
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request("/api/v1/playbook-executions", method="GET")
+        return jsonify(res or {"data": []})
+    except Exception as e:
+        return _api_error(e)
+
+
 # ── Scheduled Reports ─────────────────────────────────────────────────────────
 
 try:

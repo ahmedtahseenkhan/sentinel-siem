@@ -4854,3 +4854,195 @@ async function triggerReportNow(id) {
   await fetch(`/api/reports/schedules/${id}/run`, {method: 'POST'});
   alert('Report triggered — check your email shortly.');
 }
+
+// ── SOAR Playbooks ────────────────────────────────────────────────────────────
+
+const ACTION_TEMPLATES = {
+  block_ip:        { label: 'Block IP',           params: { ip: '{{src_ip}}' } },
+  kill_process:    { label: 'Kill Process',        params: { pid: '{{pid}}' } },
+  isolate_host:    { label: 'Isolate Host',        params: { reason: '{{title}}' } },
+  create_case:     { label: 'Create Case',         params: { title: 'Auto: {{title}}', priority: 'high' } },
+  notify_slack:    { label: 'Notify Slack',        params: { webhook_url: '', message: '🚨 [{{level}}] {{title}} — Agent: {{agent_id}}' } },
+  notify_email:    { label: 'Send Email',          params: { to: '', subject: '[Alert] {{title}}' } },
+  add_to_watchlist:{ label: 'Add to Watchlist',   params: { value: '{{src_ip}}', list: 'blocked_ips' } },
+};
+
+let _pbActions = [];
+
+async function loadPlaybooks() {
+  const res = await fetch('/api/playbooks?all=true').then(r => r.json()).catch(() => ({}));
+  const pbs = res.data || [];
+  const tbody = document.getElementById('playbooksTableBody');
+  if (!tbody) return;
+
+  if (!pbs.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted)">No playbooks yet. Click <strong>+ New Playbook</strong> to create one.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = pbs.map(pb => `
+    <tr>
+      <td style="color:var(--text-muted);font-size:12px">#${pb.id}</td>
+      <td><strong>${escHtml(pb.name)}</strong><div style="font-size:11px;color:var(--text-muted)">${escHtml(pb.description||'')}</div></td>
+      <td style="font-size:12px">Level ≥ ${pb.trigger?.min_level || 'any'}</td>
+      <td style="font-size:12px">${(pb.actions||[]).length} actions</td>
+      <td style="font-size:12px">${pb.run_count || 0}</td>
+      <td>
+        <span style="background:${pb.enabled ? '#10b98122':'#6b728022'};color:${pb.enabled ? '#10b981':'#6b7280'};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">${pb.enabled ? 'ENABLED':'DISABLED'}</span>
+      </td>
+      <td>
+        <button onclick="viewPlaybookExecutions(${pb.id})" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer">History</button>
+        <button onclick="togglePlaybook(${pb.id}, ${!pb.enabled})" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;margin-left:4px">${pb.enabled ? 'Disable':'Enable'}</button>
+        <button onclick="deletePlaybook(${pb.id})" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#ef4444;padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;margin-left:4px">Delete</button>
+      </td>
+    </tr>`).join('');
+}
+
+async function loadExecutions(playbookId) {
+  const url = playbookId ? `/api/playbooks/${playbookId}/executions` : '/api/playbook-executions';
+  const res = await fetch(url).then(r => r.json()).catch(() => ({}));
+  const execs = res.data || [];
+  const tbody = document.getElementById('executionsTableBody');
+  if (!tbody) return;
+
+  const statusColor = { success:'#10b981', failed:'#ef4444', partial:'#f59e0b', running:'#3b82f6' };
+  if (!execs.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted)">No executions yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = execs.map(ex => {
+    const dur = ex.completed_at && ex.started_at ? `${((ex.completed_at - ex.started_at)/1000).toFixed(1)}s` : '—';
+    return `<tr>
+      <td style="font-size:12px;color:var(--text-muted)">#${ex.id}</td>
+      <td style="font-size:12px">#${ex.playbook_id}</td>
+      <td style="font-size:12px">Alert #${ex.alert_id}</td>
+      <td style="font-size:12px">${escHtml(ex.agent_id)}</td>
+      <td><span style="background:${statusColor[ex.status]||'#666'}22;color:${statusColor[ex.status]||'#aaa'};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase">${ex.status}</span></td>
+      <td style="font-size:12px">${dur}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${fmtTs(ex.started_at)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function switchPbTab(tab) {
+  const isPlaybooks = tab === 'playbooks';
+  document.getElementById('pbPanePlaybooks').style.display = isPlaybooks ? '' : 'none';
+  document.getElementById('pbPaneHistory').style.display   = isPlaybooks ? 'none' : '';
+  document.getElementById('pbTabPlaybooks').style.borderBottomColor = isPlaybooks ? 'var(--accent)' : 'transparent';
+  document.getElementById('pbTabPlaybooks').style.color = isPlaybooks ? 'var(--text-primary)' : 'var(--text-muted)';
+  document.getElementById('pbTabHistory').style.borderBottomColor = !isPlaybooks ? 'var(--accent)' : 'transparent';
+  document.getElementById('pbTabHistory').style.color = !isPlaybooks ? 'var(--text-primary)' : 'var(--text-muted)';
+  if (tab === 'history') loadExecutions(null);
+}
+
+function viewPlaybookExecutions(id) {
+  switchPbTab('history');
+  loadExecutions(id);
+}
+
+async function togglePlaybook(id, enabled) {
+  await fetch(`/api/playbooks/${id}`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({enabled})
+  });
+  await loadPlaybooks();
+}
+
+async function deletePlaybook(id) {
+  if (!confirm(`Delete playbook #${id}?`)) return;
+  await fetch(`/api/playbooks/${id}`, {method: 'DELETE'});
+  await loadPlaybooks();
+}
+
+function showPlaybookModal() {
+  _pbActions = [];
+  renderPlaybookActions();
+  ['pbName','pbDesc','pbRuleIds','pbRuleGroups'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const lvl = document.getElementById('pbMinLevel');
+  if (lvl) lvl.value = '10';
+  document.getElementById('playbookModal').style.display = 'flex';
+}
+
+function hidePlaybookModal() {
+  document.getElementById('playbookModal').style.display = 'none';
+}
+
+function addPlaybookAction() {
+  _pbActions.push({ type: 'block_ip', params: {...ACTION_TEMPLATES.block_ip.params}, continue_on_failure: true, timeout_seconds: 30 });
+  renderPlaybookActions();
+}
+
+function renderPlaybookActions() {
+  const c = document.getElementById('pbActionsContainer');
+  if (!c) return;
+  if (!_pbActions.length) {
+    c.innerHTML = '<div style="font-size:12px;color:var(--text-muted);font-style:italic">No actions yet. Click "Add Action".</div>';
+    return;
+  }
+  c.innerHTML = _pbActions.map((action, i) => `
+    <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:6px;padding:10px 12px">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <span style="font-size:11px;color:var(--text-muted);min-width:28px">${i+1}.</span>
+        <select onchange="pbActionTypeChange(${i}, this.value)" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:12px">
+          ${Object.entries(ACTION_TEMPLATES).map(([k,v]) => `<option value="${k}"${action.type===k?' selected':''}>${v.label}</option>`).join('')}
+        </select>
+        <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px;cursor:pointer">
+          <input type="checkbox" ${action.continue_on_failure?'checked':''} onchange="_pbActions[${i}].continue_on_failure=this.checked"> Continue on fail
+        </label>
+        <button onclick="_pbActions.splice(${i},1);renderPlaybookActions()" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;margin-left:auto">✕</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${Object.entries(action.params||{}).map(([k,v]) => `
+          <div style="display:flex;gap:8px;align-items:center">
+            <span style="font-size:11px;color:var(--text-muted);min-width:80px">${k}</span>
+            <input value="${escHtml(v)}" oninput="_pbActions[${i}].params['${k}']=this.value" style="flex:1;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:4px 8px;border-radius:4px;font-size:11px">
+          </div>`).join('')}
+      </div>
+    </div>`).join('');
+}
+
+function pbActionTypeChange(i, type) {
+  _pbActions[i].type = type;
+  _pbActions[i].params = {...(ACTION_TEMPLATES[type]?.params || {})};
+  renderPlaybookActions();
+}
+
+async function submitPlaybook() {
+  const name = document.getElementById('pbName')?.value?.trim();
+  if (!name) { alert('Name is required'); return; }
+
+  const minLevel = parseInt(document.getElementById('pbMinLevel')?.value || '10');
+  const ruleIdsRaw = document.getElementById('pbRuleIds')?.value?.trim() || '';
+  const ruleGroupsRaw = document.getElementById('pbRuleGroups')?.value?.trim() || '';
+
+  const rule_ids = ruleIdsRaw ? ruleIdsRaw.split(',').map(s => parseInt(s.trim())).filter(Boolean) : [];
+  const rule_groups = ruleGroupsRaw ? ruleGroupsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+  const body = {
+    name,
+    description: document.getElementById('pbDesc')?.value?.trim() || '',
+    enabled: true,
+    trigger: { min_level: minLevel, rule_ids, rule_groups, agent_ids: [] },
+    actions: _pbActions,
+  };
+
+  const res = await fetch('/api/playbooks', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  }).then(r => r.json()).catch(() => ({}));
+
+  hidePlaybookModal();
+  await loadPlaybooks();
+  if (res?.data?.id) alert(`Playbook #${res.data.id} created successfully.`);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.nav-item[data-page="playbooks"]').forEach(el => {
+    el.addEventListener('click', () => { loadPlaybooks(); switchPbTab('playbooks'); });
+  });
+});

@@ -96,6 +96,17 @@ func (s *Server) routes() *chi.Mux {
 			r.Post("/import", sigh.ConvertAndStore)
 		})
 
+		pbh := handlers.NewPlaybookHandler(s.store)
+		r.Route("/playbooks", func(r chi.Router) {
+			r.Get("/", pbh.List)
+			r.Post("/", pbh.Create)
+			r.Get("/{id}", pbh.Get)
+			r.Put("/{id}", pbh.Update)
+			r.Delete("/{id}", pbh.Delete)
+			r.Get("/{id}/executions", pbh.ListExecutions)
+		})
+		r.Get("/playbook-executions", pbh.AllExecutions)
+
 		csh := handlers.NewCaseHandler(s.store)
 		r.Route("/cases", func(r chi.Router) {
 			r.Get("/", csh.List)

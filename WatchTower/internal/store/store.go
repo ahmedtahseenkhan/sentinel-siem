@@ -59,6 +59,7 @@ func (s *Store) migrate() error {
 	files := []string{
 		"migrations/001_initial.sql",
 		"migrations/002_cases.sql",
+		"migrations/003_playbooks.sql",
 	}
 	for _, f := range files {
 		data, err := migrations.ReadFile(f)
@@ -541,6 +542,154 @@ func (s *Store) ListCaseEvidence(caseID int64) ([]*models.CaseEvidence, error) {
 }
 
 // === Case scan helpers ===
+
+// === Playbook operations ===
+
+func (s *Store) CreatePlaybook(p *models.Playbook) (int64, error) {
+	now := time.Now().UnixMilli()
+	p.CreatedAt = now
+	p.UpdatedAt = now
+	triggerJSON, _ := json.Marshal(p.Trigger)
+	actionsJSON, _ := json.Marshal(p.Actions)
+	var id int64
+	err := s.pool.QueryRow(context.Background(), `
+		INSERT INTO playbooks (name, description, enabled, trigger, actions, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+		p.Name, p.Description, p.Enabled,
+		string(triggerJSON), string(actionsJSON), p.CreatedAt, p.UpdatedAt,
+	).Scan(&id)
+	return id, err
+}
+
+func (s *Store) GetPlaybook(id int64) (*models.Playbook, error) {
+	row := s.pool.QueryRow(context.Background(), `
+		SELECT id, name, description, enabled, trigger, actions, created_at, updated_at, run_count
+		FROM playbooks WHERE id = $1`, id)
+	return scanPlaybook(row)
+}
+
+func (s *Store) ListPlaybooks(enabledOnly bool) ([]*models.Playbook, error) {
+	query := `SELECT id, name, description, enabled, trigger, actions, created_at, updated_at, run_count FROM playbooks`
+	if enabledOnly {
+		query += " WHERE enabled = TRUE"
+	}
+	query += " ORDER BY created_at DESC"
+	rows, err := s.pool.Query(context.Background(), query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var pbs []*models.Playbook
+	for rows.Next() {
+		pb, err := scanPlaybookRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		pbs = append(pbs, pb)
+	}
+	return pbs, rows.Err()
+}
+
+func (s *Store) UpdatePlaybook(p *models.Playbook) error {
+	p.UpdatedAt = time.Now().UnixMilli()
+	triggerJSON, _ := json.Marshal(p.Trigger)
+	actionsJSON, _ := json.Marshal(p.Actions)
+	_, err := s.pool.Exec(context.Background(), `
+		UPDATE playbooks SET name=$1, description=$2, enabled=$3, trigger=$4, actions=$5, updated_at=$6
+		WHERE id=$7`,
+		p.Name, p.Description, p.Enabled, string(triggerJSON), string(actionsJSON), p.UpdatedAt, p.ID)
+	return err
+}
+
+func (s *Store) DeletePlaybook(id int64) error {
+	_, err := s.pool.Exec(context.Background(), "DELETE FROM playbooks WHERE id = $1", id)
+	return err
+}
+
+func (s *Store) IncrementPlaybookRunCount(id int64) {
+	_, _ = s.pool.Exec(context.Background(),
+		"UPDATE playbooks SET run_count = run_count + 1 WHERE id = $1", id)
+}
+
+// === Playbook Execution operations ===
+
+func (s *Store) CreateExecution(ex *models.PlaybookExecution) (int64, error) {
+	ex.StartedAt = time.Now().UnixMilli()
+	resultsJSON, _ := json.Marshal(ex.Results)
+	var id int64
+	err := s.pool.QueryRow(context.Background(), `
+		INSERT INTO playbook_executions (playbook_id, alert_id, agent_id, status, started_at, results)
+		VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+		ex.PlaybookID, ex.AlertID, ex.AgentID, ex.Status, ex.StartedAt, string(resultsJSON),
+	).Scan(&id)
+	return id, err
+}
+
+func (s *Store) FinishExecution(id int64, status string, results []models.PlaybookActionResult) error {
+	resultsJSON, _ := json.Marshal(results)
+	_, err := s.pool.Exec(context.Background(), `
+		UPDATE playbook_executions SET status=$1, completed_at=$2, results=$3 WHERE id=$4`,
+		status, time.Now().UnixMilli(), string(resultsJSON), id)
+	return err
+}
+
+func (s *Store) ListExecutions(playbookID int64, limit int) ([]*models.PlaybookExecution, error) {
+	var args []interface{}
+	query := `SELECT id, playbook_id, alert_id, agent_id, status, started_at, completed_at, results
+	           FROM playbook_executions`
+	if playbookID > 0 {
+		args = append(args, playbookID)
+		query += fmt.Sprintf(" WHERE playbook_id = $%d", len(args))
+	}
+	query += " ORDER BY started_at DESC"
+	if limit > 0 {
+		args = append(args, limit)
+		query += fmt.Sprintf(" LIMIT $%d", len(args))
+	}
+	rows, err := s.pool.Query(context.Background(), query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var execs []*models.PlaybookExecution
+	for rows.Next() {
+		ex := &models.PlaybookExecution{}
+		var resultsJSON string
+		if err := rows.Scan(&ex.ID, &ex.PlaybookID, &ex.AlertID, &ex.AgentID,
+			&ex.Status, &ex.StartedAt, &ex.CompletedAt, &resultsJSON); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal([]byte(resultsJSON), &ex.Results)
+		execs = append(execs, ex)
+	}
+	return execs, rows.Err()
+}
+
+func scanPlaybook(row pgx.Row) (*models.Playbook, error) {
+	p := &models.Playbook{}
+	var triggerJSON, actionsJSON string
+	err := row.Scan(&p.ID, &p.Name, &p.Description, &p.Enabled,
+		&triggerJSON, &actionsJSON, &p.CreatedAt, &p.UpdatedAt, &p.RunCount)
+	if err != nil {
+		return nil, err
+	}
+	_ = json.Unmarshal([]byte(triggerJSON), &p.Trigger)
+	_ = json.Unmarshal([]byte(actionsJSON), &p.Actions)
+	return p, nil
+}
+
+func scanPlaybookRows(rows pgx.Rows) (*models.Playbook, error) {
+	p := &models.Playbook{}
+	var triggerJSON, actionsJSON string
+	err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Enabled,
+		&triggerJSON, &actionsJSON, &p.CreatedAt, &p.UpdatedAt, &p.RunCount)
+	if err != nil {
+		return nil, err
+	}
+	_ = json.Unmarshal([]byte(triggerJSON), &p.Trigger)
+	_ = json.Unmarshal([]byte(actionsJSON), &p.Actions)
+	return p, nil
+}
 
 func scanCase(row pgx.Row) (*models.Case, error) {
 	c := &models.Case{}

@@ -68,6 +68,10 @@
             <span class="nav-icon">📋</span>
             <span class="nav-label">Case Management</span>
           </a>
+          <a href="#" class="nav-item" data-page="playbooks">
+            <span class="nav-icon">⚡</span>
+            <span class="nav-label">SOAR Playbooks</span>
+          </a>
 
           <!-- ENDPOINTS -->
           <div class="nav-section-label">Endpoints</div>
@@ -1999,6 +2003,104 @@ ALERT_THROTTLE_MINUTES=30</pre>
             <p style="font-size:13px;color:var(--text-muted)">Notifications are sent for alerts with rule_level &ge; 8 (HIGH or CRITICAL). Throttle: one notification per rule per agent per <span id="notifThrottle">30</span> minutes.</p>
           </div>
         </section>
+
+        <!-- SOAR PLAYBOOKS PAGE -->
+        <section id="page-playbooks" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">⚡ SOAR Playbooks</h2>
+              <p class="agents-subtitle">Automated multi-step response workflows triggered by alerts.</p>
+            </div>
+            <div class="agents-header-right">
+              <button class="btn btn-primary" onclick="showPlaybookModal()">+ New Playbook</button>
+            </div>
+          </header>
+
+          <!-- Tabs -->
+          <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid var(--border)">
+            <button id="pbTabPlaybooks" onclick="switchPbTab('playbooks')" style="background:none;border:none;border-bottom:2px solid var(--accent);color:var(--text-primary);padding:10px 20px;cursor:pointer;font-size:13px;font-weight:600">Playbooks</button>
+            <button id="pbTabHistory" onclick="switchPbTab('history')" style="background:none;border:none;border-bottom:2px solid transparent;color:var(--text-muted);padding:10px 20px;cursor:pointer;font-size:13px">Execution History</button>
+          </div>
+
+          <!-- Playbooks list -->
+          <div id="pbPanePlaybooks">
+            <div class="panel" style="padding:0">
+              <table class="data-table">
+                <thead><tr>
+                  <th>#</th><th>Name</th><th>Trigger Level</th><th>Actions</th><th>Runs</th><th>Enabled</th><th></th>
+                </tr></thead>
+                <tbody id="playbooksTableBody">
+                  <tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted)">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Execution history -->
+          <div id="pbPaneHistory" style="display:none">
+            <div class="panel" style="padding:0">
+              <table class="data-table">
+                <thead><tr>
+                  <th>Execution</th><th>Playbook</th><th>Alert</th><th>Agent</th><th>Status</th><th>Duration</th><th>Started</th>
+                </tr></thead>
+                <tbody id="executionsTableBody">
+                  <tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted)">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Create Playbook Modal -->
+        <div id="playbookModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:flex-start;justify-content:center;padding-top:40px;overflow-y:auto">
+          <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:28px;width:640px;max-width:95vw;margin-bottom:40px">
+            <h3 style="margin:0 0 20px">New Playbook</h3>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+              <div style="grid-column:1/-1">
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Name *</label>
+                <input id="pbName" type="text" placeholder="Block Brute Force Attacker" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px 12px;border-radius:6px;font-size:13px;box-sizing:border-box">
+              </div>
+              <div style="grid-column:1/-1">
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Description</label>
+                <input id="pbDesc" type="text" placeholder="Fires when brute force is detected" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px 12px;border-radius:6px;font-size:13px;box-sizing:border-box">
+              </div>
+            </div>
+
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px">
+              <div style="font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:10px">🎯 Trigger Conditions</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <div>
+                  <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Min Alert Level (1-15)</label>
+                  <input id="pbMinLevel" type="number" min="1" max="15" value="10" style="width:100%;background:var(--surface-1);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:5px;font-size:12px;box-sizing:border-box">
+                </div>
+                <div>
+                  <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Rule IDs (comma-sep, empty=any)</label>
+                  <input id="pbRuleIds" type="text" placeholder="1001, 1002" style="width:100%;background:var(--surface-1);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:5px;font-size:12px;box-sizing:border-box">
+                </div>
+                <div style="grid-column:1/-1">
+                  <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Rule Groups (comma-sep, empty=any)</label>
+                  <input id="pbRuleGroups" type="text" placeholder="authentication, fim, network" style="width:100%;background:var(--surface-1);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:5px;font-size:12px;box-sizing:border-box">
+                </div>
+              </div>
+            </div>
+
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:20px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <div style="font-size:12px;font-weight:600;color:var(--text-primary)">⚡ Actions (run in sequence)</div>
+                <button onclick="addPlaybookAction()" style="background:var(--surface-1);border:1px solid var(--border);color:var(--text-primary);padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer">+ Add Action</button>
+              </div>
+              <div id="pbActionsContainer" style="display:flex;flex-direction:column;gap:8px">
+                <div style="font-size:12px;color:var(--text-muted);font-style:italic">No actions yet. Click "Add Action" to build your playbook.</div>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:10px;justify-content:flex-end">
+              <button onclick="hidePlaybookModal()" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px 18px;border-radius:6px;cursor:pointer">Cancel</button>
+              <button onclick="submitPlaybook()" class="btn btn-primary">Create Playbook</button>
+            </div>
+          </div>
+        </div>
 
         <!-- CASE MANAGEMENT PAGE -->
         <section id="page-cases" class="page">

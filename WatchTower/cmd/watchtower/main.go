@@ -17,6 +17,7 @@ import (
 	"github.com/watchtower/watchtower/internal/registry"
 	"github.com/watchtower/watchtower/internal/response"
 	"github.com/watchtower/watchtower/internal/server/api"
+	"github.com/watchtower/watchtower/internal/playbook"
 	grpcserver "github.com/watchtower/watchtower/internal/server/grpc"
 	syslogserver "github.com/watchtower/watchtower/internal/server/syslog"
 	"github.com/watchtower/watchtower/internal/store"
@@ -131,6 +132,10 @@ func main() {
 			}
 		}()
 	}
+
+	// SOAR playbook executor
+	pbExec := playbook.NewExecutor(st, reg, logger)
+	eng.SetPlaybookHook(pbExec)
 
 	eng.Start()
 	defer eng.Stop()

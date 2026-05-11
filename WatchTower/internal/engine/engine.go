@@ -35,6 +35,11 @@ type VulnChecker interface {
 	CheckPackageEvent(agentID, name, version, arch string) []models.Event
 }
 
+// PlaybookHook is called after every stored alert so SOAR playbooks can fire.
+type PlaybookHook interface {
+	OnAlert(alert *models.Alert, event *models.Event)
+}
+
 type Engine struct {
 	cfg       config.EngineConfig
 	logger    *zap.Logger
@@ -46,6 +51,7 @@ type Engine struct {
 	store     AlertStore
 	responder    ActiveResponseOrchestrator
 	vulnChecker  VulnChecker
+	playbookHook PlaybookHook
 	deduper      *dedup.Manager
 	correlation  *correlation.Manager
 	eventCh      chan *models.Event
@@ -200,6 +206,10 @@ func (e *Engine) generateAlert(event *models.Event, rule *models.Rule) {
 		e.forwarder.ForwardAlert(a)
 	}
 
+	if e.playbookHook != nil {
+		e.playbookHook.OnAlert(a, event)
+	}
+
 	e.alertOut.Emit(a, event)
 }
 
@@ -216,6 +226,10 @@ func (e *Engine) SetResponder(r ActiveResponseOrchestrator) {
 
 func (e *Engine) SetVulnChecker(v VulnChecker) {
 	e.vulnChecker = v
+}
+
+func (e *Engine) SetPlaybookHook(h PlaybookHook) {
+	e.playbookHook = h
 }
 
 func (e *Engine) Rules() *rules.Matcher     { return e.rules }
