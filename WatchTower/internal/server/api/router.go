@@ -96,6 +96,16 @@ func (s *Server) routes() *chi.Mux {
 			r.Post("/import", sigh.ConvertAndStore)
 		})
 
+		idh := handlers.NewIdentityHandler(s.store, s.identitySyncer)
+		r.Route("/identity", func(r chi.Router) {
+			r.Get("/status", idh.Status)
+			r.Post("/sync", idh.Sync)
+			r.Get("/users", idh.List)
+			r.Post("/users", idh.Create)
+			r.Get("/users/{sam}", idh.Get)
+			r.Delete("/users/{sam}", idh.Delete)
+		})
+
 		rvh := handlers.NewRuleVersionHandler(s.store)
 		r.Route("/rule-versions", func(r chi.Router) {
 			r.Get("/", rvh.ListFiles)

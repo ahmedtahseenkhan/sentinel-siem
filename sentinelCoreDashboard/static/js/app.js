@@ -4855,6 +4855,141 @@ async function triggerReportNow(id) {
   alert('Report triggered — check your email shortly.');
 }
 
+// ── Identity Management ───────────────────────────────────────────────────────
+
+let _allIdentityUsers = [];
+
+async function loadIdentityPage() {
+  const dept    = document.getElementById('idFilterDept')?.value || '';
+  const enabled = document.getElementById('idFilterEnabled')?.checked ? 'true' : '';
+
+  const params = new URLSearchParams();
+  if (dept)    params.set('department', dept);
+  if (enabled) params.set('enabled', 'true');
+  params.set('limit', '500');
+
+  const [usersRes, statusRes] = await Promise.all([
+    fetch(`/api/identity/users?${params}`).then(r => r.json()).catch(() => ({})),
+    fetch('/api/identity/status').then(r => r.json()).catch(() => ({})),
+  ]);
+
+  _allIdentityUsers = usersRes.data || [];
+  const total   = usersRes.total || 0;
+  const enabled_count = usersRes.enabled || 0;
+
+  document.getElementById('idKpiTotal').textContent   = total;
+  document.getElementById('idKpiEnabled').textContent = enabled_count;
+  document.getElementById('idKpiDisabled').textContent = Math.max(0, total - enabled_count);
+  document.getElementById('idKpiLdap').textContent    = statusRes.ldap_configured ? 'Yes' : 'No';
+
+  // Populate department filter
+  const deptEl = document.getElementById('idFilterDept');
+  if (deptEl) {
+    const depts = [...new Set(_allIdentityUsers.map(u => u.department).filter(Boolean))].sort();
+    const currentDept = deptEl.value;
+    deptEl.innerHTML = '<option value="">All Departments</option>' +
+      depts.map(d => `<option value="${escHtml(d)}"${d===currentDept?' selected':''}>${escHtml(d)}</option>`).join('');
+  }
+
+  filterIdentityUsers();
+}
+
+function filterIdentityUsers() {
+  const search = (document.getElementById('idSearchInput')?.value || '').toLowerCase();
+  const users  = search
+    ? _allIdentityUsers.filter(u =>
+        (u.sam_account||'').toLowerCase().includes(search) ||
+        (u.display_name||'').toLowerCase().includes(search) ||
+        (u.email||'').toLowerCase().includes(search))
+    : _allIdentityUsers;
+
+  const tbody = document.getElementById('identityTableBody');
+  if (!tbody) return;
+
+  if (!users.length) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted)">${search ? 'No matching users.' : 'No users found. Configure LDAP or add manually.'}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td style="font-weight:600;font-size:12px">${escHtml(u.sam_account)}</td>
+      <td style="font-size:13px">${escHtml(u.display_name||'—')}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${escHtml(u.department||'—')}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${escHtml(u.title||'—')}</td>
+      <td style="font-size:12px">${u.email ? `<a href="mailto:${escHtml(u.email)}" style="color:var(--accent)">${escHtml(u.email)}</a>` : '—'}</td>
+      <td style="font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml((u.groups||[]).join(', '))}">
+        ${(u.groups||[]).slice(0,3).map(g => `<span style="background:var(--surface-2);border:1px solid var(--border);padding:1px 5px;border-radius:3px;margin-right:3px">${escHtml(g)}</span>`).join('')}
+        ${u.groups?.length > 3 ? `<span style="color:var(--text-muted)">+${u.groups.length-3}</span>` : ''}
+      </td>
+      <td>
+        <span style="background:${u.enabled ? '#10b98122':'#6b728022'};color:${u.enabled ? '#10b981':'#6b7280'};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">${u.enabled ? 'ENABLED':'DISABLED'}</span>
+      </td>
+      <td style="font-size:11px;color:var(--text-muted)">${u.source}</td>
+      <td>
+        <button onclick="deleteIdentityUser('${escHtml(u.sam_account)}')" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#ef4444;padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer">Delete</button>
+      </td>
+    </tr>`).join('');
+}
+
+async function triggerLdapSync() {
+  const btn = event?.target;
+  if (btn) btn.textContent = 'Syncing…';
+  const res = await fetch('/api/identity/sync', {method:'POST'}).then(r => r.json()).catch(() => ({}));
+  if (btn) btn.textContent = '⟳ Sync LDAP';
+  if (res?.message) {
+    alert(`✓ ${res.message} (${res.total} total users)`);
+    await loadIdentityPage();
+  } else {
+    alert(`✗ ${res?.error || 'Sync failed. Check LDAP configuration.'}`);
+  }
+}
+
+async function deleteIdentityUser(sam) {
+  if (!confirm(`Delete user ${sam}?`)) return;
+  await fetch(`/api/identity/users/${encodeURIComponent(sam)}`, {method:'DELETE'});
+  await loadIdentityPage();
+}
+
+function showAddUserModal() {
+  ['newUserSam','newUserDisplay','newUserEmail','newUserDept','newUserTitle','newUserGroups']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.getElementById('addUserModal').style.display = 'flex';
+}
+
+function hideAddUserModal() {
+  document.getElementById('addUserModal').style.display = 'none';
+}
+
+async function submitAddUser() {
+  const sam = document.getElementById('newUserSam')?.value?.trim();
+  if (!sam) { alert('Username is required'); return; }
+
+  const groupsRaw = document.getElementById('newUserGroups')?.value?.trim() || '';
+  const groups = groupsRaw ? groupsRaw.split(',').map(g => g.trim()).filter(Boolean) : [];
+
+  await fetch('/api/identity/users', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      sam_account:  sam,
+      display_name: document.getElementById('newUserDisplay')?.value?.trim() || '',
+      email:        document.getElementById('newUserEmail')?.value?.trim() || '',
+      department:   document.getElementById('newUserDept')?.value?.trim() || '',
+      title:        document.getElementById('newUserTitle')?.value?.trim() || '',
+      groups,
+    })
+  });
+  hideAddUserModal();
+  await loadIdentityPage();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.nav-item[data-page="identity"]').forEach(el => {
+    el.addEventListener('click', () => loadIdentityPage());
+  });
+});
+
 // ── Detection Studio (Rule Versioning) ───────────────────────────────────────
 
 let _rvSelectedFile = null;

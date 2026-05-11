@@ -19,6 +19,18 @@ type Config struct {
 	License     LicenseConfig     `yaml:"license"`
 	ThreatIntel ThreatIntelConfig `yaml:"threat_intel"`
 	Syslog      SyslogConfig      `yaml:"syslog"`
+	Identity    IdentityConfig    `yaml:"identity"`
+}
+
+// IdentityConfig configures LDAP/AD user synchronisation.
+type IdentityConfig struct {
+	Enabled      bool   `yaml:"enabled"`
+	URL          string `yaml:"url"`           // e.g. ldap://dc.company.com:389
+	BindDN       string `yaml:"bind_dn"`       // e.g. CN=sentinel,CN=Users,DC=company,DC=com
+	BindPassword string `yaml:"bind_password"`
+	BaseDN       string `yaml:"base_dn"`       // e.g. DC=company,DC=com
+	SyncInterval string `yaml:"sync_interval"` // e.g. "1h"
+	UserFilter   string `yaml:"user_filter"`   // default: (objectClass=person)
 }
 
 // SyslogConfig enables the built-in UDP/TCP syslog receiver.
@@ -240,5 +252,18 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("WATCHTOWER_SYSLOG_ADDR"); v != "" {
 		cfg.Syslog.Enabled = true
 		cfg.Syslog.Addr = v
+	}
+	if v := os.Getenv("WATCHTOWER_LDAP_URL"); v != "" {
+		cfg.Identity.Enabled = true
+		cfg.Identity.URL = v
+	}
+	if v := os.Getenv("WATCHTOWER_LDAP_BIND_DN"); v != "" {
+		cfg.Identity.BindDN = v
+	}
+	if v := os.Getenv("WATCHTOWER_LDAP_BIND_PASSWORD"); v != "" {
+		cfg.Identity.BindPassword = v
+	}
+	if v := os.Getenv("WATCHTOWER_LDAP_BASE_DN"); v != "" {
+		cfg.Identity.BaseDN = v
 	}
 }

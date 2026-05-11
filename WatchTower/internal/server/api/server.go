@@ -13,14 +13,20 @@ import (
 	"go.uber.org/zap"
 )
 
+// IdentitySyncer is satisfied by *identity.Manager (avoids import cycle).
+type IdentitySyncer interface {
+	Sync() error
+}
+
 type Server struct {
-	cfg      config.APIConfig
-	logger   *zap.Logger
-	registry *registry.Registry
-	store    *store.Store
-	engine   *engine.Engine
-	audit    *audit.Logger
-	http     *http.Server
+	cfg            config.APIConfig
+	logger         *zap.Logger
+	registry       *registry.Registry
+	store          *store.Store
+	engine         *engine.Engine
+	audit          *audit.Logger
+	identitySyncer IdentitySyncer
+	http           *http.Server
 }
 
 func NewServer(cfg config.APIConfig, logger *zap.Logger, reg *registry.Registry, st *store.Store, eng *engine.Engine, al *audit.Logger) *Server {
@@ -47,6 +53,11 @@ func NewServer(cfg config.APIConfig, logger *zap.Logger, reg *registry.Registry,
 		IdleTimeout:  60 * time.Second,
 	}
 	return s
+}
+
+// SetIdentitySyncer wires the LDAP sync manager into the API server.
+func (s *Server) SetIdentitySyncer(syncer IdentitySyncer) {
+	s.identitySyncer = syncer
 }
 
 func (s *Server) Start() error {

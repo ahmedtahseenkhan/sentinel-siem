@@ -111,6 +111,11 @@
             <span class="nav-label">Compliance</span>
           </a>
 
+          <a href="#" class="nav-item" data-page="identity">
+            <span class="nav-icon">👤</span>
+            <span class="nav-label">Identity</span>
+          </a>
+
           <!-- MANAGEMENT -->
           <div class="nav-section-label">Management</div>
           <a href="#" class="nav-item" data-page="rules">
@@ -2011,6 +2016,90 @@ ALERT_THROTTLE_MINUTES=30</pre>
             <p style="font-size:13px;color:var(--text-muted)">Notifications are sent for alerts with rule_level &ge; 8 (HIGH or CRITICAL). Throttle: one notification per rule per agent per <span id="notifThrottle">30</span> minutes.</p>
           </div>
         </section>
+
+        <!-- IDENTITY PAGE -->
+        <section id="page-identity" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">👤 Identity Management</h2>
+              <p class="agents-subtitle">User accounts, groups, and risk scoring from AD/LDAP and alert data.</p>
+            </div>
+            <div class="agents-header-right" style="display:flex;gap:8px">
+              <button onclick="triggerLdapSync()" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:6px 14px;border-radius:6px;font-size:12px;cursor:pointer">⟳ Sync LDAP</button>
+              <button onclick="showAddUserModal()" class="btn btn-primary">+ Add User</button>
+            </div>
+          </header>
+
+          <!-- KPI bar -->
+          <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+            <div class="kpi-card"><div class="kpi-value" id="idKpiTotal">—</div><div class="kpi-label">Total Users</div></div>
+            <div class="kpi-card"><div class="kpi-value" id="idKpiEnabled" style="color:#10b981">—</div><div class="kpi-label">Enabled</div></div>
+            <div class="kpi-card"><div class="kpi-value" id="idKpiDisabled" style="color:#6b7280">—</div><div class="kpi-label">Disabled</div></div>
+            <div class="kpi-card"><div class="kpi-value" id="idKpiLdap" style="color:#3b82f6">—</div><div class="kpi-label">LDAP Synced</div></div>
+          </div>
+
+          <!-- Filter bar -->
+          <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+            <input id="idSearchInput" type="text" placeholder="Search by username or name…" oninput="filterIdentityUsers()" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:6px 12px;border-radius:6px;font-size:13px;min-width:220px">
+            <select id="idFilterDept" onchange="loadIdentityPage()" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:6px 12px;border-radius:6px;font-size:13px">
+              <option value="">All Departments</option>
+            </select>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="idFilterEnabled" onchange="loadIdentityPage()"> Enabled only
+            </label>
+          </div>
+
+          <!-- Users table -->
+          <div class="panel" style="padding:0">
+            <table class="data-table" id="identityTable">
+              <thead><tr>
+                <th>Username</th><th>Display Name</th><th>Department</th><th>Title</th><th>Email</th><th>Groups</th><th>Status</th><th>Source</th><th></th>
+              </tr></thead>
+              <tbody id="identityTableBody">
+                <tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted)">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Add User Modal -->
+        <div id="addUserModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center">
+          <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:28px;width:480px;max-width:95vw">
+            <h3 style="margin:0 0 20px">Add User</h3>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div>
+                  <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:3px">Username (SAM) *</label>
+                  <input id="newUserSam" type="text" placeholder="jdoe" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:7px 10px;border-radius:6px;font-size:13px;box-sizing:border-box">
+                </div>
+                <div>
+                  <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:3px">Display Name</label>
+                  <input id="newUserDisplay" type="text" placeholder="John Doe" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:7px 10px;border-radius:6px;font-size:13px;box-sizing:border-box">
+                </div>
+                <div>
+                  <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:3px">Email</label>
+                  <input id="newUserEmail" type="email" placeholder="j.doe@company.com" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:7px 10px;border-radius:6px;font-size:13px;box-sizing:border-box">
+                </div>
+                <div>
+                  <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:3px">Department</label>
+                  <input id="newUserDept" type="text" placeholder="IT Security" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:7px 10px;border-radius:6px;font-size:13px;box-sizing:border-box">
+                </div>
+                <div>
+                  <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:3px">Title</label>
+                  <input id="newUserTitle" type="text" placeholder="Security Analyst" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:7px 10px;border-radius:6px;font-size:13px;box-sizing:border-box">
+                </div>
+                <div>
+                  <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:3px">Groups (comma-sep)</label>
+                  <input id="newUserGroups" type="text" placeholder="IT, Domain Users" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:7px 10px;border-radius:6px;font-size:13px;box-sizing:border-box">
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+              <button onclick="hideAddUserModal()" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px 18px;border-radius:6px;cursor:pointer">Cancel</button>
+              <button onclick="submitAddUser()" class="btn btn-primary">Add User</button>
+            </div>
+          </div>
+        </div>
 
         <!-- DETECTION STUDIO / RULE VERSIONING PAGE -->
         <section id="page-rule-versions" class="page">

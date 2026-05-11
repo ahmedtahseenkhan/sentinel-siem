@@ -61,6 +61,7 @@ func (s *Store) migrate() error {
 		"migrations/002_cases.sql",
 		"migrations/003_playbooks.sql",
 		"migrations/004_rule_versions.sql",
+		"migrations/005_identity.sql",
 	}
 	for _, f := range files {
 		data, err := migrations.ReadFile(f)
@@ -664,6 +665,126 @@ func (s *Store) ListExecutions(playbookID int64, limit int) ([]*models.PlaybookE
 		execs = append(execs, ex)
 	}
 	return execs, rows.Err()
+}
+
+// === Identity operations ===
+
+func (s *Store) UpsertIdentityUser(u *models.IdentityUser) error {
+	groupsJSON, _ := json.Marshal(u.Groups)
+	attrsJSON, _ := json.Marshal(u.RawAttrs)
+	u.SyncedAt = time.Now().UnixMilli()
+	_, err := s.pool.Exec(context.Background(), `
+		INSERT INTO identity_users
+		  (sam_account, display_name, email, department, title, manager, groups,
+		   enabled, last_logon, bad_pwd_count, raw_attrs, synced_at, source)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		ON CONFLICT (sam_account) DO UPDATE SET
+		  display_name=$2, email=$3, department=$4, title=$5, manager=$6,
+		  groups=$7, enabled=$8, last_logon=$9, bad_pwd_count=$10,
+		  raw_attrs=$11, synced_at=$12, source=$13`,
+		u.SamAccount, u.DisplayName, u.Email, u.Department, u.Title, u.Manager,
+		string(groupsJSON), u.Enabled, u.LastLogon, u.BadPwdCount,
+		string(attrsJSON), u.SyncedAt, u.Source,
+	)
+	return err
+}
+
+func (s *Store) ListIdentityUsers(department string, enabledOnly bool, limit, offset int) ([]*models.IdentityUser, error) {
+	var conditions []string
+	var args []interface{}
+	if department != "" {
+		args = append(args, department)
+		conditions = append(conditions, fmt.Sprintf("department = $%d", len(args)))
+	}
+	if enabledOnly {
+		conditions = append(conditions, "enabled = TRUE")
+	}
+	where := ""
+	if len(conditions) > 0 {
+		where = "WHERE " + strings.Join(conditions, " AND ")
+	}
+	args = append(args, limit, offset)
+	query := fmt.Sprintf(`
+		SELECT id, sam_account, display_name, email, department, title, manager,
+		       groups, enabled, last_logon, bad_pwd_count, synced_at, source
+		FROM identity_users %s
+		ORDER BY display_name ASC
+		LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args))
+
+	rows, err := s.pool.Query(context.Background(), query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var users []*models.IdentityUser
+	for rows.Next() {
+		u, err := scanIdentityUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+func (s *Store) GetIdentityUser(samAccount string) (*models.IdentityUser, error) {
+	row := s.pool.QueryRow(context.Background(), `
+		SELECT id, sam_account, display_name, email, department, title, manager,
+		       groups, enabled, last_logon, bad_pwd_count, synced_at, source
+		FROM identity_users WHERE sam_account = $1`, samAccount)
+	return scanIdentityUserRow(row)
+}
+
+func (s *Store) CountIdentityUsers() (total, enabled int, err error) {
+	rows, err := s.pool.Query(context.Background(),
+		`SELECT enabled, COUNT(*) FROM identity_users GROUP BY enabled`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var e bool
+		var c int
+		if err = rows.Scan(&e, &c); err != nil {
+			return
+		}
+		total += c
+		if e {
+			enabled += c
+		}
+	}
+	err = rows.Err()
+	return
+}
+
+func (s *Store) DeleteIdentityUser(samAccount string) error {
+	_, err := s.pool.Exec(context.Background(),
+		"DELETE FROM identity_users WHERE sam_account = $1", samAccount)
+	return err
+}
+
+func scanIdentityUser(rows pgx.Rows) (*models.IdentityUser, error) {
+	u := &models.IdentityUser{}
+	var groupsJSON string
+	if err := rows.Scan(&u.ID, &u.SamAccount, &u.DisplayName, &u.Email,
+		&u.Department, &u.Title, &u.Manager,
+		&groupsJSON, &u.Enabled, &u.LastLogon, &u.BadPwdCount, &u.SyncedAt, &u.Source); err != nil {
+		return nil, err
+	}
+	_ = json.Unmarshal([]byte(groupsJSON), &u.Groups)
+	return u, nil
+}
+
+func scanIdentityUserRow(row pgx.Row) (*models.IdentityUser, error) {
+	u := &models.IdentityUser{}
+	var groupsJSON string
+	if err := row.Scan(&u.ID, &u.SamAccount, &u.DisplayName, &u.Email,
+		&u.Department, &u.Title, &u.Manager,
+		&groupsJSON, &u.Enabled, &u.LastLogon, &u.BadPwdCount, &u.SyncedAt, &u.Source); err != nil {
+		return nil, err
+	}
+	_ = json.Unmarshal([]byte(groupsJSON), &u.Groups)
+	return u, nil
 }
 
 // === Rule Version operations ===

@@ -18,6 +18,7 @@ import (
 	"github.com/watchtower/watchtower/internal/registry"
 	"github.com/watchtower/watchtower/internal/response"
 	"github.com/watchtower/watchtower/internal/server/api"
+	"github.com/watchtower/watchtower/internal/identity"
 	"github.com/watchtower/watchtower/internal/playbook"
 	grpcserver "github.com/watchtower/watchtower/internal/server/grpc"
 	syslogserver "github.com/watchtower/watchtower/internal/server/syslog"
@@ -177,8 +178,15 @@ func main() {
 		}
 	}()
 
+	// Identity (LDAP/AD sync)
+	idMgr := identity.NewManager(cfg.Identity, st, logger)
+	go idMgr.Start(ctx)
+
 	// API server
 	apiSrv := api.NewServer(cfg.Server.API, logger, reg, st, eng, auditLogger)
+	if cfg.Identity.Enabled {
+		apiSrv.SetIdentitySyncer(idMgr)
+	}
 	go func() {
 		if err := apiSrv.Start(); err != nil {
 			logger.Error("API server exited", zap.Error(err))

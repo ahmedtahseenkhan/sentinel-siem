@@ -2585,6 +2585,65 @@ def api_cases_evidence_add(case_id):
         return _api_error(e)
 
 
+# ── Identity Management ───────────────────────────────────────────────────────
+
+@app.route("/api/identity/status", methods=["GET"])
+def api_identity_status():
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request("/api/v1/identity/status", method="GET")
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/identity/users", methods=["GET"])
+def api_identity_users():
+    try:
+        from watchtower_client import watchtower_request
+        params = {k: v for k, v in request.args.items()}
+        res = watchtower_request("/api/v1/identity/users", method="GET", params=params)
+        return jsonify(res or {"data": [], "total": 0})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/identity/users", methods=["POST"])
+def api_identity_users_create():
+    try:
+        from watchtower_client import watchtower_request
+        body = request.get_json(force=True) or {}
+        res = watchtower_request("/api/v1/identity/users", method="POST", json_body=body)
+        return jsonify(res or {}), 201
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/identity/users/<sam>", methods=["GET"])
+def api_identity_user_get(sam):
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request(f"/api/v1/identity/users/{sam}", method="GET")
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/identity/users/<sam>", methods=["DELETE"])
+def api_identity_user_delete(sam):
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request(f"/api/v1/identity/users/{sam}", method="DELETE")
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/identity/sync", methods=["POST"])
+def api_identity_sync():
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request("/api/v1/identity/sync", method="POST")
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+
 # ── Detection Versioning ──────────────────────────────────────────────────────
 
 @app.route("/api/rule-versions", methods=["GET"])
