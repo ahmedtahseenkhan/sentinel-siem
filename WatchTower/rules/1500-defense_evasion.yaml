@@ -1,0 +1,233 @@
+# WatchTower — Defense Evasion Detection Rules
+# Rule IDs: 7400-7449
+# Covers: log clearing, AMSI bypass, obfuscation, UAC bypass,
+#          timestomping, indicator removal, binary masquerading
+
+rules:
+  - id: 7400
+    level: 12
+    description: "Windows event log cleared via wevtutil"
+    groups: ["defense_evasion", "log_clearing"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)wevtutil.*cl|wevtutil.*clear"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1070.001", technique_name: "Clear Windows Event Logs"}
+    alert:
+      title: "Defense Evasion: Event log cleared via wevtutil"
+    enabled: true
+
+  - id: 7401
+    level: 11
+    description: "Linux audit log deleted or truncated — audit trail destruction"
+    groups: ["defense_evasion", "log_clearing", "linux"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(> /var/log|truncate.*log|shred.*log|rm.*\\.log)"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1070.002", technique_name: "Clear Linux or Mac System Logs"}
+    alert:
+      title: "Defense Evasion: Linux log file deleted or truncated"
+    enabled: true
+
+  - id: 7402
+    level: 12
+    description: "AMSI bypass detected — antimalware scan interface disabled"
+    groups: ["defense_evasion", "amsi_bypass", "powershell"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(amsiInitFailed|amsiContext|AmsiScanBuffer|Reflection\\.Assembly.*load)"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1562.001", technique_name: "Disable or Modify Tools"}
+    alert:
+      title: "Defense Evasion: AMSI bypass attempt detected"
+    enabled: true
+
+  - id: 7403
+    level: 11
+    description: "UAC bypass technique detected — common elevation bypasses"
+    groups: ["defense_evasion", "uac_bypass", "privilege_escalation"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(fodhelper|eventvwr|sdclt|diskcleanup|computerdefaults).*reg.*|cmstp\\.exe.*inf"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1548.002", technique_name: "Bypass User Account Control"}
+    alert:
+      title: "Defense Evasion: UAC bypass technique detected"
+    enabled: true
+
+  - id: 7404
+    level: 10
+    description: "Timestomping detected — file timestamp modification"
+    groups: ["defense_evasion", "timestomping"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(touch -t|SetCreationTime|SetLastWriteTime|timestomp)"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1070.006", technique_name: "Timestomp"}
+    alert:
+      title: "Defense Evasion: File timestamp modification (timestomping)"
+    enabled: true
+
+  - id: 7405
+    level: 11
+    description: "Base64 encoded command execution — obfuscation technique"
+    groups: ["defense_evasion", "obfuscation", "powershell"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)-[Ee][Nn][Cc][Oo][Dd][Ee][Dd][Cc][Oo][Mm][Mm][Aa][Nn][Dd]|-[Ee][Nn][Cc]|-[Ee][Cc]\\s"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1027", technique_name: "Obfuscated Files or Information"}
+    alert:
+      title: "Defense Evasion: Base64 encoded PowerShell command"
+    enabled: true
+
+  - id: 7406
+    level: 10
+    description: "Execution policy bypass — PowerShell security restrictions disabled"
+    groups: ["defense_evasion", "powershell", "execution_policy"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)-ExecutionPolicy\\s+(Bypass|Unrestricted|RemoteSigned)|Set-ExecutionPolicy"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1059.001", technique_name: "PowerShell"}
+    alert:
+      title: "Defense Evasion: PowerShell execution policy bypass"
+    enabled: true
+
+  - id: 7407
+    level: 12
+    description: "Binary masquerading — executable named as system binary"
+    groups: ["defense_evasion", "masquerading"]
+    match:
+      type: "process.new"
+      fields:
+        path: {regex: "(?i)(AppData|Temp|Downloads|Desktop)\\\\(svchost|lsass|csrss|winlogon|explorer)\\.exe"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1036.005", technique_name: "Match Legitimate Name or Location"}
+    alert:
+      title: "Defense Evasion: System binary name used in suspicious path"
+    enabled: true
+
+  - id: 7408
+    level: 11
+    description: "Defender exclusion added — antivirus coverage gap created"
+    groups: ["defense_evasion", "av_exclusion"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(Add-MpPreference|Set-MpPreference).*(ExclusionPath|ExclusionExtension|ExclusionProcess)"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1562.001", technique_name: "Disable or Modify Tools"}
+    alert:
+      title: "Defense Evasion: Windows Defender exclusion added"
+    enabled: true
+
+  - id: 7409
+    level: 11
+    description: "Process injection via regsvr32 — COM scriptlet execution"
+    groups: ["defense_evasion", "regsvr32", "process_injection"]
+    match:
+      type: "process.new"
+      fields:
+        name: {equals: "regsvr32.exe"}
+        command_line: {regex: "(?i)(/s.*sct|scrobj\\.dll|http|ftp)"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1218.010", technique_name: "Regsvr32"}
+    alert:
+      title: "Defense Evasion: Regsvr32 executing remote scriptlet"
+    enabled: true
+
+  - id: 7410
+    level: 11
+    description: "MSHTA executing remote script — HTML Application abuse"
+    groups: ["defense_evasion", "mshta", "lolbin"]
+    match:
+      type: "process.new"
+      fields:
+        name: {equals: "mshta.exe"}
+        command_line: {regex: "(?i)(http|ftp|vbscript:|javascript:)"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1218.005", technique_name: "Mshta"}
+    alert:
+      title: "Defense Evasion: MSHTA executing remote/inline script"
+    enabled: true
+
+  - id: 7411
+    level: 10
+    description: "Certutil used to decode/download — LOLBin abuse"
+    groups: ["defense_evasion", "certutil", "lolbin", "download"]
+    match:
+      type: "process.new"
+      fields:
+        name: {equals: "certutil.exe"}
+        command_line: {regex: "(?i)(-decode|-urlcache|-split|-f\\s+http)"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1140", technique_name: "Deobfuscate/Decode Files or Information"}
+    alert:
+      title: "Defense Evasion: Certutil used to decode or download file"
+    enabled: true
+
+  - id: 7412
+    level: 11
+    description: "Sysmon/audit service stopped — monitoring disabled"
+    groups: ["defense_evasion", "monitoring_disabled"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(net stop|sc stop|sc delete).*(sysmon|auditbeat|winlogbeat|osquery|auditd)"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1562.001", technique_name: "Disable or Modify Tools"}
+    alert:
+      title: "Defense Evasion: Security monitoring service stopped"
+    enabled: true
+
+  - id: 7413
+    level: 10
+    description: "Alternate data stream used — file hidden in NTFS ADS"
+    groups: ["defense_evasion", "ads", "ntfs"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "type.*>.*:.*\\.|echo.*>.*:\\..*\\.|wmic.*stream"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1564.004", technique_name: "NTFS File Attributes"}
+    alert:
+      title: "Defense Evasion: NTFS alternate data stream usage"
+    enabled: true
+
+  - id: 7414
+    level: 11
+    description: "RunDLL32 executing suspicious payload"
+    groups: ["defense_evasion", "rundll32", "lolbin"]
+    match:
+      type: "process.new"
+      fields:
+        name: {equals: "rundll32.exe"}
+        command_line: {regex: "(?i)(javascript:|vbscript:|http|shell32\\.dll.*shellexec|advpack\\.dll|ieadvpack\\.dll)"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1218.011", technique_name: "Rundll32"}
+    alert:
+      title: "Defense Evasion: RunDLL32 executing suspicious code"
+    enabled: true
+
+  - id: 7415
+    level: 10
+    description: "Hidden file or directory created — stealth technique"
+    groups: ["defense_evasion", "hidden_files"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(attrib.*\\+h|chflags.*hidden|SetFileAttributes.*HIDDEN)"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1564.001", technique_name: "Hidden Files and Directories"}
+    alert:
+      title: "Defense Evasion: File or directory hidden using attrib"
+    enabled: true

@@ -1,0 +1,304 @@
+# WatchTower — Authentication & Credential Attack Rules
+# Rule IDs: 7000-7059
+# Covers: brute force, account lockout, credential stuffing, MFA bypass,
+#          password spraying, Kerberos attacks, LDAP enumeration
+
+rules:
+  - id: 7000
+    level: 8
+    description: "Multiple failed authentication attempts detected — possible brute force"
+    groups: ["authentication", "brute_force", "attack"]
+    match:
+      type: "logs.syslog"
+      fields:
+        message: {contains: "authentication failure"}
+    correlation:
+      window: "5m"
+      threshold: 5
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1110.001", technique_name: "Password Guessing"}
+    alert:
+      title: "Brute Force: Multiple authentication failures"
+    enabled: true
+
+  - id: 7001
+    level: 10
+    description: "SSH brute force attack detected — rapid successive failures"
+    groups: ["authentication", "ssh", "brute_force", "attack"]
+    match:
+      type: "logs.syslog"
+      fields:
+        message: {contains: "Failed password"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1110.001", technique_name: "Password Guessing"}
+    alert:
+      title: "Brute Force: SSH password attack"
+    enabled: true
+
+  - id: 7002
+    level: 9
+    description: "Account locked out after repeated failed logins"
+    groups: ["authentication", "account_lockout", "attack"]
+    match:
+      type: "logs.syslog"
+      fields:
+        message: {contains: "account locked"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1110", technique_name: "Brute Force"}
+    alert:
+      title: "Account Lockout: User account locked due to failed logins"
+    enabled: true
+
+  - id: 7003
+    level: 10
+    description: "Windows account lockout event (Event ID 4740)"
+    groups: ["authentication", "windows", "account_lockout"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4740"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1110", technique_name: "Brute Force"}
+    alert:
+      title: "Windows: Account locked out (Event 4740)"
+    enabled: true
+
+  - id: 7004
+    level: 8
+    description: "Windows failed login event (Event ID 4625)"
+    groups: ["authentication", "windows", "failed_login"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4625"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1110", technique_name: "Brute Force"}
+    alert:
+      title: "Windows: Failed login attempt (Event 4625)"
+    enabled: true
+
+  - id: 7005
+    level: 5
+    description: "Windows successful login after previous failures"
+    groups: ["authentication", "windows", "login"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4624"}
+    alert:
+      title: "Windows: Successful login (Event 4624)"
+    enabled: true
+
+  - id: 7006
+    level: 12
+    description: "Password spray attack pattern — same password tried across many accounts"
+    groups: ["authentication", "password_spray", "attack", "critical"]
+    match:
+      type: "logs.syslog"
+      fields:
+        message: {contains: "invalid password"}
+    correlation:
+      window: "10m"
+      threshold: 20
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1110.003", technique_name: "Password Spraying"}
+    alert:
+      title: "Password Spray: Mass invalid password attempts"
+    enabled: true
+
+  - id: 7007
+    level: 13
+    description: "Credential dumping tool detected — mimikatz, secretsdump, or similar"
+    groups: ["authentication", "credential_dumping", "attack", "critical"]
+    match:
+      type: "process.new"
+      fields:
+        name: {regex: "(?i)(mimikatz|secretsdump|mimidump|wce\\.exe|pwdump|gsecdump|fgdump)"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1003", technique_name: "OS Credential Dumping"}
+    alert:
+      title: "CRITICAL: Credential dumping tool detected"
+    enabled: true
+
+  - id: 7008
+    level: 12
+    description: "LSASS process access — possible credential harvesting via memory dump"
+    groups: ["authentication", "lsass", "credential_dumping", "attack"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {contains: "lsass"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1003.001", technique_name: "LSASS Memory"}
+    alert:
+      title: "Credential Access: LSASS process access detected"
+    enabled: true
+
+  - id: 7009
+    level: 10
+    description: "Kerberoasting attack detected — SPN discovery and ticket request"
+    groups: ["authentication", "kerberos", "kerberoasting", "attack"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4769"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1558.003", technique_name: "Kerberoasting"}
+    alert:
+      title: "Kerberoasting: Service ticket requested for SPN"
+    enabled: true
+
+  - id: 7010
+    level: 11
+    description: "AS-REP Roasting detected — pre-authentication disabled for user"
+    groups: ["authentication", "kerberos", "asrep_roasting", "attack"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4768"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1558.004", technique_name: "AS-REP Roasting"}
+    alert:
+      title: "AS-REP Roasting: Kerberos pre-auth disabled"
+    enabled: true
+
+  - id: 7011
+    level: 9
+    description: "Root login via SSH detected — direct root login is high risk"
+    groups: ["authentication", "ssh", "root_login", "high"]
+    match:
+      type: "logs.syslog"
+      fields:
+        message: {contains: "Accepted password for root"}
+    mitre:
+      - {tactic_id: "TA0004", tactic_name: "Privilege Escalation", technique_id: "T1078", technique_name: "Valid Accounts"}
+    alert:
+      title: "SSH: Direct root login accepted"
+    enabled: true
+
+  - id: 7012
+    level: 7
+    description: "SSH key-based login — new key authentication"
+    groups: ["authentication", "ssh", "key_auth"]
+    match:
+      type: "logs.syslog"
+      fields:
+        message: {contains: "Accepted publickey"}
+    alert:
+      title: "SSH: Public key authentication accepted"
+    enabled: true
+
+  - id: 7013
+    level: 10
+    description: "Multiple accounts targeted from single source — credential stuffing"
+    groups: ["authentication", "credential_stuffing", "attack"]
+    match:
+      type: "logs.syslog"
+      fields:
+        message: {contains: "authentication failed"}
+    correlation:
+      window: "2m"
+      threshold: 15
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1110.004", technique_name: "Credential Stuffing"}
+    alert:
+      title: "Credential Stuffing: Mass authentication failures from single IP"
+    enabled: true
+
+  - id: 7014
+    level: 8
+    description: "sudo command executed — privilege elevation via sudo"
+    groups: ["authentication", "sudo", "privilege_elevation"]
+    match:
+      type: "logs.syslog"
+      fields:
+        message: {contains: "sudo:"}
+    mitre:
+      - {tactic_id: "TA0004", tactic_name: "Privilege Escalation", technique_id: "T1548.003", technique_name: "Sudo and Sudo Caching"}
+    alert:
+      title: "Privilege Escalation: sudo command executed"
+    enabled: true
+
+  - id: 7015
+    level: 12
+    description: "sudo privilege escalation failure — user not in sudoers"
+    groups: ["authentication", "sudo", "privilege_escalation_failure", "attack"]
+    match:
+      type: "logs.syslog"
+      fields:
+        message: {contains: "is not in the sudoers file"}
+    mitre:
+      - {tactic_id: "TA0004", tactic_name: "Privilege Escalation", technique_id: "T1548.003", technique_name: "Sudo and Sudo Caching"}
+    alert:
+      title: "Privilege Escalation: Unauthorized sudo attempt"
+    enabled: true
+
+  - id: 7016
+    level: 9
+    description: "Windows: New user account created (Event 4720)"
+    groups: ["authentication", "windows", "account_creation"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4720"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1136.001", technique_name: "Local Account"}
+    alert:
+      title: "Windows: New user account created (Event 4720)"
+    enabled: true
+
+  - id: 7017
+    level: 10
+    description: "Windows: User added to privileged group (Event 4728/4732/4756)"
+    groups: ["authentication", "windows", "group_membership", "privilege_escalation"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {regex: "4728|4732|4756"}
+    mitre:
+      - {tactic_id: "TA0004", tactic_name: "Privilege Escalation", technique_id: "T1078.002", technique_name: "Domain Accounts"}
+    alert:
+      title: "Windows: User added to privileged group"
+    enabled: true
+
+  - id: 7018
+    level: 11
+    description: "Windows: Logon with explicit credentials (runas / Event 4648)"
+    groups: ["authentication", "windows", "explicit_credentials"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4648"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1134.003", technique_name: "Make and Impersonate Token"}
+    alert:
+      title: "Windows: Logon using explicit credentials (Event 4648)"
+    enabled: true
+
+  - id: 7019
+    level: 9
+    description: "PAM authentication failure — Linux pluggable auth module failure"
+    groups: ["authentication", "linux", "pam"]
+    match:
+      type: "logs.syslog"
+      fields:
+        message: {contains: "pam_unix.*authentication failure"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1110", technique_name: "Brute Force"}
+    alert:
+      title: "PAM: Authentication failure"
+    enabled: true
+
+  - id: 7020
+    level: 10
+    description: "Windows: Security log cleared (Event 1102) — audit trail destroyed"
+    groups: ["authentication", "windows", "log_clearing", "defense_evasion"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "1102"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1070.001", technique_name: "Clear Windows Event Logs"}
+    alert:
+      title: "CRITICAL: Windows Security event log cleared (Event 1102)"
+    enabled: true

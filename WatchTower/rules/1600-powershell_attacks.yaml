@@ -1,0 +1,230 @@
+# WatchTower — PowerShell Attack Detection Rules
+# Rule IDs: 7500-7549
+# Covers: download cradles, AMSI bypass, Invoke-Expression abuse,
+#          Empire/Cobalt Strike payloads, living-off-the-land techniques
+
+rules:
+  - id: 7500
+    level: 12
+    description: "PowerShell download cradle detected — downloading and executing remote code"
+    groups: ["powershell", "download_cradle", "attack"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(IEX|Invoke-Expression).*(DownloadString|Net\\.WebClient|WebRequest|DownloadFile)"}
+    mitre:
+      - {tactic_id: "TA0002", tactic_name: "Execution", technique_id: "T1059.001", technique_name: "PowerShell"}
+    alert:
+      title: "PowerShell: Download cradle (remote code execution)"
+    enabled: true
+
+  - id: 7501
+    level: 11
+    description: "PowerShell running with hidden window — stealthy execution"
+    groups: ["powershell", "stealth", "attack"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)-WindowStyle\\s+Hidden|-W\\s+H|-NonInteractive|-Sta\\s+-W\\s+H"}
+    mitre:
+      - {tactic_id: "TA0002", tactic_name: "Execution", technique_id: "T1059.001", technique_name: "PowerShell"}
+    alert:
+      title: "PowerShell: Hidden window execution"
+    enabled: true
+
+  - id: 7502
+    level: 12
+    description: "PowerShell Empire payload indicators detected"
+    groups: ["powershell", "empire", "c2", "attack"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(System\\.Net\\.ServicePointManager|ServerCertificateValidationCallback|Convert\\.FromBase64String.*Invoke)"}
+    mitre:
+      - {tactic_id: "TA0002", tactic_name: "Execution", technique_id: "T1059.001", technique_name: "PowerShell"}
+    alert:
+      title: "PowerShell: Empire framework payload detected"
+    enabled: true
+
+  - id: 7503
+    level: 13
+    description: "Cobalt Strike PowerShell stager detected"
+    groups: ["powershell", "cobalt_strike", "c2", "critical"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(FromBase64String.*Decompress|GZipStream.*Decompress|payload.*Invoke-Expression)"}
+    mitre:
+      - {tactic_id: "TA0002", tactic_name: "Execution", technique_id: "T1059.001", technique_name: "PowerShell"}
+    alert:
+      title: "CRITICAL: Cobalt Strike PowerShell stager detected"
+    enabled: true
+
+  - id: 7504
+    level: 12
+    description: "PowerShell Mimikatz invocation — credential dumping via PS"
+    groups: ["powershell", "credential_dumping", "mimikatz"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(Invoke-Mimikatz|mimikatz|DumpCreds|sekurlsa::logonpasswords)"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1003.001", technique_name: "LSASS Memory"}
+    alert:
+      title: "PowerShell: Mimikatz credential dumping"
+    enabled: true
+
+  - id: 7505
+    level: 11
+    description: "PowerShell reflective DLL injection detected"
+    groups: ["powershell", "injection", "attack"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(Invoke-ReflectivePEInjection|Invoke-DllInjection|PowerSploit|PowerShellMafia)"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1055.001", technique_name: "Dynamic-link Library Injection"}
+    alert:
+      title: "PowerShell: Reflective DLL injection attempt"
+    enabled: true
+
+  - id: 7506
+    level: 11
+    description: "PowerShell reverse shell attempt"
+    groups: ["powershell", "reverse_shell", "c2"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(New-Object\\s+System\\.Net\\.Sockets\\.(TcpClient|Socket)|TCPClient|StreamReader.*GetStream)"}
+    mitre:
+      - {tactic_id: "TA0011", tactic_name: "Command and Control", technique_id: "T1095", technique_name: "Non-Application Layer Protocol"}
+    alert:
+      title: "PowerShell: Reverse shell connection attempt"
+    enabled: true
+
+  - id: 7507
+    level: 10
+    description: "PowerShell script block logging bypass attempt"
+    groups: ["powershell", "logging_bypass", "defense_evasion"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(Set-ItemProperty.*EnableScriptBlockLogging|ScriptBlockLogging.*0)"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1562.001", technique_name: "Disable or Modify Tools"}
+    alert:
+      title: "PowerShell: Script block logging disabled"
+    enabled: true
+
+  - id: 7508
+    level: 10
+    description: "PowerShell scheduled task creation — PS persistence"
+    groups: ["powershell", "persistence", "scheduled_task"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(Register-ScheduledTask|New-ScheduledTaskAction|ScheduledTasks)"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1053.005", technique_name: "Scheduled Task"}
+    alert:
+      title: "PowerShell: Scheduled task created via PowerShell"
+    enabled: true
+
+  - id: 7509
+    level: 11
+    description: "PowerShell AD reconnaissance — domain enumeration commands"
+    groups: ["powershell", "reconnaissance", "active_directory"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(Get-ADUser|Get-ADGroup|Get-ADComputer|Get-ADDomain|Get-ADForest|Get-ADGroupMember)"}
+    mitre:
+      - {tactic_id: "TA0007", tactic_name: "Discovery", technique_id: "T1018", technique_name: "Remote System Discovery"}
+    alert:
+      title: "PowerShell: Active Directory enumeration detected"
+    enabled: true
+
+  - id: 7510
+    level: 12
+    description: "PowerShell WMI abuse — WMI for execution or persistence"
+    groups: ["powershell", "wmi", "execution"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(Set-WmiInstance|Invoke-WmiMethod|New-Object.*WbemScripting|Win32_Process.*Create)"}
+    mitre:
+      - {tactic_id: "TA0002", tactic_name: "Execution", technique_id: "T1047", technique_name: "Windows Management Instrumentation"}
+    alert:
+      title: "PowerShell: WMI abuse for execution"
+    enabled: true
+
+  - id: 7511
+    level: 11
+    description: "PowerShell Invoke-WebRequest to suspicious URL"
+    groups: ["powershell", "download", "c2"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(Invoke-WebRequest|wget|curl|Start-BitsTransfer).*(http|ftp)"}
+    mitre:
+      - {tactic_id: "TA0011", tactic_name: "Command and Control", technique_id: "T1105", technique_name: "Ingress Tool Transfer"}
+    alert:
+      title: "PowerShell: File downloaded from internet"
+    enabled: true
+
+  - id: 7512
+    level: 10
+    description: "PowerShell token/privilege manipulation"
+    groups: ["powershell", "privilege_escalation", "token"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(AdjustTokenPrivileges|ImpersonateNamedPipeClient|SeDebugPrivilege|OpenProcessToken)"}
+    mitre:
+      - {tactic_id: "TA0004", tactic_name: "Privilege Escalation", technique_id: "T1134", technique_name: "Access Token Manipulation"}
+    alert:
+      title: "PowerShell: Token privilege manipulation"
+    enabled: true
+
+  - id: 7513
+    level: 13
+    description: "PowerShell Empire/Metasploit shellcode execution"
+    groups: ["powershell", "shellcode", "critical"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(\\[System\\.Runtime\\.InteropServices\\.Marshal\\]|VirtualAlloc|CreateThread|RtlMoveMemory)"}
+    mitre:
+      - {tactic_id: "TA0002", tactic_name: "Execution", technique_id: "T1059.001", technique_name: "PowerShell"}
+    alert:
+      title: "CRITICAL: PowerShell shellcode injection attempt"
+    enabled: true
+
+  - id: 7514
+    level: 10
+    description: "PowerShell Defender manipulation — disabling realtime protection"
+    groups: ["powershell", "defense_evasion", "av_bypass"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(Set-MpPreference.*DisableRealtimeMonitoring|Set-MpPreference.*Disable.*\\$true)"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1562.001", technique_name: "Disable or Modify Tools"}
+    alert:
+      title: "PowerShell: Windows Defender realtime protection disabled"
+    enabled: true
+
+  - id: 7515
+    level: 11
+    description: "PowerShell running from unusual parent — LOLBin or script host"
+    groups: ["powershell", "lolbin", "suspicious_parent"]
+    match:
+      type: "process.new"
+      fields:
+        name: {equals: "powershell.exe"}
+        parent_name: {regex: "(?i)(wscript|cscript|mshta|regsvr32|rundll32|svchost|excel|winword)\\.exe"}
+    mitre:
+      - {tactic_id: "TA0002", tactic_name: "Execution", technique_id: "T1059.001", technique_name: "PowerShell"}
+    alert:
+      title: "PowerShell: Spawned from unusual/suspicious parent process"
+    enabled: true

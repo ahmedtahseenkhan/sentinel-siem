@@ -1,0 +1,239 @@
+# WatchTower — Lateral Movement Detection Rules
+# Rule IDs: 7200-7249
+# Covers: Pass-the-Hash, PsExec, WMI remote execution, admin shares,
+#          RDP lateral movement, SMB attacks, Kerberos delegation abuse
+
+rules:
+  - id: 7200
+    level: 13
+    description: "PsExec or similar remote execution tool detected"
+    groups: ["lateral_movement", "remote_execution", "attack", "critical"]
+    match:
+      type: "process.new"
+      fields:
+        name: {regex: "(?i)(psexec|psexesvc|paexec|remcom|smbexec)\\.exe"}
+    mitre:
+      - {tactic_id: "TA0008", tactic_name: "Lateral Movement", technique_id: "T1021.002", technique_name: "SMB/Windows Admin Shares"}
+    alert:
+      title: "Lateral Movement: PsExec/remote execution tool detected"
+    enabled: true
+
+  - id: 7201
+    level: 12
+    description: "Pass-the-Hash attack detected — NTLM authentication with hash"
+    groups: ["lateral_movement", "pass_the_hash", "attack"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4624"}
+        logon_type: {equals: "3"}
+        auth_package: {contains: "NTLM"}
+    mitre:
+      - {tactic_id: "TA0008", tactic_name: "Lateral Movement", technique_id: "T1550.002", technique_name: "Pass the Hash"}
+    alert:
+      title: "Pass-the-Hash: NTLM network logon (possible credential relay)"
+    enabled: true
+
+  - id: 7202
+    level: 11
+    description: "Admin share access — connection to ADMIN$ or IPC$ share"
+    groups: ["lateral_movement", "admin_share", "smb"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "5140"}
+        share_name: {regex: "ADMIN\\$|IPC\\$|C\\$"}
+    mitre:
+      - {tactic_id: "TA0008", tactic_name: "Lateral Movement", technique_id: "T1021.002", technique_name: "SMB/Windows Admin Shares"}
+    alert:
+      title: "Lateral Movement: Admin share accessed"
+    enabled: true
+
+  - id: 7203
+    level: 12
+    description: "WMI remote execution — wmic.exe executing on remote host"
+    groups: ["lateral_movement", "wmi", "remote_execution"]
+    match:
+      type: "process.new"
+      fields:
+        name: {equals: "wmic.exe"}
+        command_line: {regex: "(?i)/node:|/user:|process call create"}
+    mitre:
+      - {tactic_id: "TA0008", tactic_name: "Lateral Movement", technique_id: "T1021.006", technique_name: "Windows Remote Management"}
+    alert:
+      title: "Lateral Movement: WMI remote execution attempt"
+    enabled: true
+
+  - id: 7204
+    level: 11
+    description: "RDP connection from unusual source — remote desktop lateral movement"
+    groups: ["lateral_movement", "rdp", "remote_desktop"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4624"}
+        logon_type: {equals: "10"}
+    mitre:
+      - {tactic_id: "TA0008", tactic_name: "Lateral Movement", technique_id: "T1021.001", technique_name: "Remote Desktop Protocol"}
+    alert:
+      title: "Lateral Movement: RDP login detected (logon type 10)"
+    enabled: true
+
+  - id: 7205
+    level: 12
+    description: "PowerShell remoting used — Invoke-Command or Enter-PSSession to remote host"
+    groups: ["lateral_movement", "powershell", "remoting"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(Invoke-Command|Enter-PSSession|New-PSSession).*-Computer|-ComputerName"}
+    mitre:
+      - {tactic_id: "TA0008", tactic_name: "Lateral Movement", technique_id: "T1021.006", technique_name: "Windows Remote Management"}
+    alert:
+      title: "Lateral Movement: PowerShell remoting to remote host"
+    enabled: true
+
+  - id: 7206
+    level: 11
+    description: "DCOM remote execution — MMC20 or ShellWindows DCOM lateral movement"
+    groups: ["lateral_movement", "dcom", "remote_execution"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(MMC20\\.Application|ShellWindows|ShellBrowserWindow|Visio\\.Application)"}
+    mitre:
+      - {tactic_id: "TA0008", tactic_name: "Lateral Movement", technique_id: "T1021.003", technique_name: "Distributed Component Object Model"}
+    alert:
+      title: "Lateral Movement: DCOM remote execution detected"
+    enabled: true
+
+  - id: 7207
+    level: 12
+    description: "SSH tunneling detected — port forwarding for lateral movement"
+    groups: ["lateral_movement", "ssh", "tunneling"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)ssh.*(-L|-R|-D|-w)\\s+[0-9]+:"}
+    mitre:
+      - {tactic_id: "TA0008", tactic_name: "Lateral Movement", technique_id: "T1572", technique_name: "Protocol Tunneling"}
+    alert:
+      title: "Lateral Movement: SSH port forwarding/tunneling"
+    enabled: true
+
+  - id: 7208
+    level: 13
+    description: "Pass-the-Ticket attack — Kerberos ticket injection"
+    groups: ["lateral_movement", "kerberos", "pass_the_ticket"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4768"}
+        client_address: {regex: "::1|127\\.0\\.0\\.1"}
+    mitre:
+      - {tactic_id: "TA0008", tactic_name: "Lateral Movement", technique_id: "T1550.003", technique_name: "Pass the Ticket"}
+    alert:
+      title: "Pass-the-Ticket: Kerberos ticket request from localhost"
+    enabled: true
+
+  - id: 7209
+    level: 11
+    description: "SMB brute force attack against multiple targets"
+    groups: ["lateral_movement", "smb", "brute_force"]
+    match:
+      type: "network.connection"
+      fields:
+        dest_port: {equals: "445"}
+    correlation:
+      window: "2m"
+      threshold: 20
+    mitre:
+      - {tactic_id: "TA0008", tactic_name: "Lateral Movement", technique_id: "T1110", technique_name: "Brute Force"}
+    alert:
+      title: "Lateral Movement: SMB scanning/brute force"
+    enabled: true
+
+  - id: 7210
+    level: 10
+    description: "Net use command — mapping network shares for lateral movement"
+    groups: ["lateral_movement", "net_use", "smb"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)net\\s+use\\s+\\\\\\\\"}
+    mitre:
+      - {tactic_id: "TA0008", tactic_name: "Lateral Movement", technique_id: "T1021.002", technique_name: "SMB/Windows Admin Shares"}
+    alert:
+      title: "Lateral Movement: Network share mapped via net use"
+    enabled: true
+
+  - id: 7211
+    level: 12
+    description: "Impacket tools detected — Python-based AD attack framework"
+    groups: ["lateral_movement", "impacket", "attack"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(impacket|wmiexec|smbexec|dcomexec|psexec\\.py|secretsdump\\.py)"}
+    mitre:
+      - {tactic_id: "TA0008", tactic_name: "Lateral Movement", technique_id: "T1021", technique_name: "Remote Services"}
+    alert:
+      title: "CRITICAL: Impacket attack framework detected"
+    enabled: true
+
+  - id: 7212
+    level: 11
+    description: "AT job created for remote lateral movement"
+    groups: ["lateral_movement", "scheduled_task", "at"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)at\\s+\\\\\\\\.*\\d{1,2}:\\d{2}"}
+    mitre:
+      - {tactic_id: "TA0008", tactic_name: "Lateral Movement", technique_id: "T1053.002", technique_name: "At"}
+    alert:
+      title: "Lateral Movement: Remote AT job scheduled"
+    enabled: true
+
+  - id: 7213
+    level: 12
+    description: "Remote service installation detected — possible PsExec-style attack"
+    groups: ["lateral_movement", "remote_service", "attack"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "7045"}
+    mitre:
+      - {tactic_id: "TA0008", tactic_name: "Lateral Movement", technique_id: "T1021", technique_name: "Remote Services"}
+    alert:
+      title: "Lateral Movement: New service installed remotely (Event 7045)"
+    enabled: true
+
+  - id: 7214
+    level: 10
+    description: "Network port scanning detected — probing for open ports"
+    groups: ["lateral_movement", "reconnaissance", "network_scan"]
+    match:
+      type: "network.connection"
+      fields:
+        connection_count: {regex: "^[1-9][0-9]{2,}$"}
+        dest_port: {regex: "^(21|22|23|25|80|135|139|443|445|3389|5985|5986)$"}
+    mitre:
+      - {tactic_id: "TA0007", tactic_name: "Discovery", technique_id: "T1046", technique_name: "Network Service Scanning"}
+    alert:
+      title: "Reconnaissance: Network port scanning activity"
+    enabled: true
+
+  - id: 7215
+    level: 11
+    description: "BloodHound / SharpHound AD enumeration detected"
+    groups: ["lateral_movement", "ad_enumeration", "reconnaissance"]
+    match:
+      type: "process.new"
+      fields:
+        name: {regex: "(?i)(SharpHound|BloodHound|bloodhound)\\.exe"}
+    mitre:
+      - {tactic_id: "TA0007", tactic_name: "Discovery", technique_id: "T1069.002", technique_name: "Domain Groups"}
+    alert:
+      title: "Reconnaissance: BloodHound AD enumeration tool"
+    enabled: true

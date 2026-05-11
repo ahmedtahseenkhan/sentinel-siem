@@ -141,7 +141,7 @@ rules:
       type: "fim.modified"
       fields:
         path:
-          regex: "/(ssl|tls|pki|gpg|pgp|keystore|truststore|\.key|\.pem|\.crt|certificates)/"
+          regex: "/(ssl|tls|pki|gpg|pgp|keystore|truststore|[.]key|[.]pem|[.]crt|certificates)/"
     mitre:
       - tactic_id: "TA0006"
         tactic_name: "Credential Access"

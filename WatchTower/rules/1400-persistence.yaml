@@ -1,0 +1,231 @@
+# WatchTower — Persistence Detection Rules
+# Rule IDs: 7300-7349
+# Covers: registry run keys, startup folders, cron jobs, services,
+#          WMI subscriptions, boot scripts, SSH authorized keys
+
+rules:
+  - id: 7300
+    level: 10
+    description: "Registry run key modified — common malware persistence location"
+    groups: ["persistence", "registry", "startup"]
+    match:
+      type: "registry.modified"
+      fields:
+        key_path: {regex: "(?i)(HKLM|HKCU)\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1547.001", technique_name: "Registry Run Keys / Startup Folder"}
+    alert:
+      title: "Persistence: Registry run key modified"
+    enabled: true
+
+  - id: 7301
+    level: 10
+    description: "Windows startup folder file created — startup persistence"
+    groups: ["persistence", "startup_folder"]
+    match:
+      type: "fim.added"
+      fields:
+        path: {regex: "(?i)(startup|start menu.*programs.*startup).*\\.(exe|bat|vbs|ps1|lnk)$"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1547.001", technique_name: "Registry Run Keys / Startup Folder"}
+    alert:
+      title: "Persistence: File added to Windows Startup folder"
+    enabled: true
+
+  - id: 7302
+    level: 11
+    description: "New Windows service created — potential malware persistence"
+    groups: ["persistence", "windows_service"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4697"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1543.003", technique_name: "Windows Service"}
+    alert:
+      title: "Persistence: New Windows service installed (Event 4697)"
+    enabled: true
+
+  - id: 7303
+    level: 9
+    description: "Cron job added — Linux/Unix persistence via crontab"
+    groups: ["persistence", "cron", "linux"]
+    match:
+      type: "fim.modified"
+      fields:
+        path: {regex: "/etc/cron\\.|/var/spool/cron|/etc/crontab"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1053.003", technique_name: "Cron"}
+    alert:
+      title: "Persistence: Cron job added or modified"
+    enabled: true
+
+  - id: 7304
+    level: 9
+    description: "SSH authorized_keys file modified — backdoor SSH key added"
+    groups: ["persistence", "ssh", "authorized_keys"]
+    match:
+      type: "fim.modified"
+      fields:
+        path: {regex: "\\.ssh/authorized_keys"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1098.004", technique_name: "SSH Authorized Keys"}
+    alert:
+      title: "Persistence: SSH authorized_keys file modified"
+    enabled: true
+
+  - id: 7305
+    level: 10
+    description: "WMI event subscription created — fileless persistence mechanism"
+    groups: ["persistence", "wmi", "event_subscription"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(EventFilter|EventConsumer|FilterToConsumerBinding)"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1546.003", technique_name: "Windows Management Instrumentation Event Subscription"}
+    alert:
+      title: "Persistence: WMI event subscription created"
+    enabled: true
+
+  - id: 7306
+    level: 10
+    description: "systemd unit file created — Linux persistence via systemd service"
+    groups: ["persistence", "systemd", "linux"]
+    match:
+      type: "fim.added"
+      fields:
+        path: {regex: "/etc/systemd/system/.*\\.service$|/lib/systemd/system/.*\\.service$"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1543.002", technique_name: "Systemd Service"}
+    alert:
+      title: "Persistence: New systemd service unit file created"
+    enabled: true
+
+  - id: 7307
+    level: 11
+    description: "Bootloader/init script modified — possible rootkit persistence"
+    groups: ["persistence", "bootloader", "init"]
+    match:
+      type: "fim.modified"
+      fields:
+        path: {regex: "/boot/grub|/etc/rc\\.|/etc/init\\.d/|/etc/inittab"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1542", technique_name: "Pre-OS Boot"}
+    alert:
+      title: "Persistence: Boot/init script modified"
+    enabled: true
+
+  - id: 7308
+    level: 10
+    description: "DLL hijacking — suspicious DLL placed in application directory"
+    groups: ["persistence", "dll_hijacking", "privilege_escalation"]
+    match:
+      type: "fim.added"
+      fields:
+        path: {regex: "(?i)Program Files.*\\.dll$|System32.*\\.dll$"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1574.001", technique_name: "DLL Search Order Hijacking"}
+    alert:
+      title: "Persistence: DLL placed in sensitive application directory"
+    enabled: true
+
+  - id: 7309
+    level: 11
+    description: "Windows logon script modified — persistent code execution on login"
+    groups: ["persistence", "logon_script"]
+    match:
+      type: "registry.modified"
+      fields:
+        key_path: {regex: "(?i)UserInitMprLogonScript|userinit"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1037.001", technique_name: "Logon Script (Windows)"}
+    alert:
+      title: "Persistence: Windows logon script modified"
+    enabled: true
+
+  - id: 7310
+    level: 10
+    description: "Profile script modified — .bashrc/.profile/.zshrc persistence"
+    groups: ["persistence", "shell_profile", "linux"]
+    match:
+      type: "fim.modified"
+      fields:
+        path: {regex: "(\\.bashrc|\\.bash_profile|\\.profile|\\.zshrc|\\.zprofile)$"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1546.004", technique_name: "Unix Shell Configuration Modification"}
+    alert:
+      title: "Persistence: Shell profile script modified"
+    enabled: true
+
+  - id: 7311
+    level: 12
+    description: "BITS job created — Background Intelligent Transfer Service abuse"
+    groups: ["persistence", "bits", "download"]
+    match:
+      type: "process.new"
+      fields:
+        name: {equals: "bitsadmin.exe"}
+        command_line: {regex: "(?i)/transfer|/create|/addfile"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1197", technique_name: "BITS Jobs"}
+    alert:
+      title: "Persistence: BITS job created (possible download/persistence)"
+    enabled: true
+
+  - id: 7312
+    level: 10
+    description: "AppCert DLL registry key modified — DLL injection on process creation"
+    groups: ["persistence", "dll_injection", "registry"]
+    match:
+      type: "registry.modified"
+      fields:
+        key_path: {regex: "(?i)AppCertDlls|AppInitDlls"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1546.009", technique_name: "AppCert DLLs"}
+    alert:
+      title: "Persistence: AppCert/AppInit DLL registry key modified"
+    enabled: true
+
+  - id: 7313
+    level: 9
+    description: "at.exe job created — Windows task scheduler legacy persistence"
+    groups: ["persistence", "at_job", "scheduled_task"]
+    match:
+      type: "process.new"
+      fields:
+        name: {equals: "at.exe"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1053.002", technique_name: "At"}
+    alert:
+      title: "Persistence: Legacy AT job scheduler used"
+    enabled: true
+
+  - id: 7314
+    level: 11
+    description: "Web shell detected — script file in web root with suspicious name"
+    groups: ["persistence", "web_shell", "initial_access"]
+    match:
+      type: "fim.added"
+      fields:
+        path: {regex: "(?i)(www|html|htdocs|public_html|webapps).*\\.(php|asp|aspx|jsp|cfm)$"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1505.003", technique_name: "Web Shell"}
+    alert:
+      title: "Persistence: New script file added to web root (possible web shell)"
+    enabled: true
+
+  - id: 7315
+    level: 10
+    description: "Schtasks.exe used to create scheduled task"
+    groups: ["persistence", "scheduled_task"]
+    match:
+      type: "process.new"
+      fields:
+        name: {equals: "schtasks.exe"}
+        command_line: {regex: "(?i)/create"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1053.005", technique_name: "Scheduled Task"}
+    alert:
+      title: "Persistence: Scheduled task created via schtasks.exe"
+    enabled: true
