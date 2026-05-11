@@ -62,6 +62,13 @@
             <span class="nav-label">Discover</span>
           </a>
 
+          <!-- RESPONSE -->
+          <div class="nav-section-label">Response</div>
+          <a href="#" class="nav-item" data-page="cases">
+            <span class="nav-icon">📋</span>
+            <span class="nav-label">Case Management</span>
+          </a>
+
           <!-- ENDPOINTS -->
           <div class="nav-section-label">Endpoints</div>
           <a href="#" class="nav-item" data-page="agents">
@@ -1938,6 +1945,176 @@ ALERT_THROTTLE_MINUTES=30</pre>
             <p style="font-size:13px;color:var(--text-muted)">Notifications are sent for alerts with rule_level &ge; 8 (HIGH or CRITICAL). Throttle: one notification per rule per agent per <span id="notifThrottle">30</span> minutes.</p>
           </div>
         </section>
+
+        <!-- CASE MANAGEMENT PAGE -->
+        <section id="page-cases" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">📋 Case Management</h2>
+              <p class="agents-subtitle">Track, investigate and resolve security incidents.</p>
+            </div>
+            <div class="agents-header-right">
+              <button class="btn btn-primary" onclick="showCreateCaseModal()">+ New Case</button>
+            </div>
+          </header>
+
+          <!-- KPI row -->
+          <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+            <div class="kpi-card"><div class="kpi-value" id="caseKpiTotal">—</div><div class="kpi-label">Total Cases</div></div>
+            <div class="kpi-card"><div class="kpi-value" id="caseKpiOpen" style="color:#f59e0b">—</div><div class="kpi-label">Open</div></div>
+            <div class="kpi-card"><div class="kpi-value" id="caseKpiInvestigating" style="color:#3b82f6">—</div><div class="kpi-label">Investigating</div></div>
+            <div class="kpi-card"><div class="kpi-value" id="caseKpiResolved" style="color:#10b981">—</div><div class="kpi-label">Resolved</div></div>
+          </div>
+
+          <!-- Filter bar -->
+          <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+            <select id="caseFilterStatus" onchange="loadCases()" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:6px 12px;border-radius:6px;font-size:13px">
+              <option value="">All Statuses</option>
+              <option value="open">Open</option>
+              <option value="investigating">Investigating</option>
+              <option value="resolved">Resolved</option>
+              <option value="closed">Closed</option>
+              <option value="false_positive">False Positive</option>
+            </select>
+            <select id="caseFilterPriority" onchange="loadCases()" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:6px 12px;border-radius:6px;font-size:13px">
+              <option value="">All Priorities</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+
+          <!-- Cases table -->
+          <div class="panel" style="padding:0">
+            <table class="data-table" id="casesTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Title</th>
+                  <th>Status</th>
+                  <th>Priority</th>
+                  <th>Assignee</th>
+                  <th>Notes</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="casesTableBody">
+                <tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-muted)">Loading cases…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Create Case Modal -->
+        <div id="createCaseModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center">
+          <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:28px;width:520px;max-width:95vw;max-height:90vh;overflow-y:auto">
+            <h3 style="margin:0 0 20px">New Case</h3>
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div>
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Title *</label>
+                <input id="newCaseTitle" type="text" placeholder="Brief incident title" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px 12px;border-radius:6px;font-size:13px;box-sizing:border-box">
+              </div>
+              <div>
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Description</label>
+                <textarea id="newCaseDesc" rows="3" placeholder="What happened? What systems are affected?" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px 12px;border-radius:6px;font-size:13px;resize:vertical;box-sizing:border-box"></textarea>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div>
+                  <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Priority</label>
+                  <select id="newCasePriority" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px 12px;border-radius:6px;font-size:13px">
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Assignee</label>
+                  <input id="newCaseAssignee" type="text" placeholder="Username or email" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px 12px;border-radius:6px;font-size:13px;box-sizing:border-box">
+                </div>
+              </div>
+              <div>
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Tags (comma-separated)</label>
+                <input id="newCaseTags" type="text" placeholder="malware, phishing, ransomware" style="width:100%;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px 12px;border-radius:6px;font-size:13px;box-sizing:border-box">
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+              <button onclick="hideCreateCaseModal()" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px 18px;border-radius:6px;cursor:pointer">Cancel</button>
+              <button onclick="submitCreateCase()" class="btn btn-primary">Create Case</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Case Detail Panel -->
+        <div id="caseDetailPanel" style="display:none;position:fixed;top:0;right:0;bottom:0;width:600px;max-width:95vw;background:var(--surface-1);border-left:1px solid var(--border);z-index:900;overflow-y:auto;padding:24px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px">
+            <div style="flex:1">
+              <div id="detailCaseId" style="font-size:11px;color:var(--text-muted);margin-bottom:4px"></div>
+              <h3 id="detailCaseTitle" style="margin:0;font-size:18px"></h3>
+            </div>
+            <button onclick="closeCaseDetail()" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;padding:4px">✕</button>
+          </div>
+
+          <!-- Status + Priority badges -->
+          <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+            <span id="detailCaseStatus" class="badge"></span>
+            <span id="detailCasePriority" class="badge"></span>
+            <span id="detailCaseAssignee" style="font-size:12px;color:var(--text-muted);align-self:center"></span>
+          </div>
+
+          <!-- Quick status change -->
+          <div style="display:flex;gap:8px;margin-bottom:20px">
+            <select id="detailStatusSelect" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:6px;font-size:12px">
+              <option value="open">Open</option>
+              <option value="investigating">Investigating</option>
+              <option value="resolved">Resolved</option>
+              <option value="closed">Closed</option>
+              <option value="false_positive">False Positive</option>
+            </select>
+            <button onclick="updateCaseStatus()" class="btn btn-primary" style="font-size:12px;padding:6px 14px">Update Status</button>
+          </div>
+
+          <!-- Description -->
+          <div style="margin-bottom:20px">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Description</div>
+            <p id="detailCaseDesc" style="font-size:13px;color:var(--text-secondary);line-height:1.6;margin:0"></p>
+          </div>
+
+          <!-- Tags -->
+          <div id="detailCaseTagsRow" style="margin-bottom:20px;display:none">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Tags</div>
+            <div id="detailCaseTags"></div>
+          </div>
+
+          <!-- Notes -->
+          <div style="margin-bottom:20px">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Investigation Notes</div>
+            <div id="detailCaseNotes" style="display:flex;flex-direction:column;gap:10px;margin-bottom:12px"></div>
+            <div style="display:flex;gap:8px">
+              <textarea id="newNoteContent" rows="2" placeholder="Add a note…" style="flex:1;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px;border-radius:6px;font-size:12px;resize:none"></textarea>
+              <button onclick="submitNote()" class="btn btn-primary" style="font-size:12px;padding:8px 14px;align-self:flex-end">Add</button>
+            </div>
+          </div>
+
+          <!-- Evidence -->
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Evidence</div>
+            <div id="detailCaseEvidence" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <input id="newEvidenceTitle" type="text" placeholder="Evidence title" style="flex:1;min-width:120px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:6px;font-size:12px">
+              <select id="newEvidenceType" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:6px;font-size:12px">
+                <option value="log">Log</option>
+                <option value="alert">Alert</option>
+                <option value="note">Note</option>
+                <option value="screenshot">Screenshot</option>
+              </select>
+              <input id="newEvidenceContent" type="text" placeholder="Content/reference" style="flex:2;min-width:160px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:6px;font-size:12px">
+              <button onclick="submitEvidence()" class="btn btn-primary" style="font-size:12px;padding:6px 14px">Add</button>
+            </div>
+          </div>
+        </div>
 
       </main>
     </div>

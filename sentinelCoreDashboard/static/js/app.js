@@ -4558,3 +4558,223 @@
   }
 
 })();
+
+// ── Case Management ───────────────────────────────────────────────────────────
+
+let _currentCaseId = null;
+
+async function loadCases() {
+  const status   = document.getElementById('caseFilterStatus')?.value || '';
+  const priority = document.getElementById('caseFilterPriority')?.value || '';
+  const params   = new URLSearchParams();
+  if (status)   params.set('status', status);
+  if (priority) params.set('priority', priority);
+
+  const res = await fetch(`/api/cases?${params}`).then(r => r.json()).catch(() => ({}));
+  const cases = res.data || [];
+
+  document.getElementById('caseKpiTotal').textContent         = res.total || 0;
+  document.getElementById('caseKpiOpen').textContent          = res.open || 0;
+  document.getElementById('caseKpiInvestigating').textContent = res.investigating || 0;
+  document.getElementById('caseKpiResolved').textContent      = res.resolved || 0;
+
+  const tbody = document.getElementById('casesTableBody');
+  if (!tbody) return;
+
+  if (!cases.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-muted)">No cases found. Click <strong>+ New Case</strong> to create one.</td></tr>';
+    return;
+  }
+
+  const priorityColor = { critical:'#ef4444', high:'#f97316', medium:'#f59e0b', low:'#6b7280' };
+  const statusColor   = { open:'#f59e0b', investigating:'#3b82f6', resolved:'#10b981', closed:'#6b7280', false_positive:'#8b5cf6' };
+
+  tbody.innerHTML = cases.map(c => `
+    <tr style="cursor:pointer" onclick="openCaseDetail(${c.id})">
+      <td style="color:var(--text-muted);font-size:12px">#${c.id}</td>
+      <td><strong>${escHtml(c.title)}</strong></td>
+      <td><span style="background:${statusColor[c.status]||'#666'}22;color:${statusColor[c.status]||'#aaa'};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase">${c.status}</span></td>
+      <td><span style="color:${priorityColor[c.priority]||'#aaa'};font-size:12px;font-weight:600;text-transform:uppercase">${c.priority}</span></td>
+      <td style="font-size:12px">${c.assignee || '—'}</td>
+      <td style="font-size:12px">${c.note_count || 0}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${fmtTs(c.created_at)}</td>
+      <td>
+        <button onclick="event.stopPropagation();openCaseDetail(${c.id})" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer">View</button>
+        <button onclick="event.stopPropagation();confirmDeleteCase(${c.id})" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#ef4444;padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;margin-left:4px">Delete</button>
+      </td>
+    </tr>`).join('');
+}
+
+async function openCaseDetail(id) {
+  _currentCaseId = id;
+  const panel = document.getElementById('caseDetailPanel');
+  panel.style.display = 'block';
+
+  const res = await fetch(`/api/cases/${id}`).then(r => r.json()).catch(() => ({}));
+  const c = res.data || {};
+
+  const priorityColor = { critical:'#ef4444', high:'#f97316', medium:'#f59e0b', low:'#6b7280' };
+  const statusColor   = { open:'#f59e0b', investigating:'#3b82f6', resolved:'#10b981', closed:'#6b7280', false_positive:'#8b5cf6' };
+
+  document.getElementById('detailCaseId').textContent    = `Case #${c.id}  ·  Created ${fmtTs(c.created_at)}`;
+  document.getElementById('detailCaseTitle').textContent = c.title || '';
+  document.getElementById('detailCaseDesc').textContent  = c.description || '—';
+  document.getElementById('detailCaseStatus').textContent  = c.status;
+  document.getElementById('detailCaseStatus').style.cssText = `background:${statusColor[c.status]||'#666'}22;color:${statusColor[c.status]||'#aaa'};padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase`;
+  document.getElementById('detailCasePriority').textContent = c.priority;
+  document.getElementById('detailCasePriority').style.cssText = `background:${priorityColor[c.priority]||'#666'}22;color:${priorityColor[c.priority]||'#aaa'};padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase`;
+  document.getElementById('detailCaseAssignee').textContent = c.assignee ? `Assigned to: ${c.assignee}` : 'Unassigned';
+  document.getElementById('detailStatusSelect').value = c.status;
+
+  const tagsRow = document.getElementById('detailCaseTagsRow');
+  const tagsEl  = document.getElementById('detailCaseTags');
+  if (c.tags && c.tags.length) {
+    tagsEl.innerHTML = c.tags.map(t => `<span style="background:var(--surface-2);border:1px solid var(--border);padding:2px 8px;border-radius:4px;font-size:11px;margin-right:4px">${escHtml(t)}</span>`).join('');
+    tagsRow.style.display = 'block';
+  } else {
+    tagsRow.style.display = 'none';
+  }
+
+  await loadCaseNotes(id);
+  await loadCaseEvidence(id);
+}
+
+function closeCaseDetail() {
+  document.getElementById('caseDetailPanel').style.display = 'none';
+  _currentCaseId = null;
+}
+
+async function updateCaseStatus() {
+  if (!_currentCaseId) return;
+  const status = document.getElementById('detailStatusSelect').value;
+  await fetch(`/api/cases/${_currentCaseId}`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({status})
+  });
+  await openCaseDetail(_currentCaseId);
+  await loadCases();
+}
+
+async function loadCaseNotes(id) {
+  const res = await fetch(`/api/cases/${id}/notes`).then(r => r.json()).catch(() => ({}));
+  const notes = res.data || [];
+  const el = document.getElementById('detailCaseNotes');
+  if (!el) return;
+  if (!notes.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-muted);font-style:italic">No notes yet.</div>';
+    return;
+  }
+  el.innerHTML = notes.map(n => `
+    <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:10px 12px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:11px;font-weight:600;color:var(--text-primary)">${escHtml(n.author||'System')}</span>
+        <span style="font-size:11px;color:var(--text-muted)">${fmtTs(n.created_at)}</span>
+      </div>
+      <p style="margin:0;font-size:13px;color:var(--text-secondary);white-space:pre-wrap">${escHtml(n.content)}</p>
+    </div>`).join('');
+}
+
+async function submitNote() {
+  if (!_currentCaseId) return;
+  const content = document.getElementById('newNoteContent')?.value?.trim();
+  if (!content) return;
+  await fetch(`/api/cases/${_currentCaseId}/notes`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({content})
+  });
+  document.getElementById('newNoteContent').value = '';
+  await loadCaseNotes(_currentCaseId);
+  await loadCases();
+}
+
+async function loadCaseEvidence(id) {
+  const res = await fetch(`/api/cases/${id}/evidence`).then(r => r.json()).catch(() => ({}));
+  const evidence = res.data || [];
+  const el = document.getElementById('detailCaseEvidence');
+  if (!el) return;
+  if (!evidence.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-muted);font-style:italic">No evidence attached.</div>';
+    return;
+  }
+  el.innerHTML = evidence.map(e => `
+    <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;display:flex;gap:12px;align-items:flex-start">
+      <span style="font-size:10px;background:var(--surface-3);border:1px solid var(--border);padding:2px 6px;border-radius:3px;text-transform:uppercase;color:var(--text-muted);white-space:nowrap">${e.type}</span>
+      <div style="flex:1">
+        <div style="font-size:12px;font-weight:600;color:var(--text-primary)">${escHtml(e.title)}</div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">${escHtml(e.content)}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Added by ${escHtml(e.added_by||'—')} · ${fmtTs(e.added_at)}</div>
+      </div>
+    </div>`).join('');
+}
+
+async function submitEvidence() {
+  if (!_currentCaseId) return;
+  const title   = document.getElementById('newEvidenceTitle')?.value?.trim();
+  const type    = document.getElementById('newEvidenceType')?.value || 'log';
+  const content = document.getElementById('newEvidenceContent')?.value?.trim();
+  if (!title || !content) return;
+  await fetch(`/api/cases/${_currentCaseId}/evidence`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({title, type, content})
+  });
+  document.getElementById('newEvidenceTitle').value   = '';
+  document.getElementById('newEvidenceContent').value = '';
+  await loadCaseEvidence(_currentCaseId);
+}
+
+function showCreateCaseModal() {
+  const m = document.getElementById('createCaseModal');
+  if (m) m.style.display = 'flex';
+}
+
+function hideCreateCaseModal() {
+  const m = document.getElementById('createCaseModal');
+  if (m) {
+    m.style.display = 'none';
+    ['newCaseTitle','newCaseDesc','newCaseTags','newCaseAssignee'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+  }
+}
+
+async function submitCreateCase() {
+  const title    = document.getElementById('newCaseTitle')?.value?.trim();
+  const desc     = document.getElementById('newCaseDesc')?.value?.trim() || '';
+  const priority = document.getElementById('newCasePriority')?.value || 'medium';
+  const assignee = document.getElementById('newCaseAssignee')?.value?.trim() || '';
+  const tagsRaw  = document.getElementById('newCaseTags')?.value?.trim() || '';
+  const tags     = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+  if (!title) { alert('Title is required'); return; }
+  const res = await fetch('/api/cases', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({title, description:desc, priority, assignee, tags})
+  }).then(r => r.json()).catch(() => ({}));
+  hideCreateCaseModal();
+  await loadCases();
+  if (res?.data?.id) openCaseDetail(res.data.id);
+}
+
+async function confirmDeleteCase(id) {
+  if (!confirm(`Delete case #${id}? This cannot be undone.`)) return;
+  await fetch(`/api/cases/${id}`, {method:'DELETE'});
+  if (_currentCaseId === id) closeCaseDetail();
+  await loadCases();
+}
+
+function fmtTs(ms) {
+  if (!ms) return '—';
+  const d = new Date(ms);
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.nav-item[data-page="cases"]').forEach(el => {
+    el.addEventListener('click', () => loadCases());
+  });
+});

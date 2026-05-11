@@ -95,6 +95,19 @@ func (s *Server) routes() *chi.Mux {
 			r.Post("/convert", sigh.Convert)
 			r.Post("/import", sigh.ConvertAndStore)
 		})
+
+		csh := handlers.NewCaseHandler(s.store)
+		r.Route("/cases", func(r chi.Router) {
+			r.Get("/", csh.List)
+			r.Post("/", csh.Create)
+			r.Get("/{id}", csh.Get)
+			r.Put("/{id}", csh.Update)
+			r.Delete("/{id}", csh.Delete)
+			r.Get("/{id}/notes", csh.ListNotes)
+			r.Post("/{id}/notes", csh.AddNote)
+			r.Get("/{id}/evidence", csh.ListEvidence)
+			r.Post("/{id}/evidence", csh.AddEvidence)
+		})
 	})
 
 	return r

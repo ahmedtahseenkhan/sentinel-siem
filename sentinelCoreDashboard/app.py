@@ -2490,6 +2490,101 @@ def api_ar_history():
         return jsonify({"history": [], "error": str(e)})
 
 
+# ── Case Management ───────────────────────────────────────────────────────────
+
+@app.route("/api/cases", methods=["GET"])
+def api_cases_list():
+    try:
+        from watchtower_client import watchtower_request
+        params = {k: v for k, v in request.args.items()}
+        res = watchtower_request("/api/v1/cases", method="GET", params=params)
+        return jsonify(res or {"data": [], "total": 0})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/cases", methods=["POST"])
+def api_cases_create():
+    try:
+        from watchtower_client import watchtower_request
+        user = session.get("username", "anonymous")
+        body = request.get_json(force=True) or {}
+        body.setdefault("created_by", user)
+        res = watchtower_request("/api/v1/cases", method="POST", json_body=body)
+        return jsonify(res or {}), 201
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/cases/<int:case_id>", methods=["GET"])
+def api_cases_get(case_id):
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request(f"/api/v1/cases/{case_id}", method="GET")
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/cases/<int:case_id>", methods=["PUT"])
+def api_cases_update(case_id):
+    try:
+        from watchtower_client import watchtower_request
+        body = request.get_json(force=True) or {}
+        res = watchtower_request(f"/api/v1/cases/{case_id}", method="PUT", json_body=body)
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/cases/<int:case_id>", methods=["DELETE"])
+def api_cases_delete(case_id):
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request(f"/api/v1/cases/{case_id}", method="DELETE")
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/cases/<int:case_id>/notes", methods=["GET"])
+def api_cases_notes_list(case_id):
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request(f"/api/v1/cases/{case_id}/notes", method="GET")
+        return jsonify(res or {"data": []})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/cases/<int:case_id>/notes", methods=["POST"])
+def api_cases_notes_add(case_id):
+    try:
+        from watchtower_client import watchtower_request
+        user = session.get("username", "anonymous")
+        body = request.get_json(force=True) or {}
+        body.setdefault("author", user)
+        res = watchtower_request(f"/api/v1/cases/{case_id}/notes", method="POST", json_body=body)
+        return jsonify(res or {}), 201
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/cases/<int:case_id>/evidence", methods=["GET"])
+def api_cases_evidence_list(case_id):
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request(f"/api/v1/cases/{case_id}/evidence", method="GET")
+        return jsonify(res or {"data": []})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/cases/<int:case_id>/evidence", methods=["POST"])
+def api_cases_evidence_add(case_id):
+    try:
+        from watchtower_client import watchtower_request
+        user = session.get("username", "anonymous")
+        body = request.get_json(force=True) or {}
+        body.setdefault("added_by", user)
+        res = watchtower_request(f"/api/v1/cases/{case_id}/evidence", method="POST", json_body=body)
+        return jsonify(res or {}), 201
+    except Exception as e:
+        return _api_error(e)
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5050))
     # Never enable debug in production — exposes an interactive debugger shell (RCE).
