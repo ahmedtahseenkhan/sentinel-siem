@@ -96,6 +96,16 @@ func (s *Server) routes() *chi.Mux {
 			r.Post("/import", sigh.ConvertAndStore)
 		})
 
+		rbah := handlers.NewRbaHandler(s.store)
+		r.Route("/rba", func(r chi.Router) {
+			r.Get("/entities", rbah.ListEntities)
+			r.Get("/entities/{id}", rbah.GetEntity)
+			r.Put("/entities/{id}/threshold", rbah.SetThreshold)
+			r.Get("/notables", rbah.ListNotables)
+			r.Get("/weights", rbah.ListWeights)
+			r.Put("/weights/{rule_id}", rbah.SetWeight)
+		})
+
 		uebah := handlers.NewUebaHandler(s.store, s.uebaAnalyzer)
 		r.Route("/ueba", func(r chi.Router) {
 			r.Get("/risk-scores", uebah.RiskScores)

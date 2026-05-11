@@ -40,6 +40,11 @@ type PlaybookHook interface {
 	OnAlert(alert *models.Alert, event *models.Event)
 }
 
+// RBAHook is called after every stored alert to accumulate entity risk scores.
+type RBAHook interface {
+	OnAlert(alert *models.Alert, event *models.Event)
+}
+
 type Engine struct {
 	cfg       config.EngineConfig
 	logger    *zap.Logger
@@ -52,6 +57,7 @@ type Engine struct {
 	responder    ActiveResponseOrchestrator
 	vulnChecker  VulnChecker
 	playbookHook PlaybookHook
+	rbaHook      RBAHook
 	deduper      *dedup.Manager
 	correlation  *correlation.Manager
 	eventCh      chan *models.Event
@@ -210,6 +216,10 @@ func (e *Engine) generateAlert(event *models.Event, rule *models.Rule) {
 		e.playbookHook.OnAlert(a, event)
 	}
 
+	if e.rbaHook != nil {
+		e.rbaHook.OnAlert(a, event)
+	}
+
 	e.alertOut.Emit(a, event)
 }
 
@@ -230,6 +240,10 @@ func (e *Engine) SetVulnChecker(v VulnChecker) {
 
 func (e *Engine) SetPlaybookHook(h PlaybookHook) {
 	e.playbookHook = h
+}
+
+func (e *Engine) SetRBAHook(h RBAHook) {
+	e.rbaHook = h
 }
 
 func (e *Engine) Rules() *rules.Matcher     { return e.rules }

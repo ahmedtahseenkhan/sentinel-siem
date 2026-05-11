@@ -4855,6 +4855,112 @@ async function triggerReportNow(id) {
   alert('Report triggered — check your email shortly.');
 }
 
+// ── Risk-Based Alerting ───────────────────────────────────────────────────────
+
+async function loadRbaPage() {
+  await Promise.all([loadRbaEntities(), loadRbaNotables(), loadRbaWeights()]);
+}
+
+async function loadRbaEntities() {
+  const res = await fetch('/api/rba/entities?limit=100').then(r => r.json()).catch(() => ({}));
+  const entities = res.data || [];
+  const tbody = document.getElementById('rbaEntitiesBody');
+  if (!tbody) return;
+
+  if (!entities.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted)">No risk data yet — alerts will accumulate risk scores automatically.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = entities.map(e => {
+    const pct  = Math.min(100, Math.round(e.current_score / e.threshold * 100));
+    const color = pct >= 100 ? '#ef4444' : pct >= 75 ? '#f97316' : pct >= 50 ? '#f59e0b' : '#10b981';
+    const bar  = `<div style="display:flex;align-items:center;gap:8px">
+      <div style="flex:1;height:6px;background:var(--surface-2);border-radius:3px;min-width:80px">
+        <div style="width:${pct}%;height:100%;background:${color};border-radius:3px"></div>
+      </div>
+      <span style="font-size:11px;color:var(--text-muted)">${pct}%</span>
+    </div>`;
+    return `<tr>
+      <td style="font-weight:600;font-size:12px">${escHtml(e.entity_id)}</td>
+      <td><span style="font-size:18px;font-weight:700;color:${color}">${e.current_score}</span></td>
+      <td style="font-size:12px;color:var(--text-muted)">${e.threshold}</td>
+      <td style="min-width:120px">${bar}</td>
+      <td style="font-size:12px">${e.alert_count_7d || '—'}</td>
+      <td style="font-size:12px;color:${e.notables_fired > 0 ? '#ef4444' : 'var(--text-muted)'}">${e.notables_fired}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${fmtTs(e.last_event)}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function loadRbaNotables() {
+  const res = await fetch('/api/rba/notables?limit=100').then(r => r.json()).catch(() => ({}));
+  const notables = res.data || [];
+  const tbody = document.getElementById('rbaNotablesBody');
+  if (!tbody) return;
+
+  if (!notables.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">No Risk Notables yet. They fire when an entity\'s accumulated risk score exceeds its threshold.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = notables.map(n => `
+    <tr>
+      <td style="font-size:12px;color:var(--text-muted)">#${n.id}</td>
+      <td style="font-weight:600;font-size:12px">${escHtml(n.entity_id)}</td>
+      <td><span style="font-size:16px;font-weight:700;color:#ef4444">${n.risk_score}</span></td>
+      <td style="font-size:12px;color:var(--text-secondary);max-width:300px">${escHtml(n.description)}</td>
+      <td style="font-size:12px">${n.case_id ? `<a href="#" onclick="event.preventDefault()" style="color:var(--accent)">Case #${n.case_id}</a>` : '—'}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${fmtTs(n.created_at)}</td>
+    </tr>`).join('');
+}
+
+async function loadRbaWeights() {
+  const res = await fetch('/api/rba/weights').then(r => r.json()).catch(() => ({}));
+  const weights = res.data || [];
+  const tbody = document.getElementById('rbaWeightsBody');
+  if (!tbody) return;
+
+  if (!weights.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-muted)">No custom weights. All rules use level-derived defaults.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = weights.map(w => `
+    <tr>
+      <td style="font-size:12px">Rule #${w.rule_id}</td>
+      <td style="font-weight:600;color:var(--accent)">${w.risk_weight} pts</td>
+      <td style="font-size:12px;color:var(--text-muted)">${escHtml(w.description||'—')}</td>
+      <td style="font-size:12px;color:var(--text-muted)">${fmtTs(w.updated_at)}</td>
+    </tr>`).join('');
+}
+
+function switchRbaTab(tab) {
+  ['entities','notables','weights'].forEach(t => {
+    const pane = document.getElementById(`rbaPaneEntities`.replace('entities', t === 'entities' ? 'entities' : `${t[0].toUpperCase()}${t.slice(1)}`));
+    // manual mapping
+  });
+  const panes = { entities: 'rbaPaneEntities', notables: 'rbaPaneNotables', weights: 'rbaPaneWeights' };
+  const tabs  = { entities: 'rbaTabEntities',  notables: 'rbaTabNotables',  weights: 'rbaTabWeights' };
+  Object.entries(panes).forEach(([key, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = key === tab ? '' : 'none';
+  });
+  Object.entries(tabs).forEach(([key, id]) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.style.borderBottomColor = key === tab ? 'var(--accent)' : 'transparent';
+      el.style.color = key === tab ? 'var(--text-primary)' : 'var(--text-muted)';
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.nav-item[data-page="rba"]').forEach(el => {
+    el.addEventListener('click', () => { loadRbaPage(); switchRbaTab('entities'); });
+  });
+});
+
 // ── UEBA ─────────────────────────────────────────────────────────────────────
 
 async function loadUebaPage() {

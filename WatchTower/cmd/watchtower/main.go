@@ -20,6 +20,7 @@ import (
 	"github.com/watchtower/watchtower/internal/server/api"
 	"github.com/watchtower/watchtower/internal/identity"
 	"github.com/watchtower/watchtower/internal/playbook"
+	"github.com/watchtower/watchtower/internal/rba"
 	"github.com/watchtower/watchtower/internal/ueba"
 	grpcserver "github.com/watchtower/watchtower/internal/server/grpc"
 	syslogserver "github.com/watchtower/watchtower/internal/server/syslog"
@@ -142,6 +143,10 @@ func main() {
 	// SOAR playbook executor
 	pbExec := playbook.NewExecutor(st, reg, logger)
 	eng.SetPlaybookHook(pbExec)
+
+	// Risk-Based Alerting engine
+	rbaEngine := rba.NewEngine(st, logger)
+	eng.SetRBAHook(rbaEngine)
 
 	eng.Start()
 	defer eng.Stop()

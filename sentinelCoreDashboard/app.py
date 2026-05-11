@@ -2585,6 +2585,67 @@ def api_cases_evidence_add(case_id):
         return _api_error(e)
 
 
+# ── Risk-Based Alerting (RBA) ─────────────────────────────────────────────────
+
+@app.route("/api/rba/entities", methods=["GET"])
+def api_rba_entities():
+    try:
+        from watchtower_client import watchtower_request
+        params = {k: v for k, v in request.args.items()}
+        res = watchtower_request("/api/v1/rba/entities", method="GET", params=params)
+        return jsonify(res or {"data": [], "total": 0})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/rba/entities/<entity_id>", methods=["GET"])
+def api_rba_entity(entity_id):
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request(f"/api/v1/rba/entities/{entity_id}", method="GET")
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/rba/entities/<entity_id>/threshold", methods=["PUT"])
+def api_rba_threshold(entity_id):
+    try:
+        from watchtower_client import watchtower_request
+        body = request.get_json(force=True) or {}
+        res = watchtower_request(f"/api/v1/rba/entities/{entity_id}/threshold", method="PUT", json_body=body)
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/rba/notables", methods=["GET"])
+def api_rba_notables():
+    try:
+        from watchtower_client import watchtower_request
+        params = {k: v for k, v in request.args.items()}
+        res = watchtower_request("/api/v1/rba/notables", method="GET", params=params)
+        return jsonify(res or {"data": [], "total": 0})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/rba/weights", methods=["GET"])
+def api_rba_weights():
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request("/api/v1/rba/weights", method="GET")
+        return jsonify(res or {"data": []})
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/rba/weights/<int:rule_id>", methods=["PUT"])
+def api_rba_set_weight(rule_id):
+    try:
+        from watchtower_client import watchtower_request
+        body = request.get_json(force=True) or {}
+        res = watchtower_request(f"/api/v1/rba/weights/{rule_id}", method="PUT", json_body=body)
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+
 # ── UEBA ──────────────────────────────────────────────────────────────────────
 
 @app.route("/api/ueba/risk-scores", methods=["GET"])

@@ -63,6 +63,7 @@ func (s *Store) migrate() error {
 		"migrations/004_rule_versions.sql",
 		"migrations/005_identity.sql",
 		"migrations/006_ueba.sql",
+		"migrations/007_rba.sql",
 	}
 	for _, f := range files {
 		data, err := migrations.ReadFile(f)
@@ -666,6 +667,233 @@ func (s *Store) ListExecutions(playbookID int64, limit int) ([]*models.PlaybookE
 		execs = append(execs, ex)
 	}
 	return execs, rows.Err()
+}
+
+// === RBA operations ===
+
+type RbaRuleWeight struct {
+	RuleID      int    `json:"rule_id"`
+	RiskWeight  int    `json:"risk_weight"`
+	Description string `json:"description"`
+	UpdatedAt   int64  `json:"updated_at"`
+}
+
+type RbaRiskEvent struct {
+	ID         int64  `json:"id"`
+	EntityID   string `json:"entity_id"`
+	EntityType string `json:"entity_type"`
+	RuleID     int    `json:"rule_id"`
+	AlertID    int64  `json:"alert_id"`
+	RiskWeight int    `json:"risk_weight"`
+	Timestamp  int64  `json:"timestamp"`
+	ExpiresAt  int64  `json:"expires_at"`
+}
+
+type RbaEntityRisk struct {
+	EntityID      string `json:"entity_id"`
+	EntityType    string `json:"entity_type"`
+	CurrentScore  int    `json:"current_score"`
+	Threshold     int    `json:"threshold"`
+	NotablesFired int    `json:"notables_fired"`
+	LastNotable   int64  `json:"last_notable"`
+	LastEvent     int64  `json:"last_event"`
+	UpdatedAt     int64  `json:"updated_at"`
+}
+
+type RbaNotable struct {
+	ID            int64  `json:"id"`
+	EntityID      string `json:"entity_id"`
+	EntityType    string `json:"entity_type"`
+	RiskScore     int    `json:"risk_score"`
+	TriggerRuleID int    `json:"trigger_rule_id"`
+	Description   string `json:"description"`
+	CreatedAt     int64  `json:"created_at"`
+	CaseID        int64  `json:"case_id"`
+	Resolved      bool   `json:"resolved"`
+}
+
+func (s *Store) GetRbaRuleWeight(ruleID int) (int, error) {
+	var w int
+	err := s.pool.QueryRow(context.Background(),
+		`SELECT risk_weight FROM rba_rule_weights WHERE rule_id = $1`, ruleID).Scan(&w)
+	if err != nil {
+		return 0, err
+	}
+	return w, nil
+}
+
+func (s *Store) UpsertRbaRuleWeight(rw *RbaRuleWeight) error {
+	rw.UpdatedAt = time.Now().UnixMilli()
+	_, err := s.pool.Exec(context.Background(), `
+		INSERT INTO rba_rule_weights (rule_id, risk_weight, description, updated_at)
+		VALUES ($1,$2,$3,$4)
+		ON CONFLICT (rule_id) DO UPDATE SET
+		  risk_weight=$2, description=$3, updated_at=$4`,
+		rw.RuleID, rw.RiskWeight, rw.Description, rw.UpdatedAt)
+	return err
+}
+
+func (s *Store) ListRbaRuleWeights() ([]*RbaRuleWeight, error) {
+	rows, err := s.pool.Query(context.Background(),
+		`SELECT rule_id, risk_weight, description, updated_at FROM rba_rule_weights ORDER BY rule_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var weights []*RbaRuleWeight
+	for rows.Next() {
+		w := &RbaRuleWeight{}
+		if err := rows.Scan(&w.RuleID, &w.RiskWeight, &w.Description, &w.UpdatedAt); err != nil {
+			return nil, err
+		}
+		weights = append(weights, w)
+	}
+	return weights, rows.Err()
+}
+
+func (s *Store) InsertRbaRiskEvent(e *RbaRiskEvent) error {
+	_, err := s.pool.Exec(context.Background(), `
+		INSERT INTO rba_risk_events (entity_id, entity_type, rule_id, alert_id, risk_weight, timestamp, expires_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		e.EntityID, e.EntityType, e.RuleID, e.AlertID, e.RiskWeight, e.Timestamp, e.ExpiresAt)
+	return err
+}
+
+// ComputeEntityRiskScore returns the sum of unexpired risk weights for an entity.
+func (s *Store) ComputeEntityRiskScore(entityID string) (int, error) {
+	now := time.Now().UnixMilli()
+	var score int
+	err := s.pool.QueryRow(context.Background(), `
+		SELECT COALESCE(SUM(risk_weight), 0) FROM rba_risk_events
+		WHERE entity_id = $1 AND expires_at > $2`, entityID, now).Scan(&score)
+	return score, err
+}
+
+func (s *Store) GetRbaEntityRisk(entityID string) (*RbaEntityRisk, error) {
+	r := &RbaEntityRisk{}
+	err := s.pool.QueryRow(context.Background(), `
+		SELECT entity_id, entity_type, current_score, threshold, notables_fired,
+		       last_notable, last_event, updated_at
+		FROM rba_entity_risk WHERE entity_id = $1`, entityID,
+	).Scan(&r.EntityID, &r.EntityType, &r.CurrentScore, &r.Threshold,
+		&r.NotablesFired, &r.LastNotable, &r.LastEvent, &r.UpdatedAt)
+	if err != nil {
+		// Return a default record if not found.
+		return &RbaEntityRisk{
+			EntityID:  entityID,
+			Threshold: 100,
+		}, nil
+	}
+	return r, nil
+}
+
+func (s *Store) UpsertRbaEntityRisk(r *RbaEntityRisk) error {
+	r.UpdatedAt = time.Now().UnixMilli()
+	_, err := s.pool.Exec(context.Background(), `
+		INSERT INTO rba_entity_risk
+		  (entity_id, entity_type, current_score, threshold, notables_fired,
+		   last_notable, last_event, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		ON CONFLICT (entity_id) DO UPDATE SET
+		  entity_type=$2, current_score=$3, threshold=$4,
+		  notables_fired=$5, last_notable=$6, last_event=$7, updated_at=$8`,
+		r.EntityID, r.EntityType, r.CurrentScore, r.Threshold,
+		r.NotablesFired, r.LastNotable, r.LastEvent, r.UpdatedAt)
+	return err
+}
+
+func (s *Store) ListRbaEntityRisk(limit int) ([]*RbaEntityRisk, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.pool.Query(context.Background(), `
+		SELECT entity_id, entity_type, current_score, threshold, notables_fired,
+		       last_notable, last_event, updated_at
+		FROM rba_entity_risk ORDER BY current_score DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []*RbaEntityRisk
+	for rows.Next() {
+		r := &RbaEntityRisk{}
+		if err := rows.Scan(&r.EntityID, &r.EntityType, &r.CurrentScore, &r.Threshold,
+			&r.NotablesFired, &r.LastNotable, &r.LastEvent, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
+func (s *Store) InsertRbaNotable(n *RbaNotable) (int64, error) {
+	n.CreatedAt = time.Now().UnixMilli()
+	var id int64
+	err := s.pool.QueryRow(context.Background(), `
+		INSERT INTO rba_notables (entity_id, entity_type, risk_score, trigger_rule_id, description, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+		n.EntityID, n.EntityType, n.RiskScore, n.TriggerRuleID, n.Description, n.CreatedAt,
+	).Scan(&id)
+	return id, err
+}
+
+func (s *Store) UpdateRbaNotableCaseID(notableID, caseID int64) {
+	_, _ = s.pool.Exec(context.Background(),
+		`UPDATE rba_notables SET case_id=$1 WHERE id=$2`, caseID, notableID)
+}
+
+func (s *Store) ListRbaNotables(limit int) ([]*RbaNotable, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.pool.Query(context.Background(), `
+		SELECT id, entity_id, entity_type, risk_score, trigger_rule_id,
+		       description, created_at, case_id, resolved
+		FROM rba_notables ORDER BY created_at DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var notables []*RbaNotable
+	for rows.Next() {
+		n := &RbaNotable{}
+		if err := rows.Scan(&n.ID, &n.EntityID, &n.EntityType, &n.RiskScore,
+			&n.TriggerRuleID, &n.Description, &n.CreatedAt, &n.CaseID, &n.Resolved); err != nil {
+			return nil, err
+		}
+		notables = append(notables, n)
+	}
+	return notables, rows.Err()
+}
+
+func (s *Store) ListRbaRiskEvents(entityID string, limit int) ([]*RbaRiskEvent, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var args []interface{}
+	query := `SELECT id, entity_id, entity_type, rule_id, alert_id, risk_weight, timestamp, expires_at
+	           FROM rba_risk_events`
+	if entityID != "" {
+		args = append(args, entityID)
+		query += fmt.Sprintf(" WHERE entity_id = $%d", len(args))
+	}
+	args = append(args, limit)
+	query += fmt.Sprintf(" ORDER BY timestamp DESC LIMIT $%d", len(args))
+	rows, err := s.pool.Query(context.Background(), query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var events []*RbaRiskEvent
+	for rows.Next() {
+		e := &RbaRiskEvent{}
+		if err := rows.Scan(&e.ID, &e.EntityID, &e.EntityType, &e.RuleID,
+			&e.AlertID, &e.RiskWeight, &e.Timestamp, &e.ExpiresAt); err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	return events, rows.Err()
 }
 
 // === UEBA operations ===

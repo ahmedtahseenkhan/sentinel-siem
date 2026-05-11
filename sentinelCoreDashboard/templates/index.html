@@ -69,6 +69,10 @@
             <span class="nav-icon">🧠</span>
             <span class="nav-label">UEBA</span>
           </a>
+          <a href="#" class="nav-item" data-page="rba">
+            <span class="nav-icon">⚖</span>
+            <span class="nav-label">Risk-Based Alerting</span>
+          </a>
 
           <!-- RESPONSE -->
           <div class="nav-section-label">Response</div>
@@ -2018,6 +2022,59 @@ ALERT_THROTTLE_MINUTES=30</pre>
           <div class="panel" style="margin-top:20px;max-width:680px">
             <h3>Alert Rules</h3>
             <p style="font-size:13px;color:var(--text-muted)">Notifications are sent for alerts with rule_level &ge; 8 (HIGH or CRITICAL). Throttle: one notification per rule per agent per <span id="notifThrottle">30</span> minutes.</p>
+          </div>
+        </section>
+
+        <!-- RBA PAGE -->
+        <section id="page-rba" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">⚖ Risk-Based Alerting</h2>
+              <p class="agents-subtitle">Accumulated entity risk scores — notables fire only when threshold is crossed, reducing alert fatigue by ~90%.</p>
+            </div>
+          </header>
+
+          <!-- Tabs -->
+          <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:1px solid var(--border)">
+            <button id="rbaTabEntities" onclick="switchRbaTab('entities')" style="background:none;border:none;border-bottom:2px solid var(--accent);color:var(--text-primary);padding:10px 20px;cursor:pointer;font-size:13px;font-weight:600">Entity Risk Scores</button>
+            <button id="rbaTabNotables" onclick="switchRbaTab('notables')" style="background:none;border:none;border-bottom:2px solid transparent;color:var(--text-muted);padding:10px 20px;cursor:pointer;font-size:13px">Risk Notables</button>
+            <button id="rbaTabWeights" onclick="switchRbaTab('weights')" style="background:none;border:none;border-bottom:2px solid transparent;color:var(--text-muted);padding:10px 20px;cursor:pointer;font-size:13px">Rule Weights</button>
+          </div>
+
+          <!-- Entity risk scores -->
+          <div id="rbaPaneEntities">
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:12px;color:var(--text-muted)">
+              ℹ Risk points accumulate per entity per alert (based on rule level). Scores decay after 24h. A <strong>Risk Notable</strong> fires when score ≥ threshold (default 100).
+            </div>
+            <div class="panel" style="padding:0">
+              <table class="data-table">
+                <thead><tr><th>Entity</th><th>Risk Score</th><th>Threshold</th><th>Progress</th><th>Alerts (active)</th><th>Notables</th><th>Last Event</th></tr></thead>
+                <tbody id="rbaEntitiesBody"><tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted)">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Risk notables -->
+          <div id="rbaPaneNotables" style="display:none">
+            <div class="panel" style="padding:0">
+              <table class="data-table">
+                <thead><tr><th>#</th><th>Entity</th><th>Risk Score</th><th>Description</th><th>Case</th><th>Created</th></tr></thead>
+                <tbody id="rbaNotablesBody"><tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Rule weights -->
+          <div id="rbaPaneWeights" style="display:none">
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:12px;color:var(--text-muted)">
+              Default weights by level: L1-5 = 10pts · L6-9 = 25pts · L10-12 = 50pts · L13-15 = 100pts. Override per rule below.
+            </div>
+            <div class="panel" style="padding:0">
+              <table class="data-table">
+                <thead><tr><th>Rule ID</th><th>Weight</th><th>Description</th><th>Updated</th></tr></thead>
+                <tbody id="rbaWeightsBody"><tr><td colspan="4" style="text-align:center;padding:30px;color:var(--text-muted)">No custom weights configured.</td></tr></tbody>
+              </table>
+            </div>
           </div>
         </section>
 
