@@ -1,0 +1,226 @@
+# WatchTower — ISO 27001:2022 Annex A Controls
+# Rule IDs: 8000-8049
+# Each rule maps to a specific Annex A control clause.
+# Groups follow pattern: iso27001_A.{clause} for dashboard queries.
+
+rules:
+  # A.5 — Organizational Controls
+  - id: 8000
+    level: 8
+    description: "ISO 27001 A.5.1: Information security policy violation detected"
+    groups: ["iso27001", "iso27001_A.5", "policy_violation"]
+    match:
+      type: "logs.syslog"
+      fields:
+        message: {contains: "policy violation"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1110", technique_name: "Brute Force"}
+    alert:
+      title: "ISO 27001 A.5.1: Information security policy violation"
+    enabled: true
+
+  # A.6 — People Controls
+  - id: 8001
+    level: 9
+    description: "ISO 27001 A.6.1: Privileged access granted outside normal process"
+    groups: ["iso27001", "iso27001_A.6", "access_control"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4728"}
+    mitre:
+      - {tactic_id: "TA0004", tactic_name: "Privilege Escalation", technique_id: "T1078", technique_name: "Valid Accounts"}
+    alert:
+      title: "ISO 27001 A.6.1: Privileged group membership change"
+    enabled: true
+
+  # A.8 — Asset Management
+  - id: 8002
+    level: 7
+    description: "ISO 27001 A.8.1: Unmanaged device detected on network"
+    groups: ["iso27001", "iso27001_A.8", "asset_management"]
+    match:
+      type: "network.connection"
+      fields:
+        agent_id: {regex: "^(?!syslog:).*$"}
+    alert:
+      title: "ISO 27001 A.8.1: New network asset detected"
+    enabled: true
+
+  # A.9 — Access Control
+  - id: 8003
+    level: 10
+    description: "ISO 27001 A.9.2.3: Privileged access misuse — admin credentials shared"
+    groups: ["iso27001", "iso27001_A.9", "privileged_access"]
+    match:
+      type: "logs.syslog"
+      fields:
+        message: {contains: "su:"}
+    mitre:
+      - {tactic_id: "TA0004", tactic_name: "Privilege Escalation", technique_id: "T1548.003", technique_name: "Sudo and Sudo Caching"}
+    alert:
+      title: "ISO 27001 A.9.2.3: Privileged access su/sudo detected"
+    enabled: true
+
+  - id: 8004
+    level: 9
+    description: "ISO 27001 A.9.4.2: System and application access control failure"
+    groups: ["iso27001", "iso27001_A.9", "access_control_failure"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4625"}
+    alert:
+      title: "ISO 27001 A.9.4.2: Access control failure (failed login)"
+    enabled: true
+
+  - id: 8005
+    level: 8
+    description: "ISO 27001 A.9.2.1: Account created without approval process"
+    groups: ["iso27001", "iso27001_A.9", "account_management"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4720"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1136", technique_name: "Create Account"}
+    alert:
+      title: "ISO 27001 A.9.2.1: New user account created"
+    enabled: true
+
+  # A.10 — Cryptography
+  - id: 8006
+    level: 10
+    description: "ISO 27001 A.10.1: Cryptographic key material exposed or modified"
+    groups: ["iso27001", "iso27001_A.10", "cryptography"]
+    match:
+      type: "fim.modified"
+      fields:
+        path: {regex: "(?i)([.]key|[.]pem|[.]pfx|[.]p12|[.]crt|keystore|truststore)$"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1552.004", technique_name: "Private Keys"}
+    alert:
+      title: "ISO 27001 A.10.1: Cryptographic key file modified"
+    enabled: true
+
+  # A.12 — Operations Security
+  - id: 8007
+    level: 10
+    description: "ISO 27001 A.12.4.1: Audit log tampered or deleted"
+    groups: ["iso27001", "iso27001_A.12", "audit_logging"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "1102"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1070.001", technique_name: "Clear Windows Event Logs"}
+    alert:
+      title: "ISO 27001 A.12.4.1: Security audit log cleared"
+    enabled: true
+
+  - id: 8008
+    level: 9
+    description: "ISO 27001 A.12.6.1: Unpatched vulnerability exploited or CVE detected"
+    groups: ["iso27001", "iso27001_A.12", "vulnerability_management"]
+    match:
+      type: "syscollector.packages"
+      fields:
+        vulnerability_id: {regex: "CVE-[0-9]{4}-[0-9]+"}
+    alert:
+      title: "ISO 27001 A.12.6.1: CVE vulnerability detected on system"
+    enabled: true
+
+  - id: 8009
+    level: 8
+    description: "ISO 27001 A.12.1.2: Unauthorized change detected — change without ticket"
+    groups: ["iso27001", "iso27001_A.12", "change_management"]
+    match:
+      type: "fim.modified"
+      fields:
+        path: {regex: "(?i)(/etc/|/boot/|system32|SysWOW64)"}
+    alert:
+      title: "ISO 27001 A.12.1.2: Unauthorized system file modification"
+    enabled: true
+
+  # A.13 — Communications Security
+  - id: 8010
+    level: 9
+    description: "ISO 27001 A.13.1.1: Unencrypted sensitive data transmission"
+    groups: ["iso27001", "iso27001_A.13", "network_security"]
+    match:
+      type: "network.connection"
+      fields:
+        dest_port: {regex: "^(21|23|25|80|110|143|389|8080)$"}
+    alert:
+      title: "ISO 27001 A.13.1.1: Unencrypted protocol used for data transfer"
+    enabled: true
+
+  # A.16 — Incident Management
+  - id: 8011
+    level: 12
+    description: "ISO 27001 A.16.1.2: Security incident — malware or intrusion detected"
+    groups: ["iso27001", "iso27001_A.16", "incident_management"]
+    match:
+      type: "process.new"
+      fields:
+        name: {regex: "(?i)(mimikatz|meterpreter|cobalt|empire|psexec|bloodhound)"}
+    alert:
+      title: "ISO 27001 A.16.1.2: Security incident — attack tool detected"
+    enabled: true
+
+  - id: 8012
+    level: 11
+    description: "ISO 27001 A.16.1.4: Brute force attack — possible unauthorized access"
+    groups: ["iso27001", "iso27001_A.16", "incident_brute_force"]
+    match:
+      type: "logs.syslog"
+      fields:
+        message: {contains: "authentication failure"}
+    correlation:
+      window: "5m"
+      threshold: 10
+    alert:
+      title: "ISO 27001 A.16.1.4: Brute force attack (access control incident)"
+    enabled: true
+
+  # A.17 — Business Continuity
+  - id: 8013
+    level: 11
+    description: "ISO 27001 A.17.1.1: Critical system backup process disrupted"
+    groups: ["iso27001", "iso27001_A.17", "business_continuity"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(vssadmin.*delete|wbadmin.*delete|bcdedit.*recoveryenabled)"}
+    mitre:
+      - {tactic_id: "TA0040", tactic_name: "Impact", technique_id: "T1490", technique_name: "Inhibit System Recovery"}
+    alert:
+      title: "ISO 27001 A.17.1.1: Backup/recovery capability disrupted"
+    enabled: true
+
+  # A.14 — System Acquisition and Development
+  - id: 8014
+    level: 9
+    description: "ISO 27001 A.14.2.7: Third-party code execution — DLL/script from untrusted source"
+    groups: ["iso27001", "iso27001_A.14", "secure_development"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(regsvr32|mshta|cmstp|wscript|cscript).*(http|ftp|\\\\\\\\)"}
+    mitre:
+      - {tactic_id: "TA0002", tactic_name: "Execution", technique_id: "T1218", technique_name: "System Binary Proxy Execution"}
+    alert:
+      title: "ISO 27001 A.14.2.7: Untrusted code execution via LOLBin"
+    enabled: true
+
+  - id: 8015
+    level: 8
+    description: "ISO 27001 A.14.1.2: Sensitive data exposed in application logs"
+    groups: ["iso27001", "iso27001_A.14", "data_protection"]
+    match:
+      type: "fim.modified"
+      fields:
+        path: {regex: "(?i)(/var/log/|/logs/).*(password|passwd|secret|token|api.key)"}
+    alert:
+      title: "ISO 27001 A.14.1.2: Possible sensitive data in log file"
+    enabled: true

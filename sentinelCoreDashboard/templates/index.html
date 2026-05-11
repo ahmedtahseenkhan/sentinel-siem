@@ -120,9 +120,13 @@
             <span class="nav-icon">🖥</span>
             <span class="nav-label">IT Hygiene</span>
           </a>
+          <a href="#" class="nav-item" data-page="compliance-hub">
+            <span class="nav-icon">📊</span>
+            <span class="nav-label">Compliance Hub</span>
+          </a>
           <a href="#" class="nav-item" data-page="compliance">
             <span class="nav-icon">🛡</span>
-            <span class="nav-label">Compliance</span>
+            <span class="nav-label">HIPAA</span>
           </a>
 
           <a href="#" class="nav-item" data-page="identity">
@@ -1289,6 +1293,42 @@
                   <button type="button" id="hygieneUsersNext">Next →</button>
                 </div>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- COMPLIANCE HUB PAGE -->
+        <section id="page-compliance-hub" class="page">
+          <header class="agents-header">
+            <div class="agents-header-left">
+              <h2 class="agents-title">📊 Compliance Hub</h2>
+              <p class="agents-subtitle">ISO 27001 · NIST CSF · SOC 2 · HIPAA · PCI-DSS — unified compliance posture.</p>
+            </div>
+            <div class="agents-header-right">
+              <select id="complianceDays" onchange="loadComplianceHub()" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:6px 12px;border-radius:6px;font-size:13px">
+                <option value="7">Last 7 days</option>
+                <option value="30" selected>Last 30 days</option>
+                <option value="90">Last 90 days</option>
+              </select>
+            </div>
+          </header>
+
+          <!-- Framework score cards -->
+          <div id="complianceScoreCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px">
+            <div style="color:var(--text-muted);font-size:13px;padding:20px">Loading compliance scores…</div>
+          </div>
+
+          <!-- Selected framework control detail -->
+          <div id="complianceDetailPanel" style="display:none">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+              <h3 id="complianceDetailTitle" style="margin:0"></h3>
+              <button onclick="document.getElementById('complianceDetailPanel').style.display='none'" style="background:none;border:none;color:var(--text-muted);cursor:pointer">✕ Close</button>
+            </div>
+            <div class="panel" style="padding:0">
+              <table class="data-table">
+                <thead><tr><th>Control ID</th><th>Control Name</th><th>Status</th><th>Alerts (period)</th><th>Max Severity</th></tr></thead>
+                <tbody id="complianceControlsBody"></tbody>
+              </table>
             </div>
           </div>
         </section>

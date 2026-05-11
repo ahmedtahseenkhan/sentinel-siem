@@ -4855,6 +4855,102 @@ async function triggerReportNow(id) {
   alert('Report triggered — check your email shortly.');
 }
 
+// ── Compliance Hub ────────────────────────────────────────────────────────────
+
+const FRAMEWORK_ICONS = {
+  iso27001: '🔒', nist: '🇺🇸', soc2: '✅', hipaa: '🏥', pci: '💳'
+};
+
+async function loadComplianceHub() {
+  const days = document.getElementById('complianceDays')?.value || '30';
+
+  // Load all framework summaries in parallel.
+  const frameworksRes = await fetch('/api/compliance/frameworks').then(r => r.json()).catch(() => ({}));
+  const frameworks = frameworksRes.data || [];
+
+  const scores = await Promise.all(
+    frameworks.map(f =>
+      fetch(`/api/compliance/${f.id}?days=${days}`).then(r => r.json()).catch(() => null)
+    )
+  );
+
+  const cards = document.getElementById('complianceScoreCards');
+  if (!cards) return;
+
+  cards.innerHTML = scores.map((s, i) => {
+    if (!s) return '';
+    const fw   = frameworks[i];
+    const icon = FRAMEWORK_ICONS[fw.id] || '📋';
+    const sc   = s.score || 0;
+    const col  = sc >= 90 ? '#10b981' : sc >= 70 ? '#f59e0b' : '#ef4444';
+    const ring = `conic-gradient(${col} ${sc * 3.6}deg, var(--surface-2) 0deg)`;
+
+    return `
+      <div class="panel" style="cursor:pointer;border-top:3px solid ${col}" onclick="loadFrameworkDetail('${fw.id}', '${s.framework}', ${days})">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+          <div>
+            <div style="font-size:14px;font-weight:700">${icon} ${s.framework}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${s.control_count||s.total_controls} controls · ${days}d</div>
+          </div>
+          <div style="position:relative;width:56px;height:56px">
+            <div style="width:56px;height:56px;border-radius:50%;background:${ring}"></div>
+            <div style="position:absolute;inset:6px;background:var(--surface-1);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:${col}">${sc}%</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:16px;font-size:12px">
+          <div><span style="color:#10b981;font-weight:600">${s.compliant}</span> <span style="color:var(--text-muted)">compliant</span></div>
+          <div><span style="color:#ef4444;font-weight:600">${s.non_compliant}</span> <span style="color:var(--text-muted)">issues</span></div>
+          <div><span style="color:var(--text-muted)">${s.total_alerts} alerts</span></div>
+        </div>
+        <div style="margin-top:10px;height:4px;background:var(--surface-2);border-radius:2px">
+          <div style="width:${sc}%;height:100%;background:${col};border-radius:2px;transition:width 0.5s"></div>
+        </div>
+        <div style="font-size:11px;color:var(--accent);margin-top:8px;text-align:right">View controls →</div>
+      </div>`;
+  }).join('');
+}
+
+async function loadFrameworkDetail(frameworkId, frameworkName, days) {
+  const res = await fetch(`/api/compliance/${frameworkId}?days=${days}`).then(r => r.json()).catch(() => ({}));
+  const controls = res.controls || [];
+
+  document.getElementById('complianceDetailTitle').textContent = `${frameworkName} — Control Details (${days} days)`;
+  document.getElementById('complianceDetailPanel').style.display = 'block';
+
+  const tbody = document.getElementById('complianceControlsBody');
+  if (!tbody) return;
+
+  const levelColor = l => l >= 10 ? '#ef4444' : l >= 6 ? '#f97316' : l >= 3 ? '#f59e0b' : '#10b981';
+
+  tbody.innerHTML = controls.map(c => {
+    const compliant = c.status === 'compliant';
+    return `<tr>
+      <td style="font-weight:600;font-size:12px">${escHtml(c.id)}</td>
+      <td style="font-size:13px">${escHtml(c.name)}</td>
+      <td>
+        <span style="background:${compliant ? '#10b98122':'#ef444422'};color:${compliant ? '#10b981':'#ef4444'};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">
+          ${compliant ? '✓ COMPLIANT' : '✗ ISSUE'}
+        </span>
+      </td>
+      <td style="font-size:12px;color:${c.alert_count > 0 ? '#ef4444':'var(--text-muted)'};font-weight:${c.alert_count > 0 ? '600':'400'}">${c.alert_count}</td>
+      <td>
+        ${c.max_level > 0
+          ? `<span style="color:${levelColor(c.max_level)};font-weight:600;font-size:12px">Level ${c.max_level}</span>`
+          : '<span style="color:var(--text-muted);font-size:12px">—</span>'}
+      </td>
+    </tr>`;
+  }).join('');
+
+  // Scroll to detail
+  document.getElementById('complianceDetailPanel').scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.nav-item[data-page="compliance-hub"]').forEach(el => {
+    el.addEventListener('click', () => loadComplianceHub());
+  });
+});
+
 // ── Cloud Monitoring ──────────────────────────────────────────────────────────
 
 async function loadCloudMonitoringPage() {

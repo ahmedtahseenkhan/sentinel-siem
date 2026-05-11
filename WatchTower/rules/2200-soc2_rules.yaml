@@ -1,0 +1,247 @@
+# WatchTower — SOC 2 Trust Service Criteria Rules
+# Rule IDs: 8200-8239
+# Groups follow pattern: soc2_CC{N} for dashboard queries.
+# Criteria: CC1-CC9 (Common Criteria), A1 (Availability), C1 (Confidentiality)
+
+rules:
+  # CC1 — Control Environment
+  - id: 8200
+    level: 8
+    description: "SOC 2 CC1.4: Personnel access revocation failure — terminated user still active"
+    groups: ["soc2", "soc2_CC1", "control_environment"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4624"}
+    alert:
+      title: "SOC 2 CC1.4: Access control environment — login event"
+    enabled: true
+
+  # CC2 — Communication and Information
+  - id: 8201
+    level: 9
+    description: "SOC 2 CC2.2: Security event not communicated — critical alert unacknowledged"
+    groups: ["soc2", "soc2_CC2", "communication"]
+    match:
+      type: "process.new"
+      fields:
+        name: {regex: "(?i)(mimikatz|meterpreter|empire)\\.exe"}
+    alert:
+      title: "SOC 2 CC2.2: Critical security event requires stakeholder communication"
+    enabled: true
+
+  # CC3 — Risk Assessment
+  - id: 8202
+    level: 9
+    description: "SOC 2 CC3.2: New risk identified — vulnerability found in production system"
+    groups: ["soc2", "soc2_CC3", "risk_assessment"]
+    match:
+      type: "syscollector.packages"
+      fields:
+        vulnerability_id: {regex: "CVE-[0-9]{4}-[0-9]+"}
+    alert:
+      title: "SOC 2 CC3.2: Production vulnerability — risk assessment needed"
+    enabled: true
+
+  # CC4 — Monitoring Activities
+  - id: 8203
+    level: 10
+    description: "SOC 2 CC4.1: Monitoring gap — security log deletion detected"
+    groups: ["soc2", "soc2_CC4", "monitoring"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "1102"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1070.001", technique_name: "Clear Windows Event Logs"}
+    alert:
+      title: "SOC 2 CC4.1: Monitoring control failure — event log cleared"
+    enabled: true
+
+  - id: 8204
+    level: 9
+    description: "SOC 2 CC4.2: Control deviation — unauthorized system change detected"
+    groups: ["soc2", "soc2_CC4", "monitoring_deviation"]
+    match:
+      type: "fim.modified"
+      fields:
+        path: {regex: "(?i)(/etc/|/boot/|Windows/System32/)"}
+    alert:
+      title: "SOC 2 CC4.2: System deviation — unauthorized configuration change"
+    enabled: true
+
+  # CC5 — Control Activities
+  - id: 8205
+    level: 9
+    description: "SOC 2 CC5.2: Change management violation — unauthorized software installed"
+    groups: ["soc2", "soc2_CC5", "change_management"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4697"}
+    alert:
+      title: "SOC 2 CC5.2: Unauthorized software/service installation"
+    enabled: true
+
+  # CC6 — Logical and Physical Access Controls
+  - id: 8206
+    level: 10
+    description: "SOC 2 CC6.1: Logical access control failure — unauthorized login attempt"
+    groups: ["soc2", "soc2_CC6", "access_control"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4625"}
+    alert:
+      title: "SOC 2 CC6.1: Access control failure — failed login"
+    enabled: true
+
+  - id: 8207
+    level: 10
+    description: "SOC 2 CC6.2: New user access provisioned — review required"
+    groups: ["soc2", "soc2_CC6", "user_provisioning"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4720"}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1136", technique_name: "Create Account"}
+    alert:
+      title: "SOC 2 CC6.2: New user account created — access review required"
+    enabled: true
+
+  - id: 8208
+    level: 12
+    description: "SOC 2 CC6.6: Privileged access — credential dumping attempt"
+    groups: ["soc2", "soc2_CC6", "privileged_access"]
+    match:
+      type: "process.new"
+      fields:
+        name: {regex: "(?i)(mimikatz|pwdump|gsecdump|fgdump|wce)\\.exe"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1003", technique_name: "OS Credential Dumping"}
+    alert:
+      title: "SOC 2 CC6.6: Credential access violation — dumping tool detected"
+    enabled: true
+
+  - id: 8209
+    level: 11
+    description: "SOC 2 CC6.7: Data movement control — sensitive data exfiltration attempt"
+    groups: ["soc2", "soc2_CC6", "data_movement"]
+    match:
+      type: "network.connection"
+      fields:
+        bytes_sent: {regex: "^[1-9][0-9]{7,}$"}
+    mitre:
+      - {tactic_id: "TA0010", tactic_name: "Exfiltration", technique_id: "T1048", technique_name: "Exfiltration Over Alternative Protocol"}
+    alert:
+      title: "SOC 2 CC6.7: Large data transfer — potential exfiltration"
+    enabled: true
+
+  # CC7 — System Operations
+  - id: 8210
+    level: 11
+    description: "SOC 2 CC7.2: System monitoring — malware detection"
+    groups: ["soc2", "soc2_CC7", "system_operations"]
+    match:
+      type: "process.new"
+      fields:
+        name: {regex: "(?i)(xmrig|cpuminer|nanocore|njrat|asyncrat)\\.exe"}
+    mitre:
+      - {tactic_id: "TA0040", tactic_name: "Impact", technique_id: "T1496", technique_name: "Resource Hijacking"}
+    alert:
+      title: "SOC 2 CC7.2: Malware detected — system operations compromised"
+    enabled: true
+
+  - id: 8211
+    level: 10
+    description: "SOC 2 CC7.3: Incident recovery — backup deletion detected"
+    groups: ["soc2", "soc2_CC7", "incident_recovery"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(vssadmin.*delete|wbadmin.*delete)"}
+    alert:
+      title: "SOC 2 CC7.3: Recovery control failure — backup deletion"
+    enabled: true
+
+  # CC8 — Change Management
+  - id: 8212
+    level: 9
+    description: "SOC 2 CC8.1: Unauthorized change — FIM detected system binary modification"
+    groups: ["soc2", "soc2_CC8", "change_management"]
+    match:
+      type: "fim.modified"
+      fields:
+        path: {regex: "(?i)(/bin/|/usr/sbin/|System32/|SysWOW64/)"}
+    alert:
+      title: "SOC 2 CC8.1: Unauthorized change — system binary modified"
+    enabled: true
+
+  # CC9 — Risk Mitigation
+  - id: 8213
+    level: 10
+    description: "SOC 2 CC9.1: Risk mitigation failure — exploit attempt detected"
+    groups: ["soc2", "soc2_CC9", "risk_mitigation"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(regsvr32.*sct|mshta.*http|rundll32.*javascript)"}
+    mitre:
+      - {tactic_id: "TA0002", tactic_name: "Execution", technique_id: "T1218", technique_name: "System Binary Proxy Execution"}
+    alert:
+      title: "SOC 2 CC9.1: Risk mitigation failure — LOLBin exploit attempt"
+    enabled: true
+
+  # A1 — Availability
+  - id: 8214
+    level: 11
+    description: "SOC 2 A1.1: System availability at risk — service disruption detected"
+    groups: ["soc2", "soc2_A1", "availability"]
+    match:
+      type: "system.cpu"
+      fields:
+        cpu_percent: {regex: "^9[0-9]$|^100$"}
+    alert:
+      title: "SOC 2 A1.1: System availability risk — CPU saturation"
+    enabled: true
+
+  - id: 8215
+    level: 13
+    description: "SOC 2 A1.2: Availability threat — ransomware/DDoS detected"
+    groups: ["soc2", "soc2_A1", "availability_threat"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(vssadmin.*delete|bcdedit.*off)"}
+    mitre:
+      - {tactic_id: "TA0040", tactic_name: "Impact", technique_id: "T1486", technique_name: "Data Encrypted for Impact"}
+    alert:
+      title: "SOC 2 A1.2: Availability threat — ransomware indicators"
+    enabled: true
+
+  # C1 — Confidentiality
+  - id: 8216
+    level: 11
+    description: "SOC 2 C1.1: Confidentiality violation — sensitive data accessed by unauthorized user"
+    groups: ["soc2", "soc2_C1", "confidentiality"]
+    match:
+      type: "fim.modified"
+      fields:
+        path: {regex: "(?i)(confidential|classified|restricted|secret|private|sensitive)"}
+    alert:
+      title: "SOC 2 C1.1: Confidential data file accessed or modified"
+    enabled: true
+
+  - id: 8217
+    level: 11
+    description: "SOC 2 C1.2: Confidential information transmitted unencrypted"
+    groups: ["soc2", "soc2_C1", "confidentiality_transit"]
+    match:
+      type: "network.connection"
+      fields:
+        dest_port: {regex: "^(21|23|80|8080)$"}
+        bytes_sent: {regex: "^[1-9][0-9]{5,}$"}
+    alert:
+      title: "SOC 2 C1.2: Large unencrypted transfer (confidentiality risk)"
+    enabled: true

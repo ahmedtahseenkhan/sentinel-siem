@@ -3090,6 +3090,152 @@ except Exception as _sched_err:
     def run_now(i): pass
 
 
+# ── Extended Compliance (ISO 27001 / NIST / SOC 2) ────────────────────────────
+
+# Framework → (rule groups to query, control structure)
+_COMPLIANCE_FRAMEWORKS = {
+    "iso27001": {
+        "name": "ISO 27001:2022",
+        "controls": [
+            {"id": "A.5",  "name": "Organizational Controls",   "group": "iso27001_A.5"},
+            {"id": "A.6",  "name": "People Controls",           "group": "iso27001_A.6"},
+            {"id": "A.8",  "name": "Asset Management",          "group": "iso27001_A.8"},
+            {"id": "A.9",  "name": "Access Control",            "group": "iso27001_A.9"},
+            {"id": "A.10", "name": "Cryptography",              "group": "iso27001_A.10"},
+            {"id": "A.12", "name": "Operations Security",       "group": "iso27001_A.12"},
+            {"id": "A.13", "name": "Communications Security",   "group": "iso27001_A.13"},
+            {"id": "A.14", "name": "System Development",        "group": "iso27001_A.14"},
+            {"id": "A.16", "name": "Incident Management",       "group": "iso27001_A.16"},
+            {"id": "A.17", "name": "Business Continuity",       "group": "iso27001_A.17"},
+        ]
+    },
+    "nist": {
+        "name": "NIST CSF 2.0",
+        "controls": [
+            {"id": "GV",   "name": "Govern",                    "group": "nist_GV"},
+            {"id": "ID",   "name": "Identify",                  "group": "nist_ID"},
+            {"id": "PR",   "name": "Protect",                   "group": "nist_PR"},
+            {"id": "DE",   "name": "Detect",                    "group": "nist_DE"},
+            {"id": "RS",   "name": "Respond",                   "group": "nist_RS"},
+            {"id": "RC",   "name": "Recover",                   "group": "nist_RC"},
+        ]
+    },
+    "soc2": {
+        "name": "SOC 2 Type II",
+        "controls": [
+            {"id": "CC1",  "name": "Control Environment",       "group": "soc2_CC1"},
+            {"id": "CC2",  "name": "Communication & Info",      "group": "soc2_CC2"},
+            {"id": "CC3",  "name": "Risk Assessment",           "group": "soc2_CC3"},
+            {"id": "CC4",  "name": "Monitoring Activities",     "group": "soc2_CC4"},
+            {"id": "CC5",  "name": "Control Activities",        "group": "soc2_CC5"},
+            {"id": "CC6",  "name": "Access Controls",           "group": "soc2_CC6"},
+            {"id": "CC7",  "name": "System Operations",         "group": "soc2_CC7"},
+            {"id": "CC8",  "name": "Change Management",         "group": "soc2_CC8"},
+            {"id": "CC9",  "name": "Risk Mitigation",           "group": "soc2_CC9"},
+            {"id": "A1",   "name": "Availability",              "group": "soc2_A1"},
+            {"id": "C1",   "name": "Confidentiality",           "group": "soc2_C1"},
+        ]
+    },
+    "hipaa": {
+        "name": "HIPAA",
+        "controls": [
+            {"id": "164.308", "name": "Admin Safeguards",       "group": "hipaa"},
+            {"id": "164.312", "name": "Technical Safeguards",   "group": "hipaa"},
+        ]
+    },
+    "pci": {
+        "name": "PCI-DSS v4.0",
+        "controls": [
+            {"id": "Req1",  "name": "Network Security",         "group": "pci_dss"},
+            {"id": "Req2",  "name": "Secure Configurations",    "group": "pci_dss"},
+            {"id": "Req6",  "name": "Vulnerability Management", "group": "pci_dss"},
+            {"id": "Req10", "name": "Logging & Monitoring",     "group": "pci_dss"},
+        ]
+    },
+}
+
+
+@app.route("/api/compliance/frameworks", methods=["GET"])
+def api_compliance_frameworks():
+    """Return list of supported compliance frameworks."""
+    return jsonify({
+        "data": [
+            {"id": k, "name": v["name"], "control_count": len(v["controls"])}
+            for k, v in _COMPLIANCE_FRAMEWORKS.items()
+        ]
+    })
+
+
+@app.route("/api/compliance/<framework>", methods=["GET"])
+def api_compliance_detail(framework):
+    """
+    Return compliance posture for a framework.
+    For each control: alert count in last N days.
+    compliant = 0 alerts, non_compliant = >0 alerts.
+    """
+    if framework not in _COMPLIANCE_FRAMEWORKS:
+        return jsonify({"error": f"Unknown framework: {framework}"}), 404
+
+    try:
+        from watchtower_client import _os_search, INDEX_PREFIX
+
+        days  = int(request.args.get("days", 30))
+        fw    = _COMPLIANCE_FRAMEWORKS[framework]
+        since = int(time.time() * 1000) - days * 86_400_000
+
+        results = []
+        total_alerts = 0
+        non_compliant = 0
+
+        for control in fw["controls"]:
+            body = {
+                "size": 0,
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"range": {"timestamp": {"gte": since}}},
+                            {"term": {"rule_groups": control["group"]}}
+                        ]
+                    }
+                },
+                "aggs": {
+                    "by_level": {"terms": {"field": "rule_level", "size": 5}},
+                    "max_level": {"max": {"field": "rule_level"}},
+                }
+            }
+            res = _os_search(f"{INDEX_PREFIX}-alerts-*", body)
+            count = ((res.get("hits") or {}).get("total") or {}).get("value", 0)
+            max_l = ((res.get("aggregations") or {}).get("max_level") or {}).get("value") or 0
+            total_alerts += count
+            if count > 0:
+                non_compliant += 1
+
+            results.append({
+                **control,
+                "alert_count":    count,
+                "max_level":      int(max_l) if max_l else 0,
+                "status":         "non_compliant" if count > 0 else "compliant",
+            })
+
+        total_controls = len(fw["controls"])
+        compliant      = total_controls - non_compliant
+        score          = round(compliant / total_controls * 100) if total_controls else 100
+
+        return jsonify({
+            "framework":       fw["name"],
+            "score":           score,
+            "total_controls":  total_controls,
+            "compliant":       compliant,
+            "non_compliant":   non_compliant,
+            "total_alerts":    total_alerts,
+            "days":            days,
+            "controls":        results,
+        })
+
+    except Exception as e:
+        return _api_error(e)
+
+
 # ── Cloud Monitoring Routes ───────────────────────────────────────────────────
 
 @app.route("/api/cloud/status", methods=["GET"])

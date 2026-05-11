@@ -1,0 +1,228 @@
+# WatchTower — NIST Cybersecurity Framework (CSF) 2.0 Rules
+# Rule IDs: 8100-8149
+# Groups follow pattern: nist_{FUNCTION}.{CATEGORY} for dashboard queries.
+# Functions: ID (Identify), PR (Protect), DE (Detect), RS (Respond), RC (Recover), GV (Govern)
+
+rules:
+  # GV — Govern
+  - id: 8100
+    level: 7
+    description: "NIST GV.OC-01: Security policy non-compliance detected"
+    groups: ["nist", "nist_GV", "governance"]
+    match:
+      type: "logs.syslog"
+      fields:
+        message: {contains: "policy"}
+    alert:
+      title: "NIST GV.OC-01: Policy compliance event"
+    enabled: true
+
+  # ID — Identify
+  - id: 8101
+    level: 7
+    description: "NIST ID.AM-01: New asset discovered — update asset inventory"
+    groups: ["nist", "nist_ID", "asset_management"]
+    match:
+      type: "syscollector.hardware"
+      fields: {}
+    alert:
+      title: "NIST ID.AM-01: Asset inventory update — new hardware detected"
+    enabled: true
+
+  - id: 8102
+    level: 8
+    description: "NIST ID.RA-01: Vulnerability found during assessment"
+    groups: ["nist", "nist_ID", "risk_assessment"]
+    match:
+      type: "syscollector.packages"
+      fields:
+        vulnerability_id: {regex: "CVE-[0-9]{4}-[0-9]+"}
+    alert:
+      title: "NIST ID.RA-01: Vulnerability identified — risk assessment required"
+    enabled: true
+
+  - id: 8103
+    level: 9
+    description: "NIST ID.SC-01: Third-party software vulnerability in supply chain"
+    groups: ["nist", "nist_ID", "supply_chain"]
+    match:
+      type: "fim.added"
+      fields:
+        path: {regex: "(?i)(node_modules|site-packages|vendor).*\\.(exe|dll|so)$"}
+    alert:
+      title: "NIST ID.SC-01: Third-party binary added (supply chain risk)"
+    enabled: true
+
+  # PR — Protect
+  - id: 8104
+    level: 9
+    description: "NIST PR.AA-01: Identity and access failure — unauthorized login attempt"
+    groups: ["nist", "nist_PR", "access_control"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4625"}
+    alert:
+      title: "NIST PR.AA-01: Access control failure — unauthorized login"
+    enabled: true
+
+  - id: 8105
+    level: 8
+    description: "NIST PR.AA-05: Privileged user activity — access rights review needed"
+    groups: ["nist", "nist_PR", "privileged_access"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {regex: "4672|4673"}
+    alert:
+      title: "NIST PR.AA-05: Special privileges assigned/used"
+    enabled: true
+
+  - id: 8106
+    level: 9
+    description: "NIST PR.DS-01: Data at rest — unencrypted sensitive file modified"
+    groups: ["nist", "nist_PR", "data_security"]
+    match:
+      type: "fim.modified"
+      fields:
+        path: {regex: "(?i)(password|credential|secret|private|confidential)"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1552", technique_name: "Unsecured Credentials"}
+    alert:
+      title: "NIST PR.DS-01: Sensitive data file modified (data-at-rest risk)"
+    enabled: true
+
+  - id: 8107
+    level: 8
+    description: "NIST PR.DS-02: Data in transit — cleartext protocol detected"
+    groups: ["nist", "nist_PR", "data_in_transit"]
+    match:
+      type: "network.connection"
+      fields:
+        dest_port: {regex: "^(21|23|80|110|143)$"}
+    alert:
+      title: "NIST PR.DS-02: Unencrypted protocol in use (data-in-transit risk)"
+    enabled: true
+
+  - id: 8108
+    level: 10
+    description: "NIST PR.PS-01: Platform integrity — critical system binary modified"
+    groups: ["nist", "nist_PR", "platform_security"]
+    match:
+      type: "fim.modified"
+      fields:
+        path: {regex: "(?i)(/bin/|/sbin/|/usr/bin/|System32/)"}
+    alert:
+      title: "NIST PR.PS-01: System binary modified (platform integrity)"
+    enabled: true
+
+  - id: 8109
+    level: 9
+    description: "NIST PR.IR-01: Network segmentation violation — unauthorized cross-segment connection"
+    groups: ["nist", "nist_PR", "network_resilience"]
+    match:
+      type: "network.connection"
+      fields:
+        dest_port: {regex: "^(3389|5900|22|23)$"}
+    alert:
+      title: "NIST PR.IR-01: Remote access to sensitive port detected"
+    enabled: true
+
+  # DE — Detect
+  - id: 8110
+    level: 10
+    description: "NIST DE.AE-02: Adverse event detected — anomalous process execution"
+    groups: ["nist", "nist_DE", "anomaly_detection"]
+    match:
+      type: "process.new"
+      fields:
+        name: {regex: "(?i)(mimikatz|meterpreter|bloodhound|sharphound|cobalt|empire)\\.exe"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1003", technique_name: "OS Credential Dumping"}
+    alert:
+      title: "NIST DE.AE-02: Attack tool execution — adverse event"
+    enabled: true
+
+  - id: 8111
+    level: 9
+    description: "NIST DE.CM-01: Continuous monitoring — new network connection to external host"
+    groups: ["nist", "nist_DE", "continuous_monitoring"]
+    match:
+      type: "network.connection"
+      fields:
+        direction: {equals: "outbound"}
+        dest_port: {regex: "^(?!80$|443$|53$).*"}
+    alert:
+      title: "NIST DE.CM-01: Unusual outbound network connection detected"
+    enabled: true
+
+  - id: 8112
+    level: 10
+    description: "NIST DE.CM-03: Personnel activity monitoring — off-hours access"
+    groups: ["nist", "nist_DE", "monitoring"]
+    match:
+      type: "windows.security"
+      fields:
+        event_id: {equals: "4624"}
+        logon_hour: {regex: "^(0[0-6]|2[2-3])$"}
+    alert:
+      title: "NIST DE.CM-03: Off-hours system access detected"
+    enabled: true
+
+  - id: 8113
+    level: 11
+    description: "NIST DE.AE-06: Incident impact assessment — high severity alert cluster"
+    groups: ["nist", "nist_DE", "incident_detection"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(vssadmin.*delete|wbadmin.*delete|bcdedit.*disable)"}
+    mitre:
+      - {tactic_id: "TA0040", tactic_name: "Impact", technique_id: "T1490", technique_name: "Inhibit System Recovery"}
+    alert:
+      title: "NIST DE.AE-06: High-impact event — ransomware/wiper behavior"
+    enabled: true
+
+  # RS — Respond
+  - id: 8114
+    level: 12
+    description: "NIST RS.MA-01: Incident response required — active attack in progress"
+    groups: ["nist", "nist_RS", "incident_response"]
+    match:
+      type: "process.new"
+      fields:
+        name: {regex: "(?i)(psexec|wmiexec|dcomexec|smbexec)\\.exe"}
+    mitre:
+      - {tactic_id: "TA0008", tactic_name: "Lateral Movement", technique_id: "T1021", technique_name: "Remote Services"}
+    alert:
+      title: "NIST RS.MA-01: Active lateral movement — immediate response required"
+    enabled: true
+
+  - id: 8115
+    level: 11
+    description: "NIST RS.AN-03: Analysis — unusual process injection technique"
+    groups: ["nist", "nist_RS", "analysis"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(VirtualAlloc|CreateRemoteThread|WriteProcessMemory|NtUnmapViewOfSection)"}
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1055", technique_name: "Process Injection"}
+    alert:
+      title: "NIST RS.AN-03: Process injection analysis required"
+    enabled: true
+
+  # RC — Recover
+  - id: 8116
+    level: 12
+    description: "NIST RC.RP-01: Recovery plan activated — system backup tampered"
+    groups: ["nist", "nist_RC", "recovery"]
+    match:
+      type: "process.new"
+      fields:
+        command_line: {regex: "(?i)(wbadmin.*delete.*catalog|vssadmin.*delete)"}
+    mitre:
+      - {tactic_id: "TA0040", tactic_name: "Impact", technique_id: "T1490", technique_name: "Inhibit System Recovery"}
+    alert:
+      title: "NIST RC.RP-01: Recovery capability disrupted — initiate recovery plan"
+    enabled: true
