@@ -18,6 +18,15 @@ type Config struct {
 	Logging     LoggingConfig     `yaml:"logging"`
 	License     LicenseConfig     `yaml:"license"`
 	ThreatIntel ThreatIntelConfig `yaml:"threat_intel"`
+	Syslog      SyslogConfig      `yaml:"syslog"`
+}
+
+// SyslogConfig enables the built-in UDP/TCP syslog receiver.
+// Firewalls, routers, and switches can send RFC 3164/5424 messages directly.
+type SyslogConfig struct {
+	Enabled        bool   `yaml:"enabled"`
+	Addr           string `yaml:"addr"`             // e.g. ":514" or "0.0.0.0:5140"
+	MaxMessageSize int    `yaml:"max_message_size"` // bytes, default 64KB
 }
 
 type ServerConfig struct {
@@ -227,5 +236,9 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("WATCHTOWER_GRPC_TLS_CA"); v != "" {
 		cfg.Server.GRPC.TLS.CA = v
+	}
+	if v := os.Getenv("WATCHTOWER_SYSLOG_ADDR"); v != "" {
+		cfg.Syslog.Enabled = true
+		cfg.Syslog.Addr = v
 	}
 }

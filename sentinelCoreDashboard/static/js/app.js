@@ -4777,4 +4777,80 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.nav-item[data-page="cases"]').forEach(el => {
     el.addEventListener('click', () => loadCases());
   });
+  document.querySelectorAll('.nav-item[data-page="reports"]').forEach(el => {
+    el.addEventListener('click', () => loadSchedules());
+  });
 });
+
+// ── Scheduled Reports ─────────────────────────────────────────────────────────
+
+async function loadSchedules() {
+  const res = await fetch('/api/reports/schedules').then(r => r.json()).catch(() => ({}));
+  const schedules = res.data || [];
+  const el = document.getElementById('schedulesList');
+  if (!el) return;
+
+  if (!schedules.length) {
+    el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;font-style:italic">No scheduled reports. Click <strong>+ New Schedule</strong> to create one.</div>';
+    return;
+  }
+
+  el.innerHTML = schedules.map(s => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <div style="font-weight:600;font-size:13px">${escHtml(s.name)}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">
+          ${s.report_type} · ${s.frequency} · ${s.recipients?.join(', ')||'—'}
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">
+          Last run: ${s.last_run ? new Date(s.last_run).toLocaleString() : 'Never'}
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="triggerReportNow('${s.id}')" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer">▶ Run Now</button>
+        <button onclick="deleteSchedule('${s.id}')" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#ef4444;padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer">Delete</button>
+      </div>
+    </div>`).join('');
+}
+
+function showScheduleModal() {
+  const m = document.getElementById('scheduleModal');
+  if (m) m.style.display = 'flex';
+}
+
+function hideScheduleModal() {
+  const m = document.getElementById('scheduleModal');
+  if (m) m.style.display = 'none';
+}
+
+async function submitSchedule() {
+  const name       = document.getElementById('schName')?.value?.trim();
+  const report_type = document.getElementById('schType')?.value || 'overview';
+  const frequency  = document.getElementById('schFreq')?.value || 'daily';
+  const hour       = parseInt(document.getElementById('schHour')?.value || '8');
+  const day_of_week = document.getElementById('schDow')?.value || 'fri';
+  const recipientsRaw = document.getElementById('schRecipients')?.value?.trim() || '';
+  const recipients = recipientsRaw.split(',').map(r => r.trim()).filter(Boolean);
+
+  if (!name) { alert('Name is required'); return; }
+  if (!recipients.length) { alert('At least one recipient email is required'); return; }
+
+  await fetch('/api/reports/schedules', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name, report_type, frequency, recipients, hour, day_of_week})
+  });
+  hideScheduleModal();
+  await loadSchedules();
+}
+
+async function deleteSchedule(id) {
+  if (!confirm('Delete this schedule?')) return;
+  await fetch(`/api/reports/schedules/${id}`, {method: 'DELETE'});
+  await loadSchedules();
+}
+
+async function triggerReportNow(id) {
+  await fetch(`/api/reports/schedules/${id}/run`, {method: 'POST'});
+  alert('Report triggered — check your email shortly.');
+}

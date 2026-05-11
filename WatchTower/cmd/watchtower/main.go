@@ -18,6 +18,7 @@ import (
 	"github.com/watchtower/watchtower/internal/response"
 	"github.com/watchtower/watchtower/internal/server/api"
 	grpcserver "github.com/watchtower/watchtower/internal/server/grpc"
+	syslogserver "github.com/watchtower/watchtower/internal/server/syslog"
 	"github.com/watchtower/watchtower/internal/store"
 	"github.com/watchtower/watchtower/internal/threatintel"
 	"github.com/watchtower/watchtower/internal/vuln"
@@ -141,6 +142,20 @@ func main() {
 		logger.Info("threat intel ingestion started",
 			zap.Int("sources", len(cfg.ThreatIntel.Sources)),
 		)
+	}
+
+	// Syslog receiver (UDP + TCP)
+	if cfg.Syslog.Enabled {
+		addr := cfg.Syslog.Addr
+		if addr == "" {
+			addr = ":514"
+		}
+		syslogSrv := syslogserver.New(addr, cfg.Syslog.MaxMessageSize, eng, logger)
+		if err := syslogSrv.Start(); err != nil {
+			logger.Warn("syslog receiver failed to start", zap.Error(err))
+		} else {
+			defer syslogSrv.Stop()
+		}
 	}
 
 	// gRPC server

@@ -14,6 +14,7 @@ x-watchtower-common: &watchtower-common
     - WATCHTOWER_GRPC_TLS_CERT=/etc/sentinel/certs/watchtower.crt
     - WATCHTOWER_GRPC_TLS_KEY=/etc/sentinel/certs/watchtower.key
     - WATCHTOWER_GRPC_TLS_CA=/etc/sentinel/certs/ca.crt
+    - WATCHTOWER_SYSLOG_ADDR=:5140
   volumes:
     - ./certs:/etc/sentinel/certs:ro
   depends_on:
@@ -176,6 +177,7 @@ services:
     ports:
       - "50051:50051"   # gRPC (agents) — sticky source hash
       - "9400:9400"     # REST API — round-robin
+      - "5140:5140"     # Syslog UDP+TCP (firewalls, routers)
       - "8404:8404"     # HAProxy stats dashboard
     volumes:
       - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro

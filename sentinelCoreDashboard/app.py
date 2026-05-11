@@ -2585,6 +2585,55 @@ def api_cases_evidence_add(case_id):
         return _api_error(e)
 
 
+# ── Scheduled Reports ─────────────────────────────────────────────────────────
+
+try:
+    from scheduler import init_scheduler, list_schedules, create_schedule, delete_schedule, run_now
+    init_scheduler()
+except Exception as _sched_err:
+    _logger.warning("Scheduler init failed: %s", _sched_err)
+    def list_schedules(): return []
+    def create_schedule(*a, **kw): return {}
+    def delete_schedule(i): return False
+    def run_now(i): pass
+
+
+@app.route("/api/reports/schedules", methods=["GET"])
+def api_schedules_list():
+    return jsonify({"data": list_schedules()})
+
+
+@app.route("/api/reports/schedules", methods=["POST"])
+def api_schedules_create():
+    body = request.get_json(force=True) or {}
+    try:
+        sched = create_schedule(
+            name        = body.get("name", "Scheduled Report"),
+            report_type = body.get("report_type", "overview"),
+            frequency   = body.get("frequency", "daily"),
+            recipients  = body.get("recipients", []),
+            hour        = int(body.get("hour", 8)),
+            minute      = int(body.get("minute", 0)),
+            day_of_week = body.get("day_of_week", "mon"),
+        )
+        return jsonify({"data": sched}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/reports/schedules/<schedule_id>", methods=["DELETE"])
+def api_schedules_delete(schedule_id):
+    if delete_schedule(schedule_id):
+        return jsonify({"message": "deleted"})
+    return jsonify({"error": "not found"}), 404
+
+
+@app.route("/api/reports/schedules/<schedule_id>/run", methods=["POST"])
+def api_schedules_run_now(schedule_id):
+    run_now(schedule_id)
+    return jsonify({"message": "report triggered"})
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5050))
     # Never enable debug in production — exposes an interactive debugger shell (RCE).
