@@ -9,4 +9,4 @@ COPY . .
 
 EXPOSE 5050
 
-CMD ["python", "app.py"]
+CMD ["gunicorn", "--workers", "4", "--threads", "2", "--bind", "0.0.0.0:5050", "--timeout", "120", "--access-logfile", "-", "app:app"]

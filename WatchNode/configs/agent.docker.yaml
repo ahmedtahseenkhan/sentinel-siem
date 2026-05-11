@@ -7,6 +7,7 @@ agent:
   labels:
     environment: docker
     team: security
+    _enroll_token: "sentinel-enroll-secret-2024"
 
 manager:
   # When using host networking, manager is on localhost:50051 (published by manager container or host).

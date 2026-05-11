@@ -8,6 +8,7 @@ agent:
     environment: production
     region: us-east
     team: security
+    _enroll_token: "REPLACE_WITH_YOUR_ENROLL_TOKEN"  # Must match WATCHTOWER_GRPC_ENROLL_TOKEN
 
 manager:
   url: "127.0.0.1:50051"

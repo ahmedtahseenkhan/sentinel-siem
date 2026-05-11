@@ -4,6 +4,7 @@ agent:
   labels:
     environment: docker
     team: security
+    _enroll_token: "sentinel-enroll-secret-2024"
 
 manager:
   url: "watchtower:50051"
