@@ -14,6 +14,12 @@ type Config struct {
 	Pipeline   PipelineConfig   `yaml:"pipeline"`
 	Indices    IndicesConfig    `yaml:"indices"`
 	Logging    LoggingConfig    `yaml:"logging"`
+	Kafka      KafkaConfig      `yaml:"kafka"`
+}
+
+type KafkaConfig struct {
+	Brokers       []string `yaml:"brokers"`        // e.g. ["kafka:9092"]
+	ConsumerGroup string   `yaml:"consumer_group"` // default: sentinel-watchvault
 }
 
 type ServerConfig struct {
@@ -160,5 +166,15 @@ func ApplyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("WATCHVAULT_LOG_LEVEL"); v != "" {
 		cfg.Logging.Level = v
+	}
+	if v := os.Getenv("WATCHVAULT_KAFKA_BROKERS"); v != "" {
+		for _, b := range strings.Split(v, ",") {
+			if s := strings.TrimSpace(b); s != "" {
+				cfg.Kafka.Brokers = append(cfg.Kafka.Brokers, s)
+			}
+		}
+	}
+	if v := os.Getenv("WATCHVAULT_KAFKA_GROUP"); v != "" {
+		cfg.Kafka.ConsumerGroup = v
 	}
 }

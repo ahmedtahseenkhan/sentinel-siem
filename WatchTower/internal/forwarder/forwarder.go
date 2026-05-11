@@ -2,7 +2,6 @@ package forwarder
 
 import (
 	"context"
-	"encoding/json"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -33,20 +32,21 @@ type dlqBatch struct {
 }
 
 type Forwarder struct {
-	cfg       config.ForwarderConfig
-	logger    *zap.Logger
-	client    *Client
-	eventBuf  []*models.Event
-	alertBuf  []*models.Alert
-	mu        sync.Mutex
-	batchSize int
-	stopCh    chan struct{}
-	eventCh   chan *models.Event
-	alertCh   chan *models.Alert
+	cfg           config.ForwarderConfig
+	logger        *zap.Logger
+	client        *Client        // gRPC client (used when Kafka not configured)
+	kafkaProducer *KafkaProducer // Kafka producer (preferred when configured)
+	eventBuf      []*models.Event
+	alertBuf      []*models.Alert
+	mu            sync.Mutex
+	batchSize     int
+	stopCh        chan struct{}
+	eventCh       chan *models.Event
+	alertCh       chan *models.Alert
 
 	// dead-letter queue for batches that fail after all retries
-	dlqMu  sync.Mutex
-	dlq    []dlqBatch
+	dlqMu sync.Mutex
+	dlq   []dlqBatch
 
 	// metrics
 	droppedEvents int64
@@ -70,11 +70,26 @@ func New(cfg config.ForwarderConfig, logger *zap.Logger) *Forwarder {
 }
 
 func (f *Forwarder) Start(ctx context.Context) error {
-	client, err := NewClient(f.cfg.WatchVault, f.logger)
-	if err != nil {
-		f.logger.Warn("forwarder: could not connect to WatchVault, will buffer events", zap.Error(err))
+	// Prefer Kafka when brokers are configured — it survives WatchVault restarts.
+	if len(f.cfg.Kafka.Brokers) > 0 {
+		kp, err := NewKafkaProducer(f.cfg.Kafka.Brokers, f.logger)
+		if err != nil {
+			f.logger.Warn("forwarder: could not connect to Kafka, falling back to gRPC", zap.Error(err))
+		} else {
+			f.kafkaProducer = kp
+			f.logger.Info("forwarder: using Kafka transport",
+				zap.Strings("brokers", f.cfg.Kafka.Brokers))
+		}
 	}
-	f.client = client
+
+	// Fall back to gRPC if Kafka is not available.
+	if f.kafkaProducer == nil {
+		client, err := NewClient(f.cfg.WatchVault, f.logger)
+		if err != nil {
+			f.logger.Warn("forwarder: could not connect to WatchVault, will buffer events", zap.Error(err))
+		}
+		f.client = client
+	}
 
 	interval, err := time.ParseDuration(f.cfg.WatchVault.FlushInterval)
 	if err != nil || interval <= 0 {
@@ -166,18 +181,29 @@ func (f *Forwarder) flush() {
 		return
 	}
 
-	if f.client == nil {
-		f.logger.Debug("forwarder: no client, discarding batch",
+	if f.kafkaProducer == nil && f.client == nil {
+		f.logger.Debug("forwarder: no transport available, discarding batch",
 			zap.Int("events", len(events)),
 			zap.Int("alerts", len(alerts)),
 		)
 		return
 	}
 
+	sendEvents := func() error {
+		if f.kafkaProducer != nil {
+			return f.kafkaProducer.SendEvents(events)
+		}
+		return f.client.SendEvents(events)
+	}
+	sendAlerts := func() error {
+		if f.kafkaProducer != nil {
+			return f.kafkaProducer.SendAlerts(alerts)
+		}
+		return f.client.SendAlerts(alerts)
+	}
+
 	if len(events) > 0 {
-		if err := f.sendWithRetry("events", func() error {
-			return f.client.SendEvents(events)
-		}); err != nil {
+		if err := f.sendWithRetry("events", sendEvents); err != nil {
 			f.enqueueDLQ(dlqBatch{kind: "events", events: events})
 		} else {
 			f.logger.Debug("forwarder: events sent", zap.Int("count", len(events)))
@@ -185,9 +211,7 @@ func (f *Forwarder) flush() {
 	}
 
 	if len(alerts) > 0 {
-		if err := f.sendWithRetry("alerts", func() error {
-			return f.client.SendAlerts(alerts)
-		}); err != nil {
+		if err := f.sendWithRetry("alerts", sendAlerts); err != nil {
 			f.enqueueDLQ(dlqBatch{kind: "alerts", alerts: alerts})
 		} else {
 			f.logger.Debug("forwarder: alerts sent", zap.Int("count", len(alerts)))
@@ -245,6 +269,9 @@ func (f *Forwarder) DLQDepth() int {
 
 func (f *Forwarder) Stop() {
 	close(f.stopCh)
+	if f.kafkaProducer != nil {
+		f.kafkaProducer.Close()
+	}
 	if f.client != nil {
 		f.client.Close()
 	}
@@ -258,7 +285,3 @@ func (f *Forwarder) Ingest(event *models.Event) {
 	f.ForwardEvent(event)
 }
 
-func marshalEvent(e *models.Event) []byte {
-	data, _ := json.Marshal(e.Fields)
-	return data
-}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -69,6 +70,11 @@ type VulnConfig struct {
 
 type ForwarderConfig struct {
 	WatchVault WatchVaultConfig `yaml:"watchvault"`
+	Kafka      KafkaConfig      `yaml:"kafka"`
+}
+
+type KafkaConfig struct {
+	Brokers []string `yaml:"brokers"` // e.g. ["kafka:9092"]
 }
 
 type WatchVaultConfig struct {
@@ -204,5 +210,12 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("WATCHTOWER_DATABASE_URL"); v != "" {
 		cfg.Store.DatabaseURL = v
+	}
+	if v := os.Getenv("WATCHTOWER_KAFKA_BROKERS"); v != "" {
+		for _, b := range strings.Split(v, ",") {
+			if s := strings.TrimSpace(b); s != "" {
+				cfg.Forwarder.Kafka.Brokers = append(cfg.Forwarder.Kafka.Brokers, s)
+			}
+		}
 	}
 }

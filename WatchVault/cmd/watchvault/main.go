@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/watchvault/watchvault/internal/config"
+	"github.com/watchvault/watchvault/internal/consumer"
 	"github.com/watchvault/watchvault/internal/index"
 	"github.com/watchvault/watchvault/internal/opensearch"
 	"github.com/watchvault/watchvault/internal/pipeline"
@@ -62,6 +63,17 @@ func main() {
 	// Ingestion pipeline
 	pipe := pipeline.New(cfg.Pipeline, cfg.Indices, osClient, logger)
 	pipe.Start()
+
+	// Kafka consumer — when brokers are configured, consume events/alerts from Kafka.
+	// The gRPC server still runs for backward compatibility.
+	if len(cfg.Kafka.Brokers) > 0 {
+		kafkaConsumer, err := consumer.New(cfg.Kafka.Brokers, cfg.Kafka.ConsumerGroup, pipe, logger)
+		if err != nil {
+			logger.Warn("failed to start kafka consumer, continuing without it", zap.Error(err))
+		} else {
+			kafkaConsumer.Start(context.Background())
+		}
+	}
 
 	// gRPC server
 	grpcSvc := grpcserver.NewService(logger, pipe, osClient)
