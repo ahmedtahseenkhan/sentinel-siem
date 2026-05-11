@@ -7,7 +7,7 @@ agent:
     _enroll_token: "sentinel-enroll-secret-2024"
 
 manager:
-  url: "watchtower:50051"
+  url: "haproxy:50051"
   tls:
     cert: "/etc/sentinel/certs/watchnode.crt"
     key:  "/etc/sentinel/certs/watchnode.key"

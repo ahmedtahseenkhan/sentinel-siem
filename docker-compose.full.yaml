@@ -1,5 +1,28 @@
 version: "3.8"
 
+# Shared WatchTower instance config
+x-watchtower-common: &watchtower-common
+  build: ./WatchTower
+  environment:
+    - WATCHTOWER_LOG_LEVEL=info
+    - WATCHTOWER_WATCHVAULT_ADDRESS=watchvault:50052
+    - WATCHTOWER_ENGINE_WORKERS=16
+    - WATCHTOWER_API_KEY=sentinel-dev-api-key
+    - WATCHTOWER_DATABASE_URL=postgres://watchtower:watchtower_dev_pass@postgres:5432/watchtower?sslmode=disable
+    - WATCHTOWER_GRPC_ENROLL_TOKEN=sentinel-enroll-secret-2024
+    - WATCHTOWER_KAFKA_BROKERS=kafka:9092
+    - WATCHTOWER_GRPC_TLS_CERT=/etc/sentinel/certs/watchtower.crt
+    - WATCHTOWER_GRPC_TLS_KEY=/etc/sentinel/certs/watchtower.key
+    - WATCHTOWER_GRPC_TLS_CA=/etc/sentinel/certs/ca.crt
+  volumes:
+    - ./certs:/etc/sentinel/certs:ro
+  depends_on:
+    postgres:
+      condition: service_healthy
+    kafka:
+      condition: service_healthy
+  restart: unless-stopped
+
 # Shared OpenSearch cluster environment
 x-opensearch-common: &opensearch-common
   image: opensearchproject/opensearch:2.12.0
@@ -148,31 +171,24 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  watchtower:
-    build: ./WatchTower
+  haproxy:
+    image: haproxy:2.9-alpine
     ports:
-      - "50051:50051"
-      - "9400:9400"
-    environment:
-      - WATCHTOWER_LOG_LEVEL=info
-      - WATCHTOWER_WATCHVAULT_ADDRESS=watchvault:50052
-      - WATCHTOWER_ENGINE_WORKERS=16
-      - WATCHTOWER_API_KEY=sentinel-dev-api-key
-      - WATCHTOWER_DATABASE_URL=postgres://watchtower:watchtower_dev_pass@postgres:5432/watchtower?sslmode=disable
-      - WATCHTOWER_GRPC_ENROLL_TOKEN=sentinel-enroll-secret-2024
-      - WATCHTOWER_KAFKA_BROKERS=kafka:9092
-      # mTLS — enabled when certs/ directory exists (run scripts/gen-mtls-certs.sh first)
-      - WATCHTOWER_GRPC_TLS_CERT=/etc/sentinel/certs/watchtower.crt
-      - WATCHTOWER_GRPC_TLS_KEY=/etc/sentinel/certs/watchtower.key
-      - WATCHTOWER_GRPC_TLS_CA=/etc/sentinel/certs/ca.crt
+      - "50051:50051"   # gRPC (agents) — sticky source hash
+      - "9400:9400"     # REST API — round-robin
+      - "8404:8404"     # HAProxy stats dashboard
     volumes:
-      - ./certs:/etc/sentinel/certs:ro
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     depends_on:
-      postgres:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
+      - watchtower
+      - watchtower-2
     restart: unless-stopped
+
+  watchtower:
+    <<: *watchtower-common
+
+  watchtower-2:
+    <<: *watchtower-common
 
   watchnode:
     build:
@@ -182,7 +198,7 @@ services:
     pid: host
     network_mode: host
     depends_on:
-      - watchtower
+      - haproxy
     restart: unless-stopped
 
   watchnode-2:
@@ -193,7 +209,7 @@ services:
       - ./WatchNode/configs/node-bridge.yaml:/etc/watchnode/agent/config.yaml:ro
       - ./certs:/etc/sentinel/certs:ro
     depends_on:
-      - watchtower
+      - haproxy
     restart: unless-stopped
 
   watchnode-3:
@@ -204,7 +220,7 @@ services:
       - ./WatchNode/configs/node-bridge.yaml:/etc/watchnode/agent/config.yaml:ro
       - ./certs:/etc/sentinel/certs:ro
     depends_on:
-      - watchtower
+      - haproxy
     restart: unless-stopped
 
   watchnode-4:
@@ -215,7 +231,7 @@ services:
       - ./WatchNode/configs/node-bridge.yaml:/etc/watchnode/agent/config.yaml:ro
       - ./certs:/etc/sentinel/certs:ro
     depends_on:
-      - watchtower
+      - haproxy
     restart: unless-stopped
 
   watchnode-5:
@@ -226,7 +242,7 @@ services:
       - ./WatchNode/configs/node-bridge.yaml:/etc/watchnode/agent/config.yaml:ro
       - ./certs:/etc/sentinel/certs:ro
     depends_on:
-      - watchtower
+      - haproxy
     restart: unless-stopped
 
   dashboard:
@@ -234,7 +250,7 @@ services:
     ports:
       - "5050:5050"
     environment:
-      - WATCHTOWER_URL=http://watchtower:9400
+      - WATCHTOWER_URL=http://haproxy:9400
       - OPENSEARCH_URL=http://opensearch-node1:9200
       - OPENSEARCH_USER=admin
       - OPENSEARCH_PASSWORD=admin
