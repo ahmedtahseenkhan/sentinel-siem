@@ -88,6 +88,12 @@ func main() {
 	// Seed rule files into version store (idempotent — skips if already versioned)
 	go seedRuleVersions(cfg.Engine.RulesDir, st, logger)
 
+	// Ensure monthly alert partitions exist (startup + background refresh)
+	if err := st.EnsureFuturePartitions(3); err != nil {
+		logger.Warn("ensure_future_partitions failed", zap.Error(err))
+	}
+	go runMaintenanceLoop(ctx, st, logger)
+
 	// Registry + heartbeat monitor
 	reg := registry.New(st, logger)
 	reg.StartHeartbeatMonitor(registry.DefaultHeartbeatCheckInterval, registry.DefaultHeartbeatTimeout)
@@ -308,4 +314,54 @@ func initLogger(cfg config.LoggingConfig) *zap.Logger {
 		panic("failed to initialize logger: " + err.Error())
 	}
 	return logger
+}
+
+// runMaintenanceLoop runs database maintenance tasks on a schedule:
+//   - Hourly:  purge expired RBA risk events
+//   - Daily:   ensure future alert partitions exist (3 months ahead)
+//   - Daily:   archive forwarded alerts older than 90 days
+//   - Monthly: drop empty old partitions (older than 6 months)
+func runMaintenanceLoop(ctx context.Context, st interface {
+	EnsureFuturePartitions(int) error
+	ArchiveOldAlerts(int) (int, error)
+	PurgeExpiredRbaEvents() (int, error)
+	DropEmptyOldPartitions(int) (int, error)
+}, logger *zap.Logger) {
+	hourly  := time.NewTicker(1 * time.Hour)
+	daily   := time.NewTicker(24 * time.Hour)
+	monthly := time.NewTicker(30 * 24 * time.Hour)
+	defer hourly.Stop()
+	defer daily.Stop()
+	defer monthly.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+
+		case <-hourly.C:
+			if n, err := st.PurgeExpiredRbaEvents(); err != nil {
+				logger.Warn("purge_expired_rba_events failed", zap.Error(err))
+			} else if n > 0 {
+				logger.Info("purged expired RBA risk events", zap.Int("rows", n))
+			}
+
+		case <-daily.C:
+			if err := st.EnsureFuturePartitions(3); err != nil {
+				logger.Warn("ensure_future_partitions failed", zap.Error(err))
+			}
+			if n, err := st.ArchiveOldAlerts(90); err != nil {
+				logger.Warn("archive_old_alerts failed", zap.Error(err))
+			} else if n > 0 {
+				logger.Info("archived old alerts", zap.Int("rows", n))
+			}
+
+		case <-monthly.C:
+			if n, err := st.DropEmptyOldPartitions(6); err != nil {
+				logger.Warn("drop_empty_old_partitions failed", zap.Error(err))
+			} else if n > 0 {
+				logger.Info("dropped empty old partitions", zap.Int("partitions", n))
+			}
+		}
+	}
 }

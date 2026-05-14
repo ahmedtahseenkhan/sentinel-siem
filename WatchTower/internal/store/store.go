@@ -64,6 +64,7 @@ func (s *Store) migrate() error {
 		"migrations/005_identity.sql",
 		"migrations/006_ueba.sql",
 		"migrations/007_rba.sql",
+		"migrations/008_partitioning.sql",
 	}
 	for _, f := range files {
 		data, err := migrations.ReadFile(f)
@@ -1385,4 +1386,41 @@ func scanAlerts(rows pgx.Rows) ([]*models.Alert, error) {
 		alerts = append(alerts, a)
 	}
 	return alerts, rows.Err()
+}
+
+// === Maintenance operations ===
+
+// EnsureFuturePartitions calls the SQL function that pre-creates monthly alert
+// partitions up to monthsAhead months from now. Safe to call on every startup.
+func (s *Store) EnsureFuturePartitions(monthsAhead int) error {
+	_, err := s.pool.Exec(context.Background(),
+		"SELECT ensure_future_partitions($1)", monthsAhead)
+	return err
+}
+
+// ArchiveOldAlerts moves forwarded alerts older than retentionDays days into
+// alerts_archive and returns the number of rows archived.
+func (s *Store) ArchiveOldAlerts(retentionDays int) (int, error) {
+	var n int
+	err := s.pool.QueryRow(context.Background(),
+		"SELECT archive_old_alerts($1)", retentionDays).Scan(&n)
+	return n, err
+}
+
+// PurgeExpiredRbaEvents deletes rba_risk_events rows whose expires_at has
+// passed and returns the number of rows deleted.
+func (s *Store) PurgeExpiredRbaEvents() (int, error) {
+	var n int
+	err := s.pool.QueryRow(context.Background(),
+		"SELECT purge_expired_rba_events()").Scan(&n)
+	return n, err
+}
+
+// DropEmptyOldPartitions drops alert partitions older than monthsKeep months
+// that contain zero rows. Returns the number of partitions dropped.
+func (s *Store) DropEmptyOldPartitions(monthsKeep int) (int, error) {
+	var n int
+	err := s.pool.QueryRow(context.Background(),
+		"SELECT drop_empty_old_partitions($1)", monthsKeep).Scan(&n)
+	return n, err
 }
