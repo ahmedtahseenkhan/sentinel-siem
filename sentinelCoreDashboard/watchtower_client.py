@@ -186,6 +186,100 @@ indexer_search = _os_search
 
 
 # ---------------------------------------------------------------------------
+# WatchTower direct alert queries (supplements OpenSearch when index is thin)
+# ---------------------------------------------------------------------------
+
+def get_watchtower_alerts(limit=500, offset=0, min_level=None, agent_id=None):
+    """Fetch alerts from WatchTower's SQLite store via REST API."""
+    try:
+        params = {"limit": limit, "offset": offset}
+        if min_level:
+            params["min_level"] = min_level
+        if agent_id:
+            params["agent_id"] = agent_id
+        res = watchtower_request("/api/v1/alerts", method="GET", params=params)
+        return res.get("data") or [] if isinstance(res, dict) else []
+    except Exception:
+        return []
+
+
+def get_watchtower_agents(limit=200):
+    """Fetch agents from WatchTower REST API."""
+    try:
+        res = watchtower_request("/api/v1/agents", method="GET", params={"limit": limit})
+        return res.get("data") or [] if isinstance(res, dict) else []
+    except Exception:
+        return []
+
+
+def build_alerts_dashboard_from_wt(alerts, agents=None):
+    """Build dashboard stats from WatchTower alert list (used when OpenSearch is behind)."""
+    from datetime import datetime, timezone, timedelta
+    agent_map = {a["id"]: a.get("hostname") or a.get("name") or a["id"] for a in (agents or []) if a.get("id")}
+
+    sev = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    by_agent = {}
+    by_group = {}
+    timeline = {}
+
+    for a in alerts:
+        lvl = int(a.get("level", 0))
+        if lvl >= 12:
+            sev["critical"] += 1
+        elif lvl >= 8:
+            sev["high"] += 1
+        elif lvl >= 4:
+            sev["medium"] += 1
+        else:
+            sev["low"] += 1
+
+        aid = a.get("agent_id", "")
+        aname = agent_map.get(aid, aid[:8] + "…" if len(aid) > 8 else aid)
+        if aname:
+            by_agent[aname] = by_agent.get(aname, 0) + 1
+
+        groups = a.get("groups") or []
+        if not groups:
+            title = a.get("title", "")
+            # Extract group from title prefix (e.g. "Network: ..." -> "network")
+            prefix = title.split(":")[0].strip().lower().replace(" ", "_") if ":" in title else "general"
+            groups = [prefix]
+        for g in groups:
+            by_group[g] = by_group.get(g, 0) + 1
+
+        ts_ms = a.get("timestamp", 0)
+        if ts_ms:
+            dt = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
+            hour_key = dt.strftime("%Y-%m-%dT%H:00:00Z")
+            if hour_key not in timeline:
+                timeline[hour_key] = {"key": hour_key, "critical": 0, "high": 0, "medium": 0, "low": 0}
+            if lvl >= 12:
+                timeline[hour_key]["critical"] += 1
+            elif lvl >= 8:
+                timeline[hour_key]["high"] += 1
+            elif lvl >= 4:
+                timeline[hour_key]["medium"] += 1
+            else:
+                timeline[hour_key]["low"] += 1
+
+    top_agents = sorted([{"key": k, "count": v} for k, v in by_agent.items()], key=lambda x: -x["count"])[:10]
+    top_cats = sorted([{"key": k, "count": v} for k, v in by_group.items()], key=lambda x: -x["count"])[:10]
+    tl = sorted(timeline.values(), key=lambda x: x["key"])
+
+    incidents = [a for a in alerts if int(a.get("level", 0)) >= 8][:10]
+    inc_out = [{"timestamp": a.get("timestamp"), "rule_level": a.get("level"), "rule_description": a.get("description") or a.get("title"), "agent_id": a.get("agent_id"), "agent_name": agent_map.get(a.get("agent_id", ""), "")} for a in incidents]
+
+    return {
+        "total_24h": len(alerts),
+        "severity_24h": sev,
+        "timeline_24h_by_severity": tl,
+        "top_categories": top_cats,
+        "top_agents": top_agents,
+        "incidents": inc_out,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Index pattern helpers
 # ---------------------------------------------------------------------------
 
@@ -738,9 +832,10 @@ def get_alerts_by_rule_groups(size=10, time_from=None, time_to=None):
 
 
 def get_alerts_list(size=25, offset=0, time_from=None, time_to=None, min_level=None,
-                    agent_name=None, rule_group=None, search=None, dsl_query=None, source_fields=None):
+                    agent_name=None, rule_group=None, search=None, dsl_query=None, source_fields=None,
+                    index_pattern=None):
     if dsl_query is not None and isinstance(dsl_query, dict):
-        return get_alerts_list_with_dsl(size=size, offset=offset, dsl_query=dsl_query, source_fields=source_fields)
+        return get_alerts_list_with_dsl(size=size, offset=offset, dsl_query=dsl_query, source_fields=source_fields, index_pattern=index_pattern)
     from datetime import datetime, timezone, timedelta
     must = []
     if time_from or time_to:

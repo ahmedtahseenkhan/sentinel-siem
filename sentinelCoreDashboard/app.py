@@ -158,12 +158,13 @@ def _set_security_headers(response):
     # Content-Security-Policy: tighten per your CDN/static asset setup.
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "img-src 'self' data:; "
+        "script-src 'self' 'unsafe-inline' https://unpkg.com; "
+        "script-src-elem 'self' 'unsafe-inline' https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
+        "style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
+        "img-src 'self' data: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com; "
         "font-src 'self' data: https://fonts.gstatic.com; "
-        "connect-src 'self';"
+        "connect-src 'self' https://ip-api.com https://unpkg.com;"
     )
     return response
 
@@ -762,9 +763,20 @@ def api_dashboard_overview():
         )
         out["threat_detection_rate"] = round(mitre_alert_count / max(len(recent_alerts_raw_hits), 1) * 100, 1)
 
-        # Timeline 24h
+        # Timeline 24h — use OpenSearch if it has data, else fall back to WatchTower direct
         by_hour = _aggregation_buckets(timeline_res, "by_hour")
         timeline_list = [{"key": b.get("key_as_string"), "count": b.get("doc_count", 0)} for b in by_hour]
+        os_timeline_total = sum(t["count"] for t in timeline_list)
+        if os_timeline_total == 0:
+            from watchtower_client import get_watchtower_alerts, get_watchtower_agents, build_alerts_dashboard_from_wt
+            wt_alerts = get_watchtower_alerts(500)
+            if wt_alerts:
+                wt_stats = build_alerts_dashboard_from_wt(wt_alerts, [])
+                # Convert wt timeline (has critical/high/med/low) to simple count timeline
+                timeline_list = [
+                    {"key": t.get("key"), "count": (t.get("critical",0)+t.get("high",0)+t.get("medium",0)+t.get("low",0))}
+                    for t in wt_stats.get("timeline_24h_by_severity", [])
+                ]
         out["timeline_24h"] = timeline_list
         out["timeline_total"] = sum(t["count"] for t in timeline_list)
         out["timeline_peak"] = max([t["count"] for t in timeline_list], default=0)
@@ -1042,10 +1054,13 @@ def api_alerts_list():
         rule_group = request.args.get("rule_group", type=str) or None
         search = request.args.get("search", type=str) or None
         fields_param = request.args.get("fields", type=str) or None
+        index_pattern = request.args.get("index", type=str) or None
         dsl_query = None
         if request.method == "POST" and request.is_json:
             body = request.get_json(silent=True) or {}
             dsl_query = body.get("dsl")
+            if not index_pattern:
+                index_pattern = body.get("index") or None
         if dsl_query is None:
             dsl_query = request.args.get("dsl", type=str)
             if dsl_query:
@@ -1062,6 +1077,7 @@ def api_alerts_list():
             min_level=min_level if min_level is not None else None,
             agent_name=agent_name, rule_group=rule_group, search=search,
             dsl_query=dsl_query, source_fields=source_fields,
+            index_pattern=index_pattern,
         )
         hits = data.get("hits", [])
         alerts = _normalize_alerts({"hits": {"hits": hits}})
@@ -1096,59 +1112,96 @@ def api_alerts_list():
                     src["_index"] = hit["_index"]
                 if hit.get("_id"):
                     src["id"] = hit["_id"]
-        return jsonify({"alerts": alerts, "total": data.get("total", 0), "histogram": data.get("histogram", [])})
+        os_total = data.get("total", 0)
+        # If OpenSearch is behind, supplement with WatchTower direct alerts
+        if os_total == 0 and dsl_query is None and (index_pattern is None or "alerts" in (index_pattern or "")):
+            from watchtower_client import get_watchtower_alerts, get_watchtower_agents
+            wt_raw = get_watchtower_alerts(size, offset)
+            wt_agents = get_watchtower_agents()
+            amap = {a["id"]: a.get("hostname") or a.get("name") or a["id"] for a in wt_agents if a.get("id")}
+            wt_total_res = get_watchtower_alerts(1000)
+            alerts = []
+            for a in wt_raw:
+                aid = a.get("agent_id", "")
+                aname = amap.get(aid, "")
+                lvl = int(a.get("level", 0))
+                src = {
+                    "timestamp": a.get("timestamp"), "rule_id": a.get("rule_id"),
+                    "rule_level": lvl, "rule_description": a.get("description") or a.get("title"),
+                    "agent_id": aid, "agent_name": aname,
+                    "event_type": a.get("event_type", ""),
+                }
+                alerts.append({
+                    "timestamp": a.get("timestamp"), "rule_id": a.get("rule_id"),
+                    "rule_level": lvl, "rule_description": src["rule_description"],
+                    "agent_id": aid, "agent_name": aname,
+                    "source": src,
+                })
+            return jsonify({"alerts": alerts, "total": len(wt_total_res), "histogram": []})
+        return jsonify({"alerts": alerts, "total": os_total, "histogram": data.get("histogram", [])})
     except Exception as e:
         return _api_error(e)
 
 
 @app.route("/api/alerts/dashboard")
 def api_alerts_dashboard():
-    """Alerts dashboard: KPIs, timeline by severity, top categories, top agents, incidents (high-level alerts)."""
+    """Alerts dashboard: KPIs, timeline by severity, top categories, top agents, incidents."""
     try:
         import concurrent.futures
         from datetime import datetime, timezone, timedelta
+        from watchtower_client import get_watchtower_alerts, get_watchtower_agents, build_alerts_dashboard_from_wt
         now = datetime.now(timezone.utc)
         start_24 = int((now - timedelta(hours=24)).timestamp() * 1000)
         end_24 = int(now.timestamp() * 1000)
-        out = {}
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
-            f_sev = ex.submit(get_alerts_severity_24h)
-            f_timeline = ex.submit(get_alerts_severity_over_time, 1, "1h", None, start_24, end_24)
-            f_categories = ex.submit(get_alerts_by_rule_groups, 10, start_24, end_24)
-            f_agents = ex.submit(get_alerts_by_agent, 10, None, start_24, end_24, None, None, None, None)
-            f_incidents = ex.submit(get_alerts_list, 10, 0, start_24, end_24, 8, None, None)
-            f_total = ex.submit(get_alerts_list, 0, 0, start_24, end_24, None, None, None)
-        sev = f_sev.result()
-        out["severity_24h"] = sev
-        out["total_24h"] = (f_total.result() or {}).get("total", 0)
-        timeline_res = f_timeline.result()
-        by_date = (timeline_res.get("aggregations") or {}).get("by_date", {}).get("buckets", [])
-        timeline_by_severity = []
-        for b in by_date:
-            key = b.get("key_as_string") or b.get("key")
-            by_level = (b.get("by_level") or {}).get("buckets", [])
-            crit = high = med = low = 0
-            for lev in by_level:
-                lv = int(lev.get("key", 0))
-                c = lev.get("doc_count", 0)
-                if lv >= 12:
-                    crit += c
-                elif lv >= 8:
-                    high += c
-                elif lv >= 4:
-                    med += c
-                else:
-                    low += c
-            timeline_by_severity.append({"key": key, "critical": crit, "high": high, "medium": med, "low": low})
-        out["timeline_24h_by_severity"] = timeline_by_severity
-        cat = f_categories.result() or []
-        out["top_categories"] = [{"key": c.get("key"), "count": c.get("doc_count", 0)} for c in cat]
-        ag = f_agents.result()
-        agent_buckets = _aggregation_buckets(ag, "by_agent")
-        out["top_agents"] = [{"key": b.get("key"), "count": b.get("doc_count", 0), "agent_id": (b.get("agent_id") or {}).get("buckets")[0].get("key") if (b.get("agent_id") or {}).get("buckets") else None} for b in agent_buckets]
-        inc_data = f_incidents.result() or {}
-        inc_hits = inc_data.get("hits", [])
-        out["incidents"] = _normalize_alerts({"hits": {"hits": inc_hits}})
+
+        # Parallel: OpenSearch stats + WatchTower direct alerts
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+            f_os_total = ex.submit(get_alerts_list, 0, 0, start_24, end_24, None, None, None)
+            f_wt_alerts = ex.submit(get_watchtower_alerts, 500)
+            f_wt_agents = ex.submit(get_watchtower_agents, 200)
+
+        os_total = (f_os_total.result() or {}).get("total", 0)
+        wt_alerts = f_wt_alerts.result() or []
+        wt_agents = f_wt_agents.result() or []
+
+        # Use WatchTower data when it has more alerts than OpenSearch (streaming lag)
+        if len(wt_alerts) > os_total:
+            out = build_alerts_dashboard_from_wt(wt_alerts, wt_agents)
+        else:
+            # OpenSearch is up to date — use it for richer aggregations
+            with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+                f_sev = ex.submit(get_alerts_severity_24h)
+                f_timeline = ex.submit(get_alerts_severity_over_time, 1, "1h", None, start_24, end_24)
+                f_categories = ex.submit(get_alerts_by_rule_groups, 10, start_24, end_24)
+                f_agents = ex.submit(get_alerts_by_agent, 10, None, start_24, end_24, None, None, None, None)
+                f_incidents = ex.submit(get_alerts_list, 10, 0, start_24, end_24, 8, None, None)
+            sev = f_sev.result()
+            timeline_res = f_timeline.result()
+            by_date = (timeline_res.get("aggregations") or {}).get("by_date", {}).get("buckets", [])
+            tl = []
+            for b in by_date:
+                key = b.get("key_as_string") or b.get("key")
+                crit = high = med = low = 0
+                for lev in (b.get("by_level") or {}).get("buckets", []):
+                    lv = int(lev.get("key", 0))
+                    c = lev.get("doc_count", 0)
+                    if lv >= 12: crit += c
+                    elif lv >= 8: high += c
+                    elif lv >= 4: med += c
+                    else: low += c
+                tl.append({"key": key, "critical": crit, "high": high, "medium": med, "low": low})
+            cat = f_categories.result() or []
+            ag = f_agents.result()
+            agent_buckets = _aggregation_buckets(ag, "by_agent")
+            inc_data = f_incidents.result() or {}
+            out = {
+                "total_24h": os_total,
+                "severity_24h": sev,
+                "timeline_24h_by_severity": tl,
+                "top_categories": [{"key": c.get("key"), "count": c.get("doc_count", 0)} for c in cat],
+                "top_agents": [{"key": b.get("key"), "count": b.get("doc_count", 0)} for b in agent_buckets],
+                "incidents": _normalize_alerts({"hits": {"hits": inc_data.get("hits", [])}}),
+            }
         return jsonify(out)
     except Exception as e:
         return _api_error(e)
@@ -1225,8 +1278,18 @@ def api_hipaa_events():
 @app.route("/api/alerts/by-severity")
 def api_alerts_by_severity():
     try:
+        from watchtower_client import get_watchtower_alerts
+        # Try OpenSearch first, fall back to WatchTower aggregation
         res = get_alerts_by_severity()
         buckets = _aggregation_buckets(res, "by_level")
+        if not buckets:
+            wt = get_watchtower_alerts(500)
+            counts = {}
+            for a in wt:
+                lvl = int(a.get("level", 0))
+                name = "critical" if lvl >= 12 else "high" if lvl >= 8 else "medium" if lvl >= 4 else "low"
+                counts[name] = counts.get(name, 0) + 1
+            buckets = [{"key": k, "count": v} for k, v in counts.items()]
         return jsonify({"buckets": buckets})
     except Exception as e:
         return _api_error(e)
@@ -1235,9 +1298,17 @@ def api_alerts_by_severity():
 @app.route("/api/alerts/by-rule")
 def api_alerts_by_rule():
     try:
+        from watchtower_client import get_watchtower_alerts
         size = request.args.get("size", 10, type=int)
         res = get_alerts_by_rule(size=size)
         buckets = _aggregation_buckets(res, "by_rule")
+        if not buckets:
+            wt = get_watchtower_alerts(500)
+            counts = {}
+            for a in wt:
+                title = a.get("title") or a.get("description") or f"Rule {a.get('rule_id','?')}"
+                counts[title] = counts.get(title, 0) + 1
+            buckets = sorted([{"key": k, "count": v} for k, v in counts.items()], key=lambda x: -x["count"])[:size]
         return jsonify({"buckets": buckets})
     except Exception as e:
         return _api_error(e)
@@ -1290,23 +1361,28 @@ def _dashboard_filter_args():
 @app.route("/api/alerts/by-agent")
 def api_alerts_by_agent():
     try:
+        from watchtower_client import get_watchtower_alerts, get_watchtower_agents
         size = request.args.get("size", 15, type=int)
         min_level, time_from, time_to, agent_name, agent_id, rule_group, exclude_rule_ids = _dashboard_filter_args()
         rule_groups = [rule_group] if rule_group else None
         res = get_alerts_by_agent(
-            size=size,
-            min_level=min_level,
-            time_from=time_from,
-            time_to=time_to,
-            agent_name=agent_name,
-            agent_id=agent_id,
-            rule_groups=rule_groups,
-            exclude_rule_ids=exclude_rule_ids,
+            size=size, min_level=min_level, time_from=time_from, time_to=time_to,
+            agent_name=agent_name, agent_id=agent_id, rule_groups=rule_groups, exclude_rule_ids=exclude_rule_ids,
         )
         buckets = _aggregation_buckets(res, "by_agent")
         for b in buckets:
             aid = (b.get("agent_id") or {}).get("buckets") or []
             b["agent_id"] = aid[0].get("key") if aid else None
+        if not buckets:
+            wt = get_watchtower_alerts(500)
+            agents = get_watchtower_agents()
+            amap = {a["id"]: a.get("hostname") or a.get("name") or a["id"] for a in agents if a.get("id")}
+            counts = {}
+            for a in wt:
+                aid = a.get("agent_id", "")
+                name = amap.get(aid, aid[:8] + "…" if len(aid) > 8 else aid)
+                counts[name] = counts.get(name, 0) + 1
+            buckets = sorted([{"key": k, "count": v} for k, v in counts.items()], key=lambda x: -x["count"])[:size]
         return jsonify({"buckets": buckets})
     except Exception as e:
         return _api_error(e)
@@ -2700,7 +2776,7 @@ def api_geo_lookup():
 def _to_epoch_ms(expr: str) -> int:
     """Convert simple relative time expressions to epoch ms."""
     import re
-    now_ms = int(time.time() * 1000)
+    now_ms = int(_time.time() * 1000)
     m = re.match(r'now-(\d+)([hdwm])', expr)
     if not m:
         return now_ms
@@ -3082,6 +3158,19 @@ try:
         init_cloud_connectors(_bg_scheduler)
     except Exception as _ce:
         _logger.warning("Cloud connectors init failed: %s", _ce)
+    # Auto-summarize critical alerts every 5 minutes if AI is configured.
+    try:
+        from ai_summarizer import is_configured as _ai_configured, batch_summarize_critical as _batch_ai
+        if _ai_configured():
+            def _auto_ai_job():
+                try:
+                    alerts = get_recent_alerts(size=50) or []
+                    _batch_ai(alerts)
+                except Exception as _ae:
+                    _logger.debug("Auto AI summarize error: %s", _ae)
+            _bg_scheduler.add_job(_auto_ai_job, 'interval', minutes=5, id='auto_ai_summarize', replace_existing=True)
+    except Exception as _aie:
+        _logger.debug("AI auto-summarize scheduler setup skipped: %s", _aie)
 except Exception as _sched_err:
     _logger.warning("Scheduler init failed: %s", _sched_err)
     def list_schedules(): return []
@@ -3169,71 +3258,71 @@ def api_compliance_frameworks():
 @app.route("/api/compliance/<framework>", methods=["GET"])
 def api_compliance_detail(framework):
     """
-    Return compliance posture for a framework.
-    For each control: alert count in last N days.
-    compliant = 0 alerts, non_compliant = >0 alerts.
+    Return compliance posture for a framework using a single OpenSearch query
+    (filters aggregation — one round trip regardless of control count).
+    Falls back to a 0-alert baseline if OpenSearch is unavailable.
     """
     if framework not in _COMPLIANCE_FRAMEWORKS:
         return jsonify({"error": f"Unknown framework: {framework}"}), 404
 
+    fw   = _COMPLIANCE_FRAMEWORKS[framework]
+    days = int(request.args.get("days", 30))
+
+    # Build a unique list of groups so we don't duplicate queries for shared groups
+    controls     = fw["controls"]
+    unique_groups = list({c["group"] for c in controls})
+
+    counts_by_group: dict = {}
     try:
         from watchtower_client import _os_search, INDEX_PREFIX
-
-        days  = int(request.args.get("days", 30))
-        fw    = _COMPLIANCE_FRAMEWORKS[framework]
         since = int(time.time() * 1000) - days * 86_400_000
 
-        results = []
-        total_alerts = 0
-        non_compliant = 0
+        filters_clauses = {
+            g: {"bool": {"must": [
+                {"range": {"timestamp": {"gte": since}}},
+                {"term":  {"rule_groups": g}},
+            ]}}
+            for g in unique_groups
+        }
+        body = {
+            "size": 0,
+            "aggs": {"by_group": {"filters": {"filters": filters_clauses}}}
+        }
+        res  = _os_search(f"{INDEX_PREFIX}-alerts-*", body)
+        buckets = ((res.get("aggregations") or {}).get("by_group") or {}).get("buckets") or {}
+        counts_by_group = {g: (buckets.get(g) or {}).get("doc_count", 0) for g in unique_groups}
+    except Exception:
+        counts_by_group = {g: 0 for g in unique_groups}
 
-        for control in fw["controls"]:
-            body = {
-                "size": 0,
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"range": {"timestamp": {"gte": since}}},
-                            {"term": {"rule_groups": control["group"]}}
-                        ]
-                    }
-                },
-                "aggs": {
-                    "by_level": {"terms": {"field": "rule_level", "size": 5}},
-                    "max_level": {"max": {"field": "rule_level"}},
-                }
-            }
-            res = _os_search(f"{INDEX_PREFIX}-alerts-*", body)
-            count = ((res.get("hits") or {}).get("total") or {}).get("value", 0)
-            max_l = ((res.get("aggregations") or {}).get("max_level") or {}).get("value") or 0
-            total_alerts += count
-            if count > 0:
-                non_compliant += 1
-
-            results.append({
-                **control,
-                "alert_count":    count,
-                "max_level":      int(max_l) if max_l else 0,
-                "status":         "non_compliant" if count > 0 else "compliant",
-            })
-
-        total_controls = len(fw["controls"])
-        compliant      = total_controls - non_compliant
-        score          = round(compliant / total_controls * 100) if total_controls else 100
-
-        return jsonify({
-            "framework":       fw["name"],
-            "score":           score,
-            "total_controls":  total_controls,
-            "compliant":       compliant,
-            "non_compliant":   non_compliant,
-            "total_alerts":    total_alerts,
-            "days":            days,
-            "controls":        results,
+    results       = []
+    total_alerts  = 0
+    non_compliant = 0
+    for control in controls:
+        count = counts_by_group.get(control["group"], 0)
+        total_alerts += count
+        if count > 0:
+            non_compliant += 1
+        results.append({
+            **control,
+            "alert_count": count,
+            "status":      "non_compliant" if count > 0 else "compliant",
         })
 
-    except Exception as e:
-        return _api_error(e)
+    total_controls = len(controls)
+    compliant      = total_controls - non_compliant
+    score          = round(compliant / total_controls * 100) if total_controls else 100
+
+    return jsonify({
+        "framework":      fw["name"],
+        "score":          score,
+        "compliance_pct": score,
+        "total_controls": total_controls,
+        "compliant":      compliant,
+        "non_compliant":  non_compliant,
+        "total_alerts":   total_alerts,
+        "days":           days,
+        "controls":       results,
+    })
 
 
 # ── Cloud Monitoring Routes ───────────────────────────────────────────────────
@@ -3315,6 +3404,50 @@ def api_schedules_delete(schedule_id):
 def api_schedules_run_now(schedule_id):
     run_now(schedule_id)
     return jsonify({"message": "report triggered"})
+
+
+# ---------------------------------------------------------------------------
+# AI Alert Summaries
+# ---------------------------------------------------------------------------
+@app.route("/api/ai/status", methods=["GET"])
+def api_ai_status():
+    try:
+        from ai_summarizer import is_configured
+        return jsonify({"configured": is_configured()})
+    except ImportError:
+        return jsonify({"configured": False})
+
+
+@app.route("/api/ai/summarize", methods=["POST"])
+def api_ai_summarize():
+    data = request.get_json(force=True, silent=True) or {}
+    alert = data.get("alert")
+    if not alert:
+        return jsonify({"error": "alert field required"}), 400
+    try:
+        from ai_summarizer import summarize_alert, get_cached_summary
+        alert_id = str(alert.get("id", ""))
+        cached = get_cached_summary(alert_id) if alert_id else None
+        if cached:
+            cached["cached"] = True
+            return jsonify(cached)
+        related = data.get("related_alerts", [])
+        result = summarize_alert(alert, related_alerts=related)
+        return jsonify(result)
+    except Exception as exc:
+        return _api_error(exc)
+
+
+@app.route("/api/ai/summarize/batch", methods=["POST"])
+def api_ai_summarize_batch():
+    """Auto-summarize all critical (level>=10) alerts from the recent list."""
+    try:
+        from ai_summarizer import batch_summarize_critical
+        alerts = get_recent_alerts(size=50) or []
+        results = batch_summarize_critical(alerts)
+        return jsonify({"summaries": results, "count": len(results)})
+    except Exception as exc:
+        return _api_error(exc)
 
 
 if __name__ == "__main__":
