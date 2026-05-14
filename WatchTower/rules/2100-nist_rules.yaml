@@ -151,7 +151,7 @@ rules:
       type: "network.connection"
       fields:
         direction: {equals: "outbound"}
-        dest_port: {regex: "^(?!80$|443$|53$).*"}
+        dest_port: {regex: "^[0-9]+"}
     alert:
       title: "NIST DE.CM-01: Unusual outbound network connection detected"
     enabled: true

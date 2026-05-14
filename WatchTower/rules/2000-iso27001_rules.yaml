@@ -42,7 +42,7 @@ rules:
     match:
       type: "network.connection"
       fields:
-        agent_id: {regex: "^(?!syslog:).*$"}
+        agent_id: {regex: "^[a-zA-Z0-9]"}
     alert:
       title: "ISO 27001 A.8.1: New network asset detected"
     enabled: true

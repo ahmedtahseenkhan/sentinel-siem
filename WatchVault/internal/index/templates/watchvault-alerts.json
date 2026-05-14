@@ -19,7 +19,7 @@
         "title": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
         "event_type": {"type": "keyword"},
         "event_data": {"type": "object", "dynamic": true},
-        "tags": {"type": "keyword"}
+        "tags": {"type": "object", "dynamic": true}
       }
     }
   }

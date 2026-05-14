@@ -15,7 +15,7 @@
         "agent_name": {"type": "keyword"},
         "message": {"type": "text"},
         "fields": {"type": "object", "dynamic": true},
-        "tags": {"type": "keyword"},
+        "tags": {"type": "object", "dynamic": true},
         "decoded": {"type": "object", "dynamic": true}
       }
     }

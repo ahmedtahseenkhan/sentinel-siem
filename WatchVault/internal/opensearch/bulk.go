@@ -60,7 +60,29 @@ func (c *Client) BulkIndex(items []BulkItem) (int, error) {
 	}
 
 	if errors, ok := result["errors"].(bool); ok && errors {
-		c.logger.Warn("bulk indexing had errors", zap.Int("total_items", len(items)))
+		failed := 0
+		var firstReason string
+		if itemsRaw, ok := result["items"].([]interface{}); ok {
+			for _, raw := range itemsRaw {
+				entry, _ := raw.(map[string]interface{})
+				for _, op := range entry {
+					opMap, _ := op.(map[string]interface{})
+					if errObj, hasErr := opMap["error"]; hasErr && errObj != nil {
+						failed++
+						if firstReason == "" {
+							if errMap, ok := errObj.(map[string]interface{}); ok {
+								firstReason, _ = errMap["reason"].(string)
+							}
+						}
+					}
+				}
+			}
+		}
+		c.logger.Warn("bulk indexing had errors",
+			zap.Int("total_items", len(items)),
+			zap.Int("failed", failed),
+			zap.String("first_error", firstReason),
+		)
 	}
 
 	return len(items), nil

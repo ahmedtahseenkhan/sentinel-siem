@@ -1,0 +1,30 @@
+agent:
+  name: "{{hostname}}"
+manager:
+  url: "watchtower:50051"
+  enroll_token: "sentinel-enroll-secret-2024"
+  reconnect:
+    max_attempts: 0
+    initial_backoff: "2s"
+    max_backoff: "60s"
+collectors:
+  system:
+    enabled: true
+    interval: "30s"
+  process:
+    enabled: true
+    interval: "30s"
+  network:
+    enabled: true
+    interval: "120s"
+  file_integrity:
+    enabled: false
+  logs:
+    enabled: false
+  sca:
+    enabled: false
+  rootcheck:
+    enabled: false
+  syscollector:
+    enabled: true
+    interval: "5m"

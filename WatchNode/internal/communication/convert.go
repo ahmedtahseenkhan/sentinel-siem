@@ -1,6 +1,7 @@
 package communication
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/watchnode/watchnode/internal/models"
@@ -11,7 +12,7 @@ import (
 func DataPointToProto(p models.DataPoint) *proto.DataPoint {
 	dp := &proto.DataPoint{
 		Type:      p.Type,
-		Timestamp: p.Timestamp.UnixNano(),
+		Timestamp: p.Timestamp.UnixMilli(), // send milliseconds — WatchTower maps timestamp as epoch_millis
 		Fields:    make(map[string]*proto.Value),
 		Tags:      p.Tags,
 	}
@@ -34,6 +35,8 @@ func interfaceToValue(v interface{}) *proto.Value {
 		return &proto.Value{Value: &proto.Value_IntValue{IntValue: int64(x)}}
 	case int64:
 		return &proto.Value{Value: &proto.Value_IntValue{IntValue: x}}
+	case uint32:
+		return &proto.Value{Value: &proto.Value_IntValue{IntValue: int64(x)}}
 	case uint64:
 		return &proto.Value{Value: &proto.Value_IntValue{IntValue: int64(x)}}
 	case float32:
@@ -45,6 +48,10 @@ func interfaceToValue(v interface{}) *proto.Value {
 	case []byte:
 		return &proto.Value{Value: &proto.Value_BytesValue{BytesValue: x}}
 	default:
+		// For structs, slices, maps — JSON-encode so OpenSearch receives valid data.
+		if b, err := json.Marshal(x); err == nil {
+			return &proto.Value{Value: &proto.Value_StringValue{StringValue: string(b)}}
+		}
 		return &proto.Value{Value: &proto.Value_StringValue{StringValue: fmt.Sprintf("%v", x)}}
 	}
 }

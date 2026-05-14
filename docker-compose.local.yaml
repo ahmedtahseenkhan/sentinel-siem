@@ -1,0 +1,166 @@
+version: "3.8"
+
+# ── Local dev stack ──────────────────────────────────────────────────────────
+# Single-node OpenSearch (1 GB heap), single WatchTower, no HAProxy.
+# WatchTower is reachable directly on port 9400.
+# Dashboard is at http://localhost:5050  (admin / admin)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=watchtower
+      - POSTGRES_USER=watchtower
+      - POSTGRES_PASSWORD=watchtower_dev_pass
+    volumes:
+      - postgres-data-local:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U watchtower -d watchtower"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  kafka:
+    image: apache/kafka:3.7.0
+    environment:
+      - KAFKA_NODE_ID=1
+      - KAFKA_PROCESS_ROLES=broker,controller
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+      - KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_NUM_PARTITIONS=3
+      - KAFKA_DEFAULT_REPLICATION_FACTOR=1
+      - KAFKA_LOG_RETENTION_HOURS=72
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list 2>/dev/null && echo ok"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  opensearch:
+    image: opensearchproject/opensearch:2.12.0
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - DISABLE_SECURITY_PLUGIN=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data-local:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped
+
+  watchtower:
+    build: ./WatchTower
+    ports:
+      - "9400:9400"   # REST API
+      - "50051:50051" # gRPC (agents)
+      - "5140:5140"   # Syslog
+    environment:
+      - WATCHTOWER_LOG_LEVEL=info
+      - WATCHTOWER_WATCHVAULT_ADDRESS=watchvault:50052
+      - WATCHTOWER_ENGINE_WORKERS=4
+      - WATCHTOWER_API_KEY=sentinel-dev-api-key
+      - WATCHTOWER_DATABASE_URL=postgres://watchtower:watchtower_dev_pass@postgres:5432/watchtower?sslmode=disable
+      - WATCHTOWER_GRPC_ENROLL_TOKEN=sentinel-enroll-secret-2024
+      - WATCHTOWER_KAFKA_BROKERS=kafka:9092
+      - WATCHTOWER_SYSLOG_ADDR=:5140
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  watchvault:
+    build: ./WatchVault
+    ports:
+      - "50052:50052"
+      - "9500:9500"
+    environment:
+      - WATCHVAULT_OPENSEARCH_URLS=http://opensearch:9200
+      - WATCHVAULT_LOG_LEVEL=info
+      - WATCHVAULT_API_KEY=sentinel-dev-api-key
+      - WATCHVAULT_KAFKA_BROKERS=kafka:9092
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  watchnode:
+    build:
+      context: ./WatchNode
+      target: agent
+    image: go-watchnode
+    hostname: node-local-01
+    command: ["--config", "/etc/watchnode/agent/config.yaml"]
+    volumes:
+      - ./WatchNode/configs/node-local.yaml:/etc/watchnode/agent/config.yaml:ro
+    depends_on:
+      - watchtower
+    restart: unless-stopped
+
+  watchnode-2:
+    image: go-watchnode
+    hostname: node-local-02
+    command: ["--config", "/etc/watchnode/agent/config.yaml"]
+    volumes:
+      - ./WatchNode/configs/node-local.yaml:/etc/watchnode/agent/config.yaml:ro
+    depends_on:
+      - watchtower
+    restart: unless-stopped
+
+  dashboard:
+    build: ./sentinelCoreDashboard
+    ports:
+      - "5050:5050"
+    environment:
+      - WATCHTOWER_URL=http://watchtower:9400
+      - OPENSEARCH_URL=http://opensearch:9200
+      - OPENSEARCH_USER=admin
+      - OPENSEARCH_PASSWORD=admin
+      - VERIFY_SSL=false
+      - SECRET_KEY=sentinel-dev-key
+      - DASHBOARD_SUPER_ADMIN_USER=superadmin
+      - DASHBOARD_SUPER_ADMIN_PASSWORD=superadmin
+      - DASHBOARD_ADMIN_USER=admin
+      - DASHBOARD_ADMIN_PASSWORD=admin
+      - WATCHTOWER_API_KEY=sentinel-dev-api-key
+    depends_on:
+      - watchtower
+      - opensearch
+    restart: unless-stopped
+
+volumes:
+  postgres-data-local:
+  opensearch-data-local:

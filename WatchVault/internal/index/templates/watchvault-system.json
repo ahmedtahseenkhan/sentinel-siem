@@ -9,6 +9,7 @@
     },
     "mappings": {
       "properties": {
+        "tags": {"type": "object", "dynamic": true},
         "timestamp": {"type": "date", "format": "epoch_millis"},
         "agent_id": {"type": "keyword"},
         "metric_type": {"type": "keyword"},
