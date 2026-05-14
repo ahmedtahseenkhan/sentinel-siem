@@ -32,7 +32,7 @@ x-opensearch-common: &opensearch-common
     - discovery.seed_hosts=opensearch-node1,opensearch-node2,opensearch-node3
     - cluster.initial_cluster_manager_nodes=opensearch-node1,opensearch-node2,opensearch-node3
     - bootstrap.memory_lock=true
-    - OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g
+    - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
     - DISABLE_INSTALL_DEMO_CONFIG=true
     - DISABLE_SECURITY_PLUGIN=true
     - network.host=0.0.0.0
@@ -99,7 +99,7 @@ services:
       - discovery.seed_hosts=opensearch-node1,opensearch-node2,opensearch-node3
       - cluster.initial_cluster_manager_nodes=opensearch-node1,opensearch-node2,opensearch-node3
       - bootstrap.memory_lock=true
-      - OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
       - DISABLE_INSTALL_DEMO_CONFIG=true
       - DISABLE_SECURITY_PLUGIN=true
       - network.host=0.0.0.0
@@ -112,8 +112,8 @@ services:
       test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
       interval: 15s
       timeout: 10s
-      retries: 20
-      start_period: 60s
+      retries: 40
+      start_period: 120s
 
   opensearch-node2:
     <<: *opensearch-common
@@ -123,7 +123,7 @@ services:
       - discovery.seed_hosts=opensearch-node1,opensearch-node2,opensearch-node3
       - cluster.initial_cluster_manager_nodes=opensearch-node1,opensearch-node2,opensearch-node3
       - bootstrap.memory_lock=true
-      - OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
       - DISABLE_INSTALL_DEMO_CONFIG=true
       - DISABLE_SECURITY_PLUGIN=true
       - network.host=0.0.0.0
@@ -138,7 +138,7 @@ services:
       - discovery.seed_hosts=opensearch-node1,opensearch-node2,opensearch-node3
       - cluster.initial_cluster_manager_nodes=opensearch-node1,opensearch-node2,opensearch-node3
       - bootstrap.memory_lock=true
-      - OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
       - DISABLE_INSTALL_DEMO_CONFIG=true
       - DISABLE_SECURITY_PLUGIN=true
       - network.host=0.0.0.0
