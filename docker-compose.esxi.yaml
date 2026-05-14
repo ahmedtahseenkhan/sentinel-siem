@@ -1,0 +1,170 @@
+# Sentinel SIEM — ESXi Ubuntu VM production deployment
+# Target: 192.168.100.100 (Ubuntu 22.04 LTS)
+# Run:  docker compose -f docker-compose.esxi.yaml up -d
+#
+# Before deploying:
+#   1. Copy this file to the VM:  scp docker-compose.esxi.yaml user@192.168.100.100:~/sentinel/
+#   2. Copy the entire repo:      rsync -av --exclude='.git' ./ user@192.168.100.100:~/sentinel/
+#   3. On the VM, generate certs: bash scripts/gen-certs.sh  (or copy from dev)
+#   4. Create .env file with secrets (see bottom of this file)
+#   5. docker compose -f docker-compose.esxi.yaml up -d
+
+version: "3.8"
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+services:
+  # ── PostgreSQL ───────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=watchtower
+      - POSTGRES_USER=watchtower
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-SentinelDB_Prod_2024!}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U watchtower -d watchtower"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    logging: *default-logging
+
+  # ── Kafka ────────────────────────────────────────────────────────────────
+  kafka:
+    image: bitnami/kafka:3.6
+    environment:
+      - KAFKA_CFG_NODE_ID=0
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_CFG_LOG_RETENTION_HOURS=168
+    volumes:
+      - kafka-data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    restart: unless-stopped
+    logging: *default-logging
+
+  # ── OpenSearch (single node for VM deployment) ───────────────────────────
+  opensearch:
+    image: opensearchproject/opensearch:2.12.0
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - DISABLE_SECURITY_PLUGIN=true
+      - network.host=0.0.0.0
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -v '\"status\":\"red\"'"]
+      interval: 20s
+      timeout: 10s
+      retries: 15
+    restart: unless-stopped
+    logging: *default-logging
+
+  # ── WatchTower (Manager) ─────────────────────────────────────────────────
+  watchtower:
+    build: ./WatchTower
+    environment:
+      - WATCHTOWER_LOG_LEVEL=info
+      - WATCHTOWER_WATCHVAULT_ADDRESS=watchvault:50052
+      - WATCHTOWER_ENGINE_WORKERS=8
+      - WATCHTOWER_API_KEY=${WATCHTOWER_API_KEY:-SentinelWT_Prod_2024!}
+      - WATCHTOWER_DATABASE_URL=postgres://watchtower:${POSTGRES_PASSWORD:-SentinelDB_Prod_2024!}@postgres:5432/watchtower?sslmode=disable
+      - WATCHTOWER_GRPC_ENROLL_TOKEN=${ENROLL_TOKEN:-sentinel-prod-enroll-2024}
+      - WATCHTOWER_KAFKA_BROKERS=kafka:9092
+      - WATCHTOWER_SYSLOG_ADDR=:5140
+    ports:
+      - "9400:9400"    # REST API
+      - "50051:50051"  # gRPC (agents connect here)
+      - "5140:5140/udp" # Syslog
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *default-logging
+
+  # ── WatchVault (Indexer) ─────────────────────────────────────────────────
+  watchvault:
+    build: ./WatchVault
+    environment:
+      - WATCHVAULT_LOG_LEVEL=info
+      - WATCHVAULT_GRPC_LISTEN=:50052
+      - WATCHVAULT_KAFKA_BROKERS=kafka:9092
+      - WATCHVAULT_OPENSEARCH_ADDR=http://opensearch:9200
+      - WATCHVAULT_OPENSEARCH_USER=admin
+      - WATCHVAULT_OPENSEARCH_PASSWORD=admin
+      - WATCHVAULT_API_KEY=${WATCHTOWER_API_KEY:-SentinelWT_Prod_2024!}
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *default-logging
+
+  # ── Dashboard ────────────────────────────────────────────────────────────
+  dashboard:
+    build: ./sentinelCoreDashboard
+    environment:
+      - WATCHTOWER_URL=http://watchtower:9400
+      - WATCHTOWER_API_KEY=${WATCHTOWER_API_KEY:-SentinelWT_Prod_2024!}
+      - WATCHVAULT_URL=http://watchvault:50052
+      - WATCHVAULT_API_KEY=${WATCHTOWER_API_KEY:-SentinelWT_Prod_2024!}
+      - OPENSEARCH_URL=http://opensearch:9200
+      - OPENSEARCH_USER=admin
+      - OPENSEARCH_PASSWORD=admin
+      - DASHBOARD_SECRET_KEY=${DASHBOARD_SECRET_KEY:-SentinelDash_Prod_2024_SecretKey!}
+      - DASHBOARD_SUPER_ADMIN_USER=${ADMIN_USER:-superadmin}
+      - DASHBOARD_SUPER_ADMIN_PASSWORD=${ADMIN_PASSWORD:-SentinelAdmin_2024!}
+      - FLASK_ENV=production
+    ports:
+      - "5050:5050"
+    depends_on:
+      - watchtower
+      - watchvault
+      - opensearch
+    restart: unless-stopped
+    logging: *default-logging
+
+volumes:
+  postgres-data:
+  kafka-data:
+  opensearch-data:
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Create a .env file on the VM with these values (change all passwords):
+#
+# POSTGRES_PASSWORD=YourSecureDBPassword123!
+# WATCHTOWER_API_KEY=YourSecureAPIKey456!
+# ENROLL_TOKEN=YourEnrollToken789!
+# DASHBOARD_SECRET_KEY=YourDashboardSecret012!
+# ADMIN_USER=superadmin
+# ADMIN_PASSWORD=YourAdminPassword345!
+# ─────────────────────────────────────────────────────────────────────────────

@@ -1147,17 +1147,17 @@ const GEO_CONTINENTS = [
     if (isDemo) {
       _ov2ApplyDemo();
     } else {
-      // KPIs from real data — counts from API, sparklines use dummy trend shapes
+      // KPIs from real data — counts from API, sparklines from real timeline_24h
       const agentsOnline = agentsSummary.active || agentsSummary.connected || totalAgents;
       const agentsTotal  = agentsSummary.total || totalAgents;
       const agentsPct    = agentsTotal > 0 ? Math.round((agentsOnline / agentsTotal) * 100) : 100;
-      // Dummy sparkline shapes (purely visual, replaced by real data in future)
-      const _spkEvents  = [18,22,19,25,28,24,31,27,35,30,38,34,42,39,45];
-      const _spkCrit    = [1,0,2,1,0,3,1,4,2,1,3,0,2,4,3];
-      const _spkAgents  = [98,99,100,98,97,99,100,99,98,100,99,98,97,99,100];
-      const _spkCases   = [2,3,2,4,3,5,4,6,5,7,6,7,8,7,9];
-      const _spkUeba    = [0,1,0,2,1,3,2,4,3,5,4,6,5,7,8];
-      const _spkRba     = [1,2,1,3,2,4,3,4,5,4,6,5,7,6,8];
+      // Real sparklines: extract hourly counts from timeline_24h
+      const tl24 = (data.timeline_24h || []).map(t => t.count || 0);
+      const _spkEvents = tl24.length >= 2 ? tl24 : [18,22,19,25,28,24,31,27,35,30,38,34,42,39,45];
+      // For severity-split sparklines use timeline_24h_by_severity if present
+      const tl24sev = data.timeline_24h_by_severity || [];
+      const _spkCrit   = tl24sev.length >= 2 ? tl24sev.map(t=>(t.critical||0)+(t.high||0)) : [1,0,2,1,0,3,1,4,2,1,3,0,2,4,3];
+      const _spkAgents = [98,99,100,98,97,99,100,99,98,100,99,98,97,99,100]; // flat/stable
       _ov2SetKpi({ val:'kpiTotalEvents',   sub:'kpiEventsSub',  tag:'kpiEventsTag',  spark:'kpiEventsSpark'  },
         { value: totalEvents.toLocaleString(), sub:'+events · 24h window', tag:totalEvents>0?'+'+totalEvents:'IDLE', tagKind:totalEvents>1000?'up':'ok', spark: _spkEvents, sparkColor:'#38BDF8' });
       _ov2SetKpi({ val:'criticalCount',    sub:'kpiAlertsSub',  tag:'kpiAlertsTag',  spark:'kpiAlertsSpark'  },

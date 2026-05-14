@@ -767,17 +767,19 @@ def api_dashboard_overview():
         by_hour = _aggregation_buckets(timeline_res, "by_hour")
         timeline_list = [{"key": b.get("key_as_string"), "count": b.get("doc_count", 0)} for b in by_hour]
         os_timeline_total = sum(t["count"] for t in timeline_list)
+        timeline_sev_list = []
         if os_timeline_total == 0:
             from watchtower_client import get_watchtower_alerts, get_watchtower_agents, build_alerts_dashboard_from_wt
             wt_alerts = get_watchtower_alerts(500)
             if wt_alerts:
                 wt_stats = build_alerts_dashboard_from_wt(wt_alerts, [])
-                # Convert wt timeline (has critical/high/med/low) to simple count timeline
+                timeline_sev_list = wt_stats.get("timeline_24h_by_severity", [])
                 timeline_list = [
                     {"key": t.get("key"), "count": (t.get("critical",0)+t.get("high",0)+t.get("medium",0)+t.get("low",0))}
-                    for t in wt_stats.get("timeline_24h_by_severity", [])
+                    for t in timeline_sev_list
                 ]
         out["timeline_24h"] = timeline_list
+        out["timeline_24h_by_severity"] = timeline_sev_list  # for sparklines with severity split
         out["timeline_total"] = sum(t["count"] for t in timeline_list)
         out["timeline_peak"] = max([t["count"] for t in timeline_list], default=0)
 
@@ -1749,27 +1751,65 @@ def api_inventory_users_list():
 
 @app.route("/api/mitre/matrix")
 def api_mitre_matrix():
-    """MITRE ATT&CK matrix: tactics and techniques aggregated from alerts."""
+    """MITRE ATT&CK matrix: tactics and techniques from alerts joined with rule MITRE mappings."""
     try:
-        tactics_res = get_alerts_by_tactic(size=20)
-        tactic_buckets = _aggregation_buckets(tactics_res, "by_tactic")
-        tactics_out = [
-            {"tactic": b.get("key") or "—", "count": b.get("doc_count", 0)}
-            for b in tactic_buckets
-        ]
+        from watchtower_client import watchtower_request, get_watchtower_alerts
 
+        # Build rule_id → mitre map from WatchTower rules API
+        rules_res = watchtower_request("/api/v1/rules", method="GET", params={"limit": 2000}) or {}
+        rule_mitre_map = {}
+        for rule in (rules_res.get("data") or []):
+            rid = rule.get("id")
+            mitre = rule.get("mitre") or []
+            if rid and mitre:
+                rule_mitre_map[rid] = mitre
+
+        # Try OpenSearch first for technique counts
         techniques_res = get_mitre_techniques(size=50)
         tech_buckets = _aggregation_buckets(techniques_res, "by_technique")
-        techniques_out = [
-            {
-                "technique_id": b.get("key") or "—",
-                "key": b.get("key") or "—",
-                "technique_name": b.get("key") or "—",
-                "count": b.get("doc_count", 0),
-            }
-            for b in tech_buckets
-        ]
-        return jsonify({"tactics": tactics_out, "techniques": techniques_out, "total_techniques": len(techniques_out)})
+        os_total = sum(b.get("doc_count", 0) for b in tech_buckets)
+
+        if os_total > 0:
+            # OpenSearch has MITRE-tagged alerts
+            techniques_out = [
+                {"technique_id": b.get("key"), "key": b.get("key"),
+                 "technique_name": b.get("key"), "count": b.get("doc_count", 0)}
+                for b in tech_buckets
+            ]
+        else:
+            # Build from WatchTower alerts + rule MITRE map
+            wt_alerts = get_watchtower_alerts(1000)
+            tech_counts = {}  # technique_id → {name, tactic, count}
+            for alert in wt_alerts:
+                rid = alert.get("rule_id")
+                mitre_list = rule_mitre_map.get(rid, [])
+                for m in mitre_list:
+                    tid = m.get("technique_id", "")
+                    if not tid:
+                        continue
+                    if tid not in tech_counts:
+                        tech_counts[tid] = {
+                            "technique_id": tid,
+                            "technique_name": m.get("technique_name", tid),
+                            "tactic": m.get("tactic_id", ""),
+                            "tactic_name": m.get("tactic_name", ""),
+                            "count": 0,
+                        }
+                    tech_counts[tid]["count"] += 1
+            techniques_out = sorted(tech_counts.values(), key=lambda x: -x["count"])
+
+        # Build tactics from techniques
+        tactic_counts = {}
+        for t in techniques_out:
+            tac = t.get("tactic") or t.get("tactic_id") or ""
+            tac_name = t.get("tactic_name", tac)
+            if tac:
+                tactic_counts[tac] = tactic_counts.get(tac, 0) + t.get("count", 0)
+        tactics_out = [{"tactic": k, "tactic_name": v, "count": tactic_counts[k]}
+                       for k, v in [(k, k) for k in tactic_counts]]
+
+        return jsonify({"tactics": tactics_out, "techniques": techniques_out,
+                        "total_techniques": len(techniques_out)})
     except Exception as e:
         return _api_error(e)
 
@@ -2516,17 +2556,18 @@ def api_ar_block_ip():
         agent_id = (body.get("agent_id") or "").strip()
         if not ip:
             return jsonify({"error": "ip required"}), 400
-        # Call WatchTower active response API
-        payload = {
-            "action": "firewall-drop",
-            "arguments": ["-srcip", ip],
-            "alert": {"data": {"srcip": ip}},
-        }
+        from watchtower_client import watchtower_request, get_watchtower_agents
+        results = []
         if agent_id:
-            payload["agents"] = [agent_id]
-        from watchtower_client import watchtower_request
-        res = watchtower_request("/api/v1/active-response", method="PUT", json_body=payload)
-        return jsonify({"ok": True, "ip": ip, "response": res})
+            target_ids = [agent_id]
+        else:
+            agents = get_watchtower_agents()
+            target_ids = [a["id"] for a in agents if a.get("status") in ("running","streaming","active")]
+        for aid in target_ids:
+            payload = {"agent_id": aid, "action": "firewall-drop", "parameters": {"ip": ip}}
+            res = watchtower_request("/api/v1/active-response", method="POST", json_body=payload)
+            results.append({"agent_id": aid, "response": res})
+        return jsonify({"ok": True, "ip": ip, "sent_to": len(results), "results": results})
     except Exception as e:
         return _api_error(e)
 
