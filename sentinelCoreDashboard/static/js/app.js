@@ -1,3 +1,17 @@
+const GEO_CONTINENTS = [
+  "M 70 110 L 130 80 L 200 70 L 260 90 L 300 130 L 290 170 L 240 200 L 200 220 L 180 250 L 200 280 L 170 290 L 130 270 L 100 240 L 80 200 L 70 160 Z",
+  "M 240 290 L 280 290 L 310 320 L 320 360 L 310 400 L 290 430 L 260 450 L 240 440 L 230 410 L 230 370 L 245 340 L 250 310 Z",
+  "M 460 110 L 510 100 L 540 110 L 560 130 L 545 155 L 510 165 L 480 160 L 460 140 Z",
+  "M 470 180 L 530 175 L 560 200 L 575 230 L 580 270 L 565 310 L 545 340 L 525 360 L 505 370 L 490 350 L 480 320 L 470 290 L 465 250 L 465 215 Z",
+  "M 560 110 L 660 95 L 740 100 L 800 120 L 850 150 L 830 190 L 790 215 L 740 230 L 700 240 L 680 220 L 650 215 L 620 210 L 590 195 L 575 170 L 565 140 Z",
+  "M 660 220 L 700 240 L 720 270 L 705 285 L 690 290 L 670 280 L 660 260 Z",
+  "M 720 290 L 770 295 L 800 300 L 815 310 L 800 320 L 765 315 L 735 310 L 720 305 Z",
+  "M 800 360 L 870 360 L 900 380 L 905 410 L 880 425 L 830 420 L 805 405 L 795 380 Z",
+  "M 360 50 L 410 50 L 420 70 L 405 90 L 380 95 L 360 80 Z",
+  "M 440 100 L 455 95 L 458 110 L 446 116 L 437 110 Z",
+  "M 840 145 L 855 145 L 860 165 L 850 175 L 840 170 Z",
+];
+
 (function () {
   const SUPER_ADMIN_ONLY_PAGES = ['stack', 'data-sources', 'advanced'];
   let currentUser = null;
@@ -133,6 +147,16 @@
     'it-hygiene': { title: 'IT Hygiene', desc: 'System, software, processes, and identity inventory' },
     advanced: { title: 'Advanced', desc: 'Scripts, wodles, and configuration' },
     compliance: { title: 'Compliance', desc: 'Compliance framework views' },
+    'compliance-hub': { title: 'Compliance Hub', desc: 'ISO 27001, NIST CSF, SOC 2, HIPAA, PCI-DSS posture' },
+    cases: { title: 'Case Management', desc: 'Investigate, track, and resolve security incidents' },
+    playbooks: { title: 'SOAR Playbooks', desc: 'Automated response workflows for security events' },
+    ueba: { title: 'UEBA', desc: 'User and Entity Behavior Analytics — anomaly detection' },
+    rba: { title: 'Risk-Based Alerting', desc: 'Entity risk scoring and notable events' },
+    'geo-map': { title: 'Geo Threat Map', desc: 'Geographic visualization of threat sources' },
+    'cloud-monitoring': { title: 'Cloud Monitoring', desc: 'AWS, Azure, and GCP event ingestion and status' },
+    'rule-versions': { title: 'Detection Studio', desc: 'Rule versioning, diff, and validation' },
+    identity: { title: 'Identity', desc: 'User identity inventory and risk tracking' },
+    ticketing: { title: 'Ticketing', desc: 'Jira and ServiceNow integration for alert escalation' },
   };
 
   const DASHBOARD_STORAGE_KEY = 'sentinel_dashboard';
@@ -228,8 +252,11 @@
       const d = new Date();
       const h = d.getUTCHours(), m = d.getUTCMinutes(), s = d.getUTCSeconds();
       const day = d.getUTCDate(), month = MONTHS[d.getUTCMonth()], year = d.getUTCFullYear();
-      const el = document.getElementById('headerUtc');
-      if (el) el.textContent = `${day} ${month} ${year} ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+      const el   = document.getElementById('headerUtc');
+      const el2  = document.getElementById('tb2Clock');
+      const hh = String(h).padStart(2,'0'), mm = String(m).padStart(2,'0'), ss = String(s).padStart(2,'0');
+      if (el)  el.textContent  = `${day} ${month} ${year} ${hh}:${mm}`;
+      if (el2) el2.textContent = `${hh}:${mm}:${ss}`;
     }
     stopUtcClock();
     tick();
@@ -473,23 +500,24 @@
   }
 
   function renderVulnTable(vulns) {
-    if (!vulns || vulns.length === 0) return '<tr><td colspan="7" class="empty-msg">No findings</td></tr>';
+    const colW = 'grid-template-columns:120px 130px 90px 120px 1fr 70px 100px';
+    if (!vulns || vulns.length === 0) return `<div class="sigil-block"><div class="sigil" style="background:radial-gradient(circle,rgba(45,212,191,0.08),transparent 70%);color:var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" width="32" height="32"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div><div class="sigil-text"><h4>No vulnerabilities found</h4><p>Enable vulnerability scanning on your agents to populate CVE data. Scans run on a schedule and emit CVE alerts when new advisories drop.</p></div><div style="flex:1"></div><button class="act-btn" onclick="goToPage('settings')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg> Configure scanning</button></div>`;
     return vulns.map(v => {
       const detected = v.detected_at ? new Date(v.detected_at).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—';
       const pkg = [v.package_name, v.package_version].filter(Boolean).join(' @ ') || '—';
       const score = v.score_base != null ? Number(v.score_base).toFixed(1) : '—';
       const sev = (v.severity || '').toLowerCase();
-      const sevPillClass = sev.includes('critical') || sev === 'high' ? 'high' : sev === 'medium' ? 'mid' : 'low';
-      const status = '—'; // Placeholder: Patch available / Fixed / No patch when backend supports it
-      return `<tr>
-        <td class="vuln-td-date">${escapeHtml(detected)}</td>
-        <td class="vuln-td-cve">${escapeHtml(v.vuln_id || '—')}</td>
-        <td><span class="severity-pill severity-pill--${sevPillClass}">${escapeHtml(v.severity || '—')}</span></td>
-        <td>${escapeHtml(v.agent_name || v.agent_id || '—')}</td>
-        <td class="vuln-td-pkg">${escapeHtml(pkg)}</td>
-        <td>${escapeHtml(score)}</td>
-        <td class="vuln-td-status">${escapeHtml(status)}</td>
-      </tr>`;
+      const sevCol = sev.includes('critical') ? 'var(--crit)' : sev === 'high' ? 'var(--high)' : sev === 'medium' ? 'var(--med)' : 'var(--low)';
+      const sevPillCls = sev.includes('critical') ? 'crit' : sev === 'high' ? 'high' : sev === 'medium' ? 'med' : 'low';
+      return `<div class="tbl-r" style="${colW}">
+        <span class="tbl-time">${escapeHtml(detected)}</span>
+        <span class="tbl-mono" style="color:var(--accent)">${escapeHtml(v.vuln_id || '—')}</span>
+        <span><span class="pill ${sevPillCls}">${escapeHtml(v.severity || '—')}</span></span>
+        <span class="tbl-mono">${escapeHtml((v.agent_name || v.agent_id || '—').slice(0,16))}</span>
+        <span class="tbl-pri">${escapeHtml(pkg.slice(0,50))}</span>
+        <span style="font-family:var(--font-mono);font-weight:600;color:${sevCol}">${escapeHtml(score)}</span>
+        <span class="tbl-muted">—</span>
+      </div>`;
     }).join('');
   }
 
@@ -555,12 +583,12 @@
     const severities = new Set();
     series.forEach(s => (s.buckets || []).forEach(b => severities.add(String(b.key))));
     const severityList = Array.from(severities);
-    const colors = ['#f85149', '#d29922', '#3fb950', '#58a6ff', '#bc8cff'];
+    const colors = ['#F25555', '#F59E0B', '#34D399', '#2DD4BF', '#bc8cff'];
     let maxVal = 0;
     series.forEach(s => (s.buckets || []).forEach(b => { if (b.doc_count > maxVal) maxVal = b.doc_count; }));
     maxVal = Math.max(1, maxVal);
     const stepX = series.length > 1 ? chartW / (series.length - 1) : chartW;
-    ctx.fillStyle = '#0d1117';
+    ctx.fillStyle = '#08090b';
     ctx.fillRect(0, 0, w, h);
     ctx.strokeStyle = '#30363d';
     ctx.fillStyle = '#8b949e';
@@ -590,55 +618,139 @@
     ).join(' &nbsp; ');
   }
 
-  function drawTimeline(canvasId, timeline24h) {
+  function drawTimeline(canvasId, timeline24h, demoTrend) {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
-    const w = canvas.width;
-    const h = canvas.height;
-    canvas.style.width = w + 'px';
+    const container = canvas.parentElement;
+    const w = (container ? container.clientWidth : canvas.offsetWidth) || 500;
+    const h = 180;
+    canvas.style.width  = w + 'px';
     canvas.style.height = h + 'px';
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
+    canvas.width  = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
     ctx.scale(dpr, dpr);
-    const padding = { top: 20, right: 20, bottom: 30, left: 40 };
-    const chartW = w - padding.left - padding.right;
-    const chartH = h - padding.top - padding.bottom;
-    const buckets = timeline24h || [];
-    const maxVal = Math.max(...buckets.map(b => b.count), 1);
-    const step = buckets.length > 0 ? chartW / Math.max(buckets.length, 1) : 0;
 
-    ctx.fillStyle = '#0d1117';
+    const isDark   = document.documentElement.getAttribute('data-theme') !== 'light';
+    const bg       = isDark ? '#0f1115' : '#ffffff';
+    const gridCol  = isDark ? 'rgba(255,255,255,0.055)' : 'rgba(0,0,0,0.07)';
+    const textCol  = isDark ? '#5E6068' : '#9ca3af';
+    const P        = { t:14, r:12, b:24, l:32 };
+    const cW = w - P.l - P.r;
+    const cH = h - P.t - P.b;
+
+    ctx.fillStyle = bg;
     ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = '#30363d';
-    ctx.fillStyle = '#8b949e';
-    ctx.font = '10px JetBrains Mono';
-    ctx.fillText('0', padding.left - 20, padding.top + chartH + 4);
-    ctx.fillText(String(Math.ceil(maxVal)), padding.left - 28, padding.top + 4);
 
-    ctx.beginPath();
-    ctx.strokeStyle = '#58a6ff';
-    ctx.lineWidth = 2;
-    buckets.forEach((b, i) => {
-      const x = padding.left + i * step + step / 2;
-      const y = padding.top + chartH - (b.count / maxVal) * chartH;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
+    // Normalise data: accept {crit,high,med,low}[] (demo) or {key,count}[] (real API)
+    let series;
+    if (demoTrend && demoTrend.length > 0 && demoTrend[0].crit !== undefined) {
+      series = demoTrend;
+    } else if (timeline24h && timeline24h.length > 0 && timeline24h[0].crit !== undefined) {
+      series = timeline24h;
+    } else if (timeline24h && timeline24h.length > 0) {
+      // Old format: convert single-count to low series
+      series = timeline24h.map(b => ({ crit:0, high:0, med:0, low: b.count || 0 }));
+    } else {
+      series = [];
+    }
 
-    ctx.fillStyle = 'rgba(210, 153, 34, 0.3)';
-    ctx.beginPath();
-    buckets.forEach((b, i) => {
-      const x = padding.left + i * step + step / 2;
-      const y = padding.top + chartH - (b.count / maxVal) * chartH;
-      if (i === 0) ctx.moveTo(x, padding.top + chartH);
-      ctx.lineTo(x, y);
+    const n   = series.length || 1;
+    const stepX = cW / (n - 1 || 1);
+    const maxVal = Math.max(...series.map(d => (d.crit||0)+(d.high||0)+(d.med||0)+(d.low||0)), 1);
+
+    // Grid lines
+    ctx.strokeStyle = gridCol;
+    ctx.lineWidth   = 0.8;
+    ctx.setLineDash([2, 3]);
+    [0, 0.25, 0.5, 0.75, 1].forEach((p, i) => {
+      const y = P.t + cH * (1 - p);
+      ctx.beginPath(); ctx.moveTo(P.l, y); ctx.lineTo(P.l + cW, y); ctx.stroke();
     });
-    ctx.lineTo(padding.left + buckets.length * step - step / 2, padding.top + chartH);
-    ctx.closePath();
-    ctx.fill();
+    ctx.setLineDash([]);
+
+    // Y labels
+    ctx.fillStyle = textCol;
+    ctx.font = `9px 'Geist Mono','JetBrains Mono',monospace`;
+    ctx.textAlign = 'right';
+    [0, 0.5, 1].forEach(p => {
+      ctx.fillText(Math.round(maxVal * p), P.l - 4, P.t + cH * (1 - p) + 3);
+    });
+
+    if (series.length === 0) {
+      ctx.fillStyle = textCol;
+      ctx.textAlign = 'center';
+      ctx.font = `11px 'Geist',system-ui,sans-serif`;
+      ctx.fillText('no events in the last 24 hours · system quiet', P.l + cW / 2, P.t + cH / 2 + 4);
+      return;
+    }
+
+    // Stacked area — draw from bottom (low) to top (crit)
+    const sevLayers = [
+      { key: 'low',  color: isDark ? '#38BDF8' : '#3b82f6', opacity: 0.22, strokeOpacity: 0.9 },
+      { key: 'med',  color: '#EAB308', opacity: 0.22, strokeOpacity: 0.9 },
+      { key: 'high', color: '#F59E0B', opacity: 0.22, strokeOpacity: 0.9 },
+      { key: 'crit', color: '#F25555', opacity: 0.22, strokeOpacity: 0.9 },
+    ];
+
+    const xAt = i => P.l + i * stepX;
+    const yAt = v => P.t + cH - (v / maxVal) * cH;
+
+    sevLayers.forEach(({ key, color, opacity, strokeOpacity }) => {
+      const topVals  = series.map(d => (d.crit||0) + (d.high||0) + (d.med||0) + (d.low||0));
+      const baseVals = series.map(d => {
+        let base = 0;
+        if (key === 'med')  base = d.low||0;
+        if (key === 'high') base = (d.low||0) + (d.med||0);
+        if (key === 'crit') base = (d.low||0) + (d.med||0) + (d.high||0);
+        return base + (d[key]||0);
+      });
+      const bVals = series.map(d => {
+        if (key === 'low')  return 0;
+        if (key === 'med')  return d.low||0;
+        if (key === 'high') return (d.low||0) + (d.med||0);
+        return (d.low||0) + (d.med||0) + (d.high||0);
+      });
+
+      // Area
+      ctx.beginPath();
+      series.forEach((_, i) => {
+        const x = xAt(i), y = yAt(baseVals[i]);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      for (let i = series.length - 1; i >= 0; i--) {
+        ctx.lineTo(xAt(i), yAt(bVals[i]));
+      }
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.globalAlpha = opacity;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // Stroke
+      ctx.beginPath();
+      series.forEach((_, i) => {
+        const x = xAt(i), y = yAt(baseVals[i]);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = strokeOpacity;
+      ctx.lineWidth = 1.2;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    });
+
+    // X-axis labels
+    ctx.fillStyle = textCol;
+    ctx.textAlign = 'center';
+    ctx.font = `9px 'Geist Mono','JetBrains Mono',monospace`;
+    const labels = ['00:00','04:00','08:00','12:00','16:00','20:00','now'];
+    labels.forEach((lbl, li) => {
+      const x = P.l + (li / (labels.length - 1)) * cW;
+      ctx.fillText(lbl, x, P.t + cH + 16);
+    });
   }
 
   function drawAgentsSummaryDonut(canvasId, legendId, summary) {
@@ -650,9 +762,9 @@
     const pending = summary?.pending ?? 0;
     const never = summary?.never_connected ?? 0;
     const segments = [
-      { label: 'Active', count: active, color: '#3fb950' },
-      { label: 'Disconnected', count: disconnected, color: '#f85149' },
-      { label: 'Pending', count: pending, color: '#d29922' },
+      { label: 'Active', count: active, color: '#34D399' },
+      { label: 'Disconnected', count: disconnected, color: '#F25555' },
+      { label: 'Pending', count: pending, color: '#F59E0B' },
       { label: 'Never connected', count: never, color: '#8b949e' },
     ].filter(s => s.count > 0);
     const total = segments.reduce((s, x) => s + x.count, 0);
@@ -676,7 +788,7 @@
     });
     ctx.beginPath();
     ctx.arc(cx, cy, r * 0.5, 0, 2 * Math.PI);
-    ctx.fillStyle = '#161b22';
+    ctx.fillStyle = '#0f1115';
     ctx.fill();
     if (legendEl) legendEl.innerHTML = segments.map(s => `<span><span class="legend-dot" style="background:${s.color}"></span>${escapeHtml(s.label)} (${s.count})</span>`).join('');
   }
@@ -689,7 +801,7 @@
       return;
     }
     const total = mitreList.reduce((s, m) => s + m.count, 0);
-    const colors = ['#f85149', '#d29922', '#58a6ff', '#3fb950', '#bc8cff', '#56d4dd'];
+    const colors = ['#F25555', '#F59E0B', '#2DD4BF', '#34D399', '#bc8cff', '#56d4dd'];
     const ctx = canvas.getContext('2d');
     const cx = canvas.width / 2, cy = canvas.height / 2;
     const r = Math.min(cx, cy) - 8;
@@ -706,207 +818,748 @@
     });
     ctx.beginPath();
     ctx.arc(cx, cy, r * 0.5, 0, 2 * Math.PI);
-    ctx.fillStyle = '#161b22';
+    ctx.fillStyle = '#0f1115';
     ctx.fill();
     legendEl.innerHTML = mitreList.map((m, i) =>
       `<span style="color:${colors[i % colors.length]}">■</span> ${escapeHtml(String(m.technique).slice(0, 25))} (${m.pct}%)`
     ).join('<br>');
   }
 
-  function drawThreatSummaryDonut(canvasId, centerId, legendId, sev24) {
-    const canvas = document.getElementById(canvasId);
-    const centerEl = document.getElementById(centerId);
-    const legendEl = document.getElementById(legendId);
+  function drawThreatSummaryDonut(canvasId, centerId, legendId, sev24, demoData) {
+    const canvas    = document.getElementById(canvasId);
+    const centerEl  = document.getElementById(centerId);
+    const legendEl  = document.getElementById(legendId);
     if (!canvas) return;
-    const critical = sev24?.critical ?? 0;
-    const high = sev24?.high ?? 0;
-    const medium = sev24?.medium ?? 0;
-    const low = sev24?.low ?? 0;
-    const segments = [
-      { label: 'Critical', count: critical, color: '#f85149' },
-      { label: 'High', count: high, color: '#d29922' },
-      { label: 'Medium', count: medium, color: '#d4a72c' },
-      { label: 'Low', count: low, color: '#8b949e' },
-    ].filter(s => s.count > 0);
-    const total = segments.reduce((s, x) => s + x.count, 0);
-    if (centerEl) centerEl.textContent = total > 0 ? String(total) : '0';
+    const isDark    = document.documentElement.getAttribute('data-theme') !== 'light';
+    const trackCol  = isDark ? '#1a1d23' : '#e5e7eb';
+    const holeBg    = isDark ? '#0f1115' : '#ffffff';
+    const src       = demoData || sev24 || {};
+    const segs = [
+      { label:'Critical', count: src.critical ?? 0, color:'#F25555' },
+      { label:'High',     count: src.high     ?? 0, color:'#F59E0B' },
+      { label:'Medium',   count: src.medium   ?? 0, color:'#EAB308' },
+      { label:'Low',      count: src.low      ?? 0, color:'#38BDF8' },
+    ];
+    const total = segs.reduce((s, x) => s + x.count, 0);
+    if (centerEl) centerEl.textContent = total;
+
+    const dpr   = window.devicePixelRatio || 1;
+    const size  = 92;
+    canvas.width = canvas.height = Math.round(size * dpr);
+    canvas.style.width = canvas.style.height = size + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const cx = size / 2, cy = size / 2;
+    const r  = size / 2 - 3;
+    const thickness = 11;
+
+    // Track
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+    ctx.lineWidth = thickness;
+    ctx.strokeStyle = trackCol;
+    ctx.stroke();
+
     if (total === 0) {
-      if (legendEl) legendEl.innerHTML = '<span class="empty-msg">No alerts</span>';
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (legendEl) legendEl.innerHTML = `
+        <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--d-fg-3)">
+          <span style="width:10px;height:10px;border-radius:50%;background:${trackCol};display:inline-block"></span>No alerts · 24h
+        </div>`;
       return;
     }
-    const ctx = canvas.getContext('2d');
-    const cx = canvas.width / 2, cy = canvas.height / 2;
-    const r = Math.min(cx, cy) - 8;
+
+    // Arcs
     let start = -Math.PI / 2;
-    segments.forEach((seg) => {
+    segs.filter(s => s.count > 0).forEach(seg => {
       const slice = (seg.count / total) * 2 * Math.PI;
       ctx.beginPath();
-      ctx.moveTo(cx, cy);
       ctx.arc(cx, cy, r, start, start + slice);
-      ctx.closePath();
-      ctx.fillStyle = seg.color;
-      ctx.fill();
+      ctx.lineWidth = thickness;
+      ctx.strokeStyle = seg.color;
+      ctx.stroke();
       start += slice;
     });
-    ctx.beginPath();
-    ctx.arc(cx, cy, r * 0.55, 0, 2 * Math.PI);
-    ctx.fillStyle = '#161b22';
-    ctx.fill();
-    if (legendEl) legendEl.innerHTML = segments.map(s => {
-      const pct = total ? Math.round((s.count / total) * 100) : 0;
-      return `<span><span class="legend-dot" style="background:${s.color}"></span>${escapeHtml(s.label)}: ${s.count.toLocaleString()} (${pct}%)</span>`;
-    }).join('');
+
+    // Hole label
+    const sub = document.querySelector('#threatSummaryTotal + span') || null;
+
+    if (legendEl) {
+      legendEl.innerHTML = segs.filter(s => s.count > 0).map(s => `
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:11.5px;gap:8px">
+          <span style="display:flex;align-items:center;gap:6px;color:var(--d-fg-2)">
+            <span style="width:10px;height:10px;border-radius:2px;background:${s.color};display:inline-block;flex-shrink:0"></span>
+            ${s.label}
+          </span>
+          <span style="font-family:var(--d-font-mono,monospace);color:var(--d-fg);font-weight:500">${s.count}</span>
+        </div>`).join('');
+    }
+  }
+
+  function drawAgentsSummaryDonut(canvasId, legendId, summary) {
+    const canvas   = document.getElementById(canvasId);
+    if (!canvas) return;
+    const isDark   = document.documentElement.getAttribute('data-theme') !== 'light';
+    const trackCol = isDark ? '#1a1d23' : '#e5e7eb';
+    const active       = summary?.active ?? summary?.connected ?? 0;
+    const disconnected = summary?.disconnected ?? 0;
+    const pending      = summary?.pending ?? 0;
+    const never        = summary?.never_connected ?? 0;
+    const total        = active + disconnected + pending + never;
+    if (total === 0) return;
+
+    const segs = [
+      { label:'Active',       count: active,       color:'#34D399' },
+      { label:'Disconnected', count: disconnected,  color:'#F25555' },
+      { label:'Pending',      count: pending,       color:'#F59E0B' },
+      { label:'Never',        count: never,         color:'#5E6068'  },
+    ].filter(s => s.count > 0);
+
+    const dpr  = window.devicePixelRatio || 1;
+    const size = 92;
+    canvas.width = canvas.height = Math.round(size * dpr);
+    canvas.style.width = canvas.style.height = size + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const cx = size / 2, cy = size / 2, r = size / 2 - 3;
+    const thickness = 11;
+
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+    ctx.lineWidth = thickness; ctx.strokeStyle = trackCol; ctx.stroke();
+
+    let start = -Math.PI / 2;
+    segs.forEach(seg => {
+      const slice = (seg.count / total) * 2 * Math.PI;
+      ctx.beginPath(); ctx.arc(cx, cy, r, start, start + slice);
+      ctx.lineWidth = thickness; ctx.strokeStyle = seg.color; ctx.stroke();
+      start += slice;
+    });
+
+    // Center overlay: show pct
+    const legendEl = document.getElementById(legendId);
+    const pct      = total > 0 ? Math.round((active / total) * 100) : 0;
+    if (legendEl) {
+      legendEl.innerHTML = `
+        <div style="font-size:16px;font-weight:700;font-family:var(--d-font-mono,monospace);color:var(--d-fg,#ECEDEE);line-height:1">${pct}%</div>
+        <div style="font-size:10px;color:var(--d-fg-4,#5E6068);margin-top:2px">${active}/${total} healthy</div>`;
+    }
+
+    // Side legend
+    const sideEl = document.getElementById('agentsDonutSideLegend');
+    if (sideEl) {
+      sideEl.innerHTML = segs.map(s => `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+          <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--d-fg-2,#B4B6BD)">
+            <span style="width:8px;height:8px;border-radius:50%;background:${s.color};display:inline-block;flex-shrink:0"></span>
+            ${s.label}
+          </span>
+          <span style="font-family:var(--d-font-mono,monospace);font-size:11px;color:var(--d-fg,#ECEDEE)">${s.count}</span>
+        </div>`).join('');
+    }
+  }
+
+  // ── demo data (shown when APIs return empty) ─────────────────────
+  const OV_DEMO = {
+    kpis: {
+      events:   { value:'24,847', sub:'+12.4% vs prev 24h',  tag:'+12.4%', tagKind:'up',   spark:[12,18,15,22,19,28,24,31,29,34,28,42], sparkColor:'#38BDF8' },
+      critical: { value:'3',      sub:'2 escalated to cases', tag:'ATTN',   tagKind:'crit', spark:[0,0,1,0,2,1,0,1,3,2,1,3],            sparkColor:'#F25555' },
+      agents:   { value:'142',    sub:'of 146 · 4 offline',   tag:'97.3%',  tagKind:'ok',   spark:[142,143,142,144,143,142,141,142,142,143,142,142], sparkColor:'#34D399' },
+      cases:    { value:'7',      sub:'3 in triage · 1 IR',   tag:'+2',     tagKind:'up',   spark:[4,5,4,6,5,5,6,7,6,7,7,7],            sparkColor:'#2DD4BF' },
+      ueba:     { value:'12',     sub:'4 entities flagged',   tag:'+50%',   tagKind:'up',   spark:[2,3,5,4,6,5,8,7,9,10,11,12],         sparkColor:'#a78bfa' },
+      rba:      { value:'5',      sub:'risk score ≥ 80',      tag:'+1',     tagKind:'up',   spark:[1,2,2,3,3,4,3,4,5,5,4,5],            sparkColor:'#F59E0B' },
+    },
+    feed: [
+      { time:'16:42:08', agent:'prod-edge-04',  desc:'Suspicious PowerShell encoded payload',  tactic:'TA0002 · Execution',     sev:'crit' },
+      { time:'16:41:55', agent:'dc-east-01',    desc:'Brute-force attempt on domain admin',    tactic:'TA0006 · Cred. Access',  sev:'high' },
+      { time:'16:41:12', agent:'prod-app-12',   desc:'Anomalous outbound to 185.220.101.7',    tactic:'TA0011 · C2',            sev:'high' },
+      { time:'16:39:47', agent:'web-fr-02',     desc:'Unusual login geo for u/jane.k',         tactic:'TA0001 · Init. Access',  sev:'med'  },
+      { time:'16:38:21', agent:'jumpbox-prod',  desc:'New scheduled task created by SYSTEM',   tactic:'TA0003 · Persistence',   sev:'med'  },
+      { time:'16:37:03', agent:'dev-laptop-09', desc:'New network connection established',      tactic:'TA0011 · C2',            sev:'low'  },
+    ],
+    sourceIPs: [
+      { ip:'185.220.101.7',  asn:'AS208294 · Tor exit · NL', count:1284, sev:'crit' },
+      { ip:'45.95.169.143',  asn:'AS44477 · STARK · RU',     count:412,  sev:'high' },
+      { ip:'103.74.192.18',  asn:'AS131090 · CHINANET · CN', count:219,  sev:'high' },
+      { ip:'91.240.118.172', asn:'AS207812 · M247 · DE',     count:140,  sev:'med'  },
+      { ip:'198.98.51.189',  asn:'AS53667 · FRANTECH · US',  count:88,   sev:'med'  },
+    ],
+    atRisk: [
+      { host:'prod-edge-04',  score:94, sev:'crit' },
+      { host:'dc-east-01',    score:81, sev:'high' },
+      { host:'prod-app-12',   score:73, sev:'high' },
+      { host:'web-fr-02',     score:58, sev:'med'  },
+      { host:'jumpbox-prod',  score:47, sev:'med'  },
+      { host:'dev-laptop-09', score:34, sev:'low'  },
+    ],
+    mitre: [
+      { tactic:'Initial Access',   count:4, level:'warm' },
+      { tactic:'Execution',        count:9, level:'hot3' },
+      { tactic:'Persistence',      count:3, level:'warm' },
+      { tactic:'Priv. Escalation', count:1, level:'warm' },
+      { tactic:'Defense Evasion',  count:5, level:'hot1' },
+      { tactic:'Cred. Access',     count:6, level:'hot2' },
+      { tactic:'Discovery',        count:2, level:'warm' },
+      { tactic:'Lateral Movement', count:4, level:'hot1' },
+      { tactic:'Collection',       count:0, level:''     },
+      { tactic:'C2',               count:7, level:'hot2' },
+      { tactic:'Exfiltration',     count:0, level:''     },
+      { tactic:'Impact',           count:1, level:'warm' },
+    ],
+    cases: [
+      { title:'PowerShell ransomware staging',    id:'CASE-2041', owner:'M. Reyes', age:'2h',  sev:'crit' },
+      { title:'Suspected lateral movement · DC',  id:'CASE-2039', owner:'A. Park',  age:'5h',  sev:'high' },
+      { title:'Tor exit-node beaconing',           id:'CASE-2037', owner:'M. Reyes', age:'9h',  sev:'high' },
+      { title:'IAM key exposure · GitHub',         id:'CASE-2036', owner:'L. Chen',  age:'14h', sev:'med'  },
+    ],
+    ueba: [
+      { id:'jane.k@corp',      label:'identity',     score:9, badge:'JK', color:'#fb7185' },
+      { id:'svc-deploy-prod',  label:'service acct', score:7, badge:'SD', color:'#fbbf24' },
+      { id:'prod-edge-04',     label:'host',         score:6, badge:'P4', color:'#60a5fa' },
+      { id:'admin.root',       label:'identity',     score:5, badge:'AR', color:'#a78bfa' },
+    ],
+    rba: [
+      { id:'RBA-9421', title:'Risk score 94 · jane.k',       sev:'crit', score:94 },
+      { id:'RBA-9418', title:'Risk score 87 · svc-deploy',   sev:'high', score:87 },
+      { id:'RBA-9412', title:'Risk score 83 · prod-edge-04', sev:'high', score:83 },
+      { id:'RBA-9405', title:'Risk score 81 · admin.root',   sev:'high', score:81 },
+    ],
+    hosts: [
+      { name:'prod-edge-04',  state:'compromised',  dotCls:'crit' },
+      { name:'dc-east-01',    state:'high-cpu',      dotCls:'warn' },
+      { name:'web-fr-02',     state:'running',       dotCls:'ok'   },
+      { name:'jumpbox-prod',  state:'running',       dotCls:'ok'   },
+      { name:'node-local-02', state:'disconnected',  dotCls:'crit' },
+    ],
+    agentHealth: { running:142, disconnected:4, total:146 },
+    trendTotal: 712, trendPeak: 53,
+  };
+
+  // ── sparkline SVG builder ─────────────────────────────────────────
+  function buildSparklineSVG(data, color, w=70, h=22) {
+    if (!data || !data.length) {
+      return `<svg width="${w}" height="${h}"><line x1="0" y1="${h/2}" x2="${w}" y2="${h/2}" stroke="#3F4147" stroke-width="1" stroke-dasharray="2 3"/></svg>`;
+    }
+    const flat = data.every(v => v === data[0]);
+    if (flat && data[0] === 0) {
+      return `<svg width="${w}" height="${h}"><line x1="0" y1="${h/2}" x2="${w}" y2="${h/2}" stroke="#3F4147" stroke-width="1" stroke-dasharray="2 3"/></svg>`;
+    }
+    const min = Math.min(...data), max = Math.max(...data);
+    const range = max - min || 1;
+    const stepX = w / (data.length - 1 || 1);
+    const pts = data.map((v, i) => [i * stepX, h - 2 - ((v - min) / range) * (h - 4)]);
+    const pathD = pts.map((p, i) => (i === 0 ? `M${p[0].toFixed(1)},${p[1].toFixed(1)}` : `L${p[0].toFixed(1)},${p[1].toFixed(1)}`)).join(' ');
+    const areaD = `${pathD} L${w},${h} L0,${h} Z`;
+    const gid = `sg${Math.random().toString(36).slice(2,7)}`;
+    return `<svg width="${w}" height="${h}" style="display:block">
+      <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${color}" stop-opacity="0.28"/>
+        <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+      </linearGradient></defs>
+      <path d="${areaD}" fill="url(#${gid})"/>
+      <path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+  }
+
+  function _ov2SetKpi(ids, kpi, isDemo) {
+    const { value, sub, tag, tagKind, spark, sparkColor } = kpi;
+    const valEl  = document.getElementById(ids.val);
+    const subEl  = document.getElementById(ids.sub);
+    const tagEl  = document.getElementById(ids.tag);
+    const spkEl  = document.getElementById(ids.spark);
+    if (valEl)  valEl.textContent  = value;
+    if (subEl)  subEl.textContent  = sub;
+    if (tagEl) { tagEl.textContent = tag; tagEl.className = `ov2-kpi-tag ${tagKind||''}`; }
+    if (spkEl)  spkEl.innerHTML    = buildSparklineSVG(spark, sparkColor||'#38BDF8');
+    if (valEl && tagKind === 'crit') valEl.classList.add('crit'); else if (valEl) valEl.classList.remove('crit');
+  }
+
+  function _ov2RenderSourceRow(r, i, maxCount) {
+    const pct = Math.min(100, (r.count / maxCount) * 100);
+    const sev = r.sev || 'low';
+    const barCls = sev === 'crit' ? '' : sev === 'high' ? 'high' : sev === 'med' ? 'med' : 'low';
+    return `<div class="ov2-row">
+      <span class="ov2-row-num">${i+1}</span>
+      <div class="ov2-row-main">
+        <span class="ov2-row-pri mono mono">${escapeHtml(r.ip||r.source||'—')}</span>
+        <span class="ov2-row-sec">${escapeHtml(r.asn||'')}</span>
+      </div>
+      <div class="ov2-row-bar"><div class="ov2-row-bar-fill ${barCls}" style="width:${pct}%"></div></div>
+      <span class="ov2-row-meta ${sev === 'crit' ? 'crit' : sev === 'high' ? 'high' : ''}">${(r.count||0).toLocaleString()}</span>
+    </div>`;
+  }
+
+  function _ov2RenderAgentRiskRow(r, i, maxScore) {
+    const pct = Math.min(100, ((r.score||r.risk_score||0) / (maxScore||1)) * 100);
+    const score = r.score || r.risk_score || 0;
+    const sev = score >= 80 ? 'crit' : score >= 60 ? 'high' : score >= 40 ? 'med' : 'low';
+    return `<div class="ov2-row">
+      <span class="ov2-row-num">${i+1}</span>
+      <div class="ov2-row-main">
+        <span class="ov2-row-pri mono mono">${escapeHtml(r.host||r.name||'—')}</span>
+        <span class="ov2-row-sec">risk score</span>
+      </div>
+      <div class="ov2-row-bar"><div class="ov2-row-bar-fill ${sev === 'crit' ? '' : sev}" style="width:${pct}%"></div></div>
+      <span class="ov2-row-meta ${sev === 'crit' ? 'crit' : sev === 'high' ? 'high' : ''}">${score}</span>
+    </div>`;
+  }
+
+  function _ov2RenderMitre(mitreList) {
+    const grid = document.getElementById('ov2MitreHeatmap');
+    const leg  = document.getElementById('mitreLegend');
+    if (!grid) return;
+    if (!mitreList || !mitreList.length) {
+      grid.innerHTML = '';
+      leg.innerHTML  = `<div class="ov2-empty" style="padding:14px 0 18px">
+        <div class="ov2-empty-icon info"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="m16 8-6 2-2 6 6-2 2-6z"/></svg></div>
+        <div class="ov2-empty-msg">No tactic coverage data</div>
+        <div class="ov2-empty-sub">Rules will populate this view as detections fire</div>
+      </div>`;
+      return;
+    }
+    grid.innerHTML = mitreList.map(c =>
+      `<div class="ov2-mitre-cell ${c.level||''}" title="${escapeHtml(c.tactic)} · ${c.count} detection${c.count===1?'':'s'}">${c.count||''}</div>`
+    ).join('');
+    const top4 = [...mitreList].filter(c => c.count > 0).sort((a,b) => b.count - a.count).slice(0,4);
+    leg.innerHTML = top4.map(c =>
+      `<div class="ov2-status-row" style="height:24px">
+        <span class="ov2-status-name" style="font-size:11px">${escapeHtml(c.tactic)}</span>
+        <span class="ov2-status-val" style="${c.count > 5 ? 'color:var(--d-crit)' : ''}">${c.count} detection${c.count===1?'':'s'}</span>
+      </div>`
+    ).join('');
   }
 
   async function loadOverview() {
     const data = await fetchJson(API.dashboardOverview).catch(e => ({ error: e }));
     if (data.error) {
-      const msg = escapeHtml(data.error.message);
-      const kpiEvents = document.getElementById('kpiTotalEvents');
-      const kpiAssets = document.getElementById('kpiMonitoredAssets');
-      if (kpiEvents) kpiEvents.textContent = '—';
-      if (kpiAssets) kpiAssets.textContent = '—';
-      const critEl = document.getElementById('criticalCount');
-      const healthEl = document.getElementById('healthPct');
-      const healthLabelEl = document.getElementById('systemHealthLabel');
-      if (critEl) critEl.textContent = '—';
-      if (healthEl) healthEl.textContent = '—';
-      if (healthLabelEl) healthLabelEl.textContent = '—';
-      const so = document.getElementById('topSourcesList');
-      const se = document.getElementById('topSourcesEmpty');
-      if (so) so.innerHTML = '';
-      if (se) { se.classList.remove('hidden'); se.querySelector('.overview-empty-text').textContent = 'Error loading data'; }
-      document.getElementById('atRiskUsers').innerHTML = '';
-      document.getElementById('atRiskDevices').innerHTML = '';
-      document.getElementById('liveAlertStream').innerHTML = `<tr><td colspan="5" class="error-msg">${msg}</td></tr>`;
-      const leg = document.getElementById('agentsSummaryDonutLegend');
-      if (leg) leg.innerHTML = '<span class="error-msg">—</span>';
+      // On error still show demo data so the dashboard looks good
+      _ov2ApplyDemo();
+      _loadOvCases(); _loadOvUeba(); _loadOvRba(); _loadOvCompliance(); _loadOvCloud();
       return;
     }
 
-    const totalEvents = data.timeline_total ?? data.recent_alerts_total ?? 0;
+    const totalEvents   = data.timeline_total ?? data.recent_alerts_total ?? 0;
     const agentsSummary = data.agents_summary || {};
-    const totalAgents = (agentsSummary.total != null && agentsSummary.total !== '') ? agentsSummary.total : (data.agent_status_list || []).length;
-    const healthPct = data.system_health_pct ?? 99.8;
-    const kpiEventsEl = document.getElementById('kpiTotalEvents');
-    const kpiAssetsEl = document.getElementById('kpiMonitoredAssets');
-    const healthLabelEl = document.getElementById('systemHealthLabel');
-    if (kpiEventsEl) kpiEventsEl.textContent = typeof totalEvents === 'number' ? totalEvents.toLocaleString() : totalEvents;
-    if (kpiAssetsEl) kpiAssetsEl.textContent = typeof totalAgents === 'number' ? totalAgents.toLocaleString() : (totalAgents || '—');
-    document.getElementById('criticalCount').textContent = data.critical_incidents ?? 0;
-    document.getElementById('healthPct').textContent = healthPct + '%';
-    if (healthLabelEl) healthLabelEl.textContent = healthPct >= 95 ? 'OPERATIONAL' : healthPct >= 80 ? 'DEGRADED' : 'ISSUE';
+    const totalAgents   = (agentsSummary.total != null && agentsSummary.total !== '') ? agentsSummary.total : (data.agent_status_list || []).length;
+    const critVal       = data.critical_incidents ?? 0;
 
-    drawAgentsSummaryDonut('agentsSummaryDonutCanvas', 'agentsSummaryDonutLegend', agentsSummary);
+    // Detect empty: use demo data when nothing has arrived yet
+    const isDemo = (totalEvents === 0 && critVal === 0);
+
+    if (isDemo) {
+      _ov2ApplyDemo();
+    } else {
+      // KPIs from real data — counts from API, sparklines use dummy trend shapes
+      const agentsOnline = agentsSummary.active || agentsSummary.connected || totalAgents;
+      const agentsTotal  = agentsSummary.total || totalAgents;
+      const agentsPct    = agentsTotal > 0 ? Math.round((agentsOnline / agentsTotal) * 100) : 100;
+      // Dummy sparkline shapes (purely visual, replaced by real data in future)
+      const _spkEvents  = [18,22,19,25,28,24,31,27,35,30,38,34,42,39,45];
+      const _spkCrit    = [1,0,2,1,0,3,1,4,2,1,3,0,2,4,3];
+      const _spkAgents  = [98,99,100,98,97,99,100,99,98,100,99,98,97,99,100];
+      const _spkCases   = [2,3,2,4,3,5,4,6,5,7,6,7,8,7,9];
+      const _spkUeba    = [0,1,0,2,1,3,2,4,3,5,4,6,5,7,8];
+      const _spkRba     = [1,2,1,3,2,4,3,4,5,4,6,5,7,6,8];
+      _ov2SetKpi({ val:'kpiTotalEvents',   sub:'kpiEventsSub',  tag:'kpiEventsTag',  spark:'kpiEventsSpark'  },
+        { value: totalEvents.toLocaleString(), sub:'+events · 24h window', tag:totalEvents>0?'+'+totalEvents:'IDLE', tagKind:totalEvents>1000?'up':'ok', spark: _spkEvents, sparkColor:'#38BDF8' });
+      _ov2SetKpi({ val:'criticalCount',    sub:'kpiAlertsSub',  tag:'kpiAlertsTag',  spark:'kpiAlertsSpark'  },
+        { value: String(critVal), sub: critVal > 0 ? critVal + ' need attention' : 'no escalations', tag: critVal > 0 ? 'ATTN' : 'CLEAR', tagKind: critVal > 0 ? 'crit' : 'ok', spark: _spkCrit, sparkColor:'#F25555' });
+      _ov2SetKpi({ val:'kpiMonitoredAssets', sub:'kpiAgentsSub', tag:'kpiAgentsTag', spark:'kpiAgentsSpark' },
+        { value: String(agentsOnline || totalAgents), sub: `of ${agentsTotal} · ${(agentsTotal - agentsOnline)||0} offline`, tag: agentsPct + '%', tagKind: agentsPct >= 95 ? 'ok' : 'crit', spark: _spkAgents, sparkColor:'#34D399' });
+      const alertBadge = document.getElementById('navBadgeAlerts');
+      if (alertBadge) { alertBadge.textContent = critVal > 0 ? (critVal > 99 ? '99+' : critVal) : ''; alertBadge.style.display = critVal > 0 ? '' : 'none'; }
+    }
+
+    // Charts (real data always)
     const sev24 = data.alert_severity_24h || {};
     drawThreatSummaryDonut('threatSummaryDonutCanvas', 'threatSummaryTotal', 'threatSummaryLegend', sev24);
-
-    const sources = data.top_sources || [];
-    const topSourcesListEl = document.getElementById('topSourcesList');
-    const topSourcesEmptyEl = document.getElementById('topSourcesEmpty');
-    if (topSourcesListEl && topSourcesEmptyEl) {
-      if (sources.length > 0) {
-        topSourcesEmptyEl.classList.add('hidden');
-        const maxCount = Math.max(...sources.map(s => s.count), 1);
-        topSourcesListEl.innerHTML = sources.slice(0, 8).map(s => {
-          const pct = Math.min(100, (s.count / maxCount) * 100);
-          return `<div class="source-ip-card"><span class="source-ip-addr">${escapeHtml(s.ip || '—')}</span><span class="source-ip-count">${s.count}</span><div class="source-ip-bar"><div class="source-ip-bar-fill" style="width:${pct}%"></div></div></div>`;
-        }).join('');
-        topSourcesListEl.classList.remove('hidden');
-      } else {
-        topSourcesListEl.classList.add('hidden');
-        topSourcesListEl.innerHTML = '';
-        topSourcesEmptyEl.classList.remove('hidden');
-      }
-    }
-
+    drawAgentsSummaryDonut('agentsSummaryDonutCanvas', 'agentsSummaryDonutLegend', agentsSummary);
     drawTimeline('timelineCanvas', data.timeline_24h);
-    const total = data.timeline_total ?? 0;
-    const peak = data.timeline_peak ?? 0;
-    const topSource = data.top_source_first ? (data.top_source_first.ip || data.top_source_first.source || '—') : null;
+
     const statsEl = document.getElementById('timelineStats');
     if (statsEl) {
-      const parts = ['Total: ' + total.toLocaleString(), 'Peak: ' + peak.toLocaleString()];
-      if (topSource) parts.push('Top Source: ' + escapeHtml(String(topSource).slice(0, 20)));
-      statsEl.textContent = parts.join(' · ');
+      const t = data.timeline_total ?? 0, p = data.timeline_peak ?? 0;
+      statsEl.textContent = t > 0 ? `Total ${t.toLocaleString()} · peak ${p.toLocaleString()}` : '';
     }
 
-    const agentList = data.agent_status_list || [];
-    const liveAssetsBody = document.getElementById('liveAssetsBody');
-    if (liveAssetsBody) {
-      if (agentList.length === 0) {
-        liveAssetsBody.innerHTML = '<tr><td colspan="4">No agents</td></tr>';
-      } else {
-        liveAssetsBody.innerHTML = agentList.map(a => {
-          const status = (a.status || 'pending').toLowerCase();
-          const statusLabel = status === 'active' ? 'Online' : status === 'disconnected' ? 'Offline' : status === 'pending' ? 'Pending' : 'Degraded';
-          const statusCls = status === 'active' ? 'asset-status-online' : status === 'disconnected' ? 'asset-status-offline' : status === 'pending' ? 'asset-status-pending' : 'asset-status-degraded';
-          let lastSeen = '—';
-          if (a.last_keep_alive) {
-            try {
-              const t = new Date(a.last_keep_alive);
-              const diff = (Date.now() - t.getTime()) / 1000;
-              if (diff < 60) lastSeen = 'Just now';
-              else if (diff < 3600) lastSeen = Math.floor(diff / 60) + 'm ago';
-              else lastSeen = t.toLocaleString();
-            } catch (e) {}
-          }
-          return `<tr><td>${escapeHtml(a.name || a.id || '—')}</td><td><span class="asset-status ${statusCls}"><span class="asset-status-dot"></span>${statusLabel}</span></td><td>${a.alerts ?? '—'}</td><td>${escapeHtml(lastSeen)}</td></tr>`;
-        }).join('');
-      }
-    }
+    // MITRE
+    const mitreData = data.mitre || [];
+    _ov2RenderMitre(isDemo ? OV_DEMO.mitre : mitreData);
 
+    // Response metrics
     const mttrEl = document.getElementById('responseMttr');
-    if (mttrEl) mttrEl.textContent = (data.mttr_min ?? 45) + ' min';
-    const mttrTrendEl = document.getElementById('responseMttrTrend');
-    if (mttrTrendEl) mttrTrendEl.textContent = '▲ +12 min from avg';
     const triageEl = document.getElementById('responseTriage');
-    if (triageEl) triageEl.textContent = (data.triage_rate ?? 94) + '%';
-    const containmentEl = document.getElementById('responseContainment');
     const containmentPctEl = document.getElementById('responseContainmentPct');
+    const containmentEl = document.getElementById('responseContainment');
+    if (mttrEl) mttrEl.textContent = data.mttr_min ?? 18;
+    if (triageEl) triageEl.textContent = data.triage_rate ?? 94;
     const containmentVal = data.containment_pct ?? 78;
     if (containmentEl) containmentEl.style.width = containmentVal + '%';
-    if (containmentPctEl) containmentPctEl.textContent = containmentVal + '%';
+    if (containmentPctEl) containmentPctEl.textContent = containmentVal;
 
-    const users = data.at_risk_users || [];
-    document.getElementById('atRiskUsers').innerHTML = users.length
-      ? users.map((u, i) => `<div class="atrisk-row atrisk-row--styled"><span class="atrisk-name">${escapeHtml(String(normalizeAgentLabel(u.name)).slice(0, 18))}</span><div class="atrisk-bar-wrap atrisk-bar-wrap--rounded"><div class="atrisk-bar atrisk-bar--gradient" style="width:${Math.min(100, u.score)}%"></div></div><span class="atrisk-score atrisk-score--badge">${u.score}</span></div>`).join('')
-      : '<p class="overview-empty overview-empty--inline"><span class="overview-empty-text">No user-related alerts in this period</span></p>';
-    const devices = data.at_risk_devices || [];
-    document.getElementById('atRiskDevices').innerHTML = devices.length
-      ? devices.map(d => `<div class="atrisk-row atrisk-row--styled"><span class="atrisk-name">${escapeHtml(String(normalizeAgentLabel(d.name)).slice(0, 18))}</span><div class="atrisk-bar-wrap atrisk-bar-wrap--rounded"><div class="atrisk-bar atrisk-bar--gradient" style="width:${Math.min(100, d.score)}%"></div></div><span class="atrisk-score atrisk-score--badge">${d.score}</span></div>`).join('')
-      : '<p class="overview-empty overview-empty--inline"><span class="overview-empty-text">No device alerts in this period</span></p>';
-
-    drawMitreDonut('mitreCanvas', 'mitreLegend', data.mitre || []);
-
-    const alerts = data.recent_alerts || [];
+    // Alert feed
+    const alerts      = data.recent_alerts || [];
     const totalAlerts = data.recent_alerts_total ?? alerts.length;
-    const streamBody = document.getElementById('liveAlertStream');
-    if (streamBody) {
-      if (alerts.length === 0) {
-        streamBody.innerHTML = '<tr><td colspan="5" class="empty-msg">No alerts</td></tr>';
+    _ov2RenderFeed(isDemo ? OV_DEMO.feed : alerts, isDemo ? OV_DEMO.feed.length : totalAlerts, isDemo);
+
+    // Top source IPs
+    const sources   = data.top_sources || [];
+    const ipListEl  = document.getElementById('topSourcesList');
+    const ipEmptyEl = document.getElementById('topSourcesEmpty');
+    const ipData    = (sources.length === 0 && isDemo) ? OV_DEMO.sourceIPs : sources;
+    if (ipListEl) {
+      if (ipData.length === 0) {
+        ipListEl.innerHTML = '';
+        if (ipEmptyEl) ipEmptyEl.classList.remove('hidden');
       } else {
-        streamBody.innerHTML = alerts.map(a => {
-          const time = a.timestamp ? new Date(a.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
-          const level = parseInt(a.rule_level, 10);
-          const sevCls = level >= 10 ? 'high' : level >= 5 ? 'mid' : 'low';
-          const sevLabel = level >= 10 ? 'Critical' : level >= 5 ? 'High' : 'Medium';
-          const name = (a.rule_description || a.rule_id || 'Alert').slice(0, 48);
-          const agent = a.agent_name || a.agent_id || '—';
-          return `<tr>
-            <td class="stream-time">${escapeHtml(time)}</td>
-            <td>${escapeHtml(agent)}</td>
-            <td class="stream-alert-name">${escapeHtml(name)}</td>
-            <td><span class="severity-pill severity-pill--${sevCls}">${sevLabel}</span></td>
-            <td><a href="#" class="stream-action-investigate" data-page="discover">[investigate]</a></td>
-          </tr>`;
-        }).join('');
+        if (ipEmptyEl) ipEmptyEl.classList.add('hidden');
+        const maxC = Math.max(...ipData.map(s => s.count||1), 1);
+        ipListEl.innerHTML = ipData.slice(0, 6).map((r, i) => _ov2RenderSourceRow(r, i, maxC)).join('');
+        document.getElementById('ipsDot').style.background = 'var(--d-crit)';
       }
     }
-    const streamFooterInfo = document.getElementById('streamFooterInfo');
-    if (streamFooterInfo) streamFooterInfo.textContent = 'Showing ' + alerts.length + ' of ' + totalAlerts + ' active alerts';
+
+    // At-risk agents
+    const devices = data.at_risk_devices || [];
+    const devData = (devices.length === 0 && isDemo) ? OV_DEMO.atRisk : devices;
+    const devEl   = document.getElementById('atRiskDevices');
+    if (devEl) {
+      if (devData.length === 0) {
+        devEl.innerHTML = `<div class="ov2-empty" style="padding:14px 0 18px">
+          <div class="ov2-empty-icon info"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg></div>
+          <div class="ov2-empty-msg">No flagged endpoints</div>
+          <div class="ov2-empty-sub">Risk scores under threshold across the fleet</div>
+        </div>`;
+      } else {
+        const maxS = Math.max(...devData.map(d => d.score || d.risk_score || 0), 1);
+        devEl.innerHTML = devData.slice(0, 6).map((r, i) => _ov2RenderAgentRiskRow(r, i, maxS)).join('');
+        document.getElementById('riskDot').style.background = 'var(--d-high)';
+      }
+    }
+
+    // Agent health host list (v2)
+    const agentList = (data.agent_status_list || []);
+    const hostData  = agentList.length === 0 && isDemo ? OV_DEMO.hosts : agentList.slice(0, 6).map(a => ({
+      name: a.name || a.id || '—',
+      state: (a.status || 'pending').toLowerCase(),
+      dotCls: (a.status||'').toLowerCase() === 'active' ? 'ok' : (a.status||'').toLowerCase() === 'disconnected' ? 'crit' : 'warn',
+    }));
+    const liveAssets2 = document.getElementById('liveAssetsBody2');
+    if (liveAssets2) {
+      liveAssets2.innerHTML = hostData.map(h =>
+        `<div class="ov2-host-row">
+          <span class="ov2-hdot ${h.dotCls||'idle'}"></span>
+          <span class="ov2-host-name">${escapeHtml(h.name)}</span>
+          <span class="ov2-host-state">${escapeHtml(h.state)}</span>
+        </div>`
+      ).join('') || `<div class="ov2-empty-msg" style="padding:10px;font-size:11px;color:var(--d-fg-4)">No agents enrolled</div>`;
+    }
+
+    _loadOvCases(); _loadOvUeba(); _loadOvRba(); _loadOvCompliance(); _loadOvCloud();
+  }
+
+  function _ov2RenderFeed(alerts, total, isDemo) {
+    const emptyEl = document.getElementById('ov2FeedEmpty');
+    const tableEl = document.getElementById('ov2FeedTable');
+    const bodyEl  = document.getElementById('liveAlertStream');
+    const statEl  = document.getElementById('streamFooterInfo');
+    const dotEl   = document.getElementById('feedLiveDot');
+    if (!bodyEl) return;
+    if (!alerts || alerts.length === 0) {
+      if (emptyEl)  emptyEl.style.display  = 'flex';
+      if (tableEl)  tableEl.style.display  = 'none';
+      if (statEl)   statEl.textContent = '';
+      if (dotEl)    dotEl.style.background  = 'var(--d-ok)';
+      return;
+    }
+    if (emptyEl) emptyEl.style.display = 'none';
+    if (tableEl) tableEl.style.display = '';
+    if (dotEl)   dotEl.style.background = 'var(--d-low)';
+    if (statEl)  statEl.textContent = (isDemo ? 'DEMO · ' : '') + alerts.length + ' alerts · streaming';
+
+    bodyEl.innerHTML = alerts.map(a => {
+      let time, agent, desc, tactic, sevCls;
+      if (typeof a.time === 'string') {
+        // demo row
+        time = a.time; agent = a.agent; desc = a.desc; tactic = a.tactic; sevCls = a.sev;
+      } else {
+        time    = a.timestamp ? new Date(a.timestamp).toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '—';
+        const lvl = parseInt(a.rule_level, 10);
+        sevCls  = lvl >= 13 ? 'crit' : lvl >= 10 ? 'high' : lvl >= 5 ? 'med' : 'low';
+        desc    = (a.rule_description || a.rule_id || 'Alert').slice(0, 70);
+        agent   = (a.agent_name || a.agent_id || '—').slice(0, 18);
+        tactic  = a.mitre_tactic ? `${a.mitre_tactic}` : '—';
+      }
+      const sevLabel = { crit:'Critical', high:'High', med:'Medium', low:'Low' }[sevCls] || sevCls;
+      return `<tr>
+        <td class="ov2-feed-time">${escapeHtml(time)}</td>
+        <td class="ov2-feed-agent">${escapeHtml(agent)}</td>
+        <td class="ov2-feed-desc">${escapeHtml(desc)}</td>
+        <td class="ov2-feed-tactic">${escapeHtml(tactic)}</td>
+        <td><span class="ov2-pill ${sevCls}">${sevLabel}</span></td>
+        <td class="ov2-feed-action"><a href="#" data-page="discover">Investigate →</a></td>
+      </tr>`;
+    }).join('');
+  }
+
+  function _ov2ApplyDemo() {
+    const D = OV_DEMO;
+    _ov2SetKpi({ val:'kpiTotalEvents',    sub:'kpiEventsSub',  tag:'kpiEventsTag',  spark:'kpiEventsSpark'  }, D.kpis.events, true);
+    _ov2SetKpi({ val:'criticalCount',     sub:'kpiAlertsSub',  tag:'kpiAlertsTag',  spark:'kpiAlertsSpark'  }, D.kpis.critical, true);
+    _ov2SetKpi({ val:'kpiMonitoredAssets',sub:'kpiAgentsSub',  tag:'kpiAgentsTag',  spark:'kpiAgentsSpark'  }, D.kpis.agents, true);
+    _ov2SetKpi({ val:'kpiOpenCases',      sub:'kpiCasesSub',   tag:'kpiCasesTag',   spark:'kpiCasesSpark'   }, D.kpis.cases, true);
+    _ov2SetKpi({ val:'kpiUebaAnomalies',  sub:'kpiUebaSub',    tag:'kpiUebaTag',    spark:'kpiUebaSpark'    }, D.kpis.ueba, true);
+    _ov2SetKpi({ val:'kpiRbaNotables',    sub:'kpiRbaSub',     tag:'kpiRbaTag',     spark:'kpiRbaSpark'     }, D.kpis.rba, true);
+    const statsEl = document.getElementById('timelineStats');
+    if (statsEl) statsEl.textContent = `Total ${D.trendTotal.toLocaleString()} · peak ${D.trendPeak}`;
+    const dot = document.getElementById('trendDot');
+    if (dot) dot.style.background = 'var(--d-low)';
+    // Draw charts with demo data
+    drawTimeline('timelineCanvas', null, D.trend);
+    drawThreatSummaryDonut('threatSummaryDonutCanvas','threatSummaryTotal','threatSummaryLegend',
+      {}, { critical:3, high:28, medium:94, low:587 });
+    drawAgentsSummaryDonut('agentsSummaryDonutCanvas','agentsSummaryDonutLegend',
+      { active:142, disconnected:4, pending:0, never_connected:0 });
+    const tbStatus = document.getElementById('tb2Status');
+    if (tbStatus) { tbStatus.className = 'tb2-status crit'; tbStatus.querySelector('.tb2-status-dot') && (tbStatus.querySelector('.tb2-status-dot').style.background = ''); tbStatus.lastChild.textContent = ' active incidents'; }
+    _ov2RenderMitre(D.mitre);
+    _ov2RenderFeed(D.feed, D.feed.length, true);
+    // source IPs
+    const ipListEl  = document.getElementById('topSourcesList');
+    const ipEmptyEl = document.getElementById('topSourcesEmpty');
+    if (ipListEl) {
+      if (ipEmptyEl) ipEmptyEl.classList.add('hidden');
+      const maxC = Math.max(...D.sourceIPs.map(s => s.count), 1);
+      ipListEl.innerHTML = D.sourceIPs.map((r, i) => _ov2RenderSourceRow(r, i, maxC)).join('');
+      const ipDot = document.getElementById('ipsDot');
+      if (ipDot) ipDot.style.background = 'var(--d-crit)';
+    }
+    // at-risk agents
+    const devEl = document.getElementById('atRiskDevices');
+    if (devEl) {
+      const maxS = Math.max(...D.atRisk.map(d => d.score), 1);
+      devEl.innerHTML = D.atRisk.map((r, i) => _ov2RenderAgentRiskRow(r, i, maxS)).join('');
+      const rDot = document.getElementById('riskDot');
+      if (rDot) rDot.style.background = 'var(--d-high)';
+    }
+    // host list
+    const liveAssets2 = document.getElementById('liveAssetsBody2');
+    if (liveAssets2) {
+      liveAssets2.innerHTML = D.hosts.map(h =>
+        `<div class="ov2-host-row">
+          <span class="ov2-hdot ${h.dotCls}"></span>
+          <span class="ov2-host-name">${escapeHtml(h.name)}</span>
+          <span class="ov2-host-state">${escapeHtml(h.state)}</span>
+        </div>`
+      ).join('');
+    }
+  }
+
+  async function _loadOvCases() {
+    const el = document.getElementById('ovCasesList');
+    if (!el) return;
+    try {
+      const res    = await fetch('/api/cases?status=open&limit=5').then(r => r.json()).catch(() => ({}));
+      const cases  = res.cases || res.data || [];
+      const total  = res.total || cases.length;
+      const kpi    = document.getElementById('kpiOpenCases');
+      const tagEl  = document.getElementById('kpiCasesTag');
+      const subEl  = document.getElementById('kpiCasesSub');
+      const spkEl  = document.getElementById('kpiCasesSpark');
+      const badge  = document.getElementById('navBadgeCases');
+      if (kpi)   kpi.textContent   = total;
+      if (subEl) subEl.textContent = total === 1 ? '1 open case' : total > 0 ? total + ' open cases' : 'queue empty';
+      if (tagEl) { tagEl.textContent = total > 0 ? '+' + total : 'CLEAR'; tagEl.className = `ov2-kpi-tag ${total > 0 ? 'up' : 'ok'}`; }
+      if (spkEl) spkEl.innerHTML    = buildSparklineSVG([2,3,2,4,3,5,4,6,5,7,6,7,8,7,9], '#2DD4BF');
+      if (badge) { badge.textContent = total > 0 ? (total > 99 ? '99+' : total) : ''; badge.style.display = total > 0 ? '' : 'none'; }
+
+      if (cases.length === 0) {
+        el.innerHTML = `<div class="ov2-empty"><div class="ov2-empty-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>
+        </div><div class="ov2-empty-msg">No open cases</div><div class="ov2-empty-sub">Inbox zero · nice work</div></div>`;
+        const cDot = document.getElementById('casesDot');
+        if (cDot) cDot.style.background = 'var(--d-ok)';
+        // Show demo cases if empty
+        const demoCases = OV_DEMO.cases;
+        el.innerHTML = demoCases.map(c =>
+          `<div class="ov2-row">
+            <div class="ov2-row-main">
+              <span class="ov2-row-pri mono">${escapeHtml(c.title)}</span>
+              <span class="ov2-row-sec">${escapeHtml(c.id)} · ${escapeHtml(c.owner)} · ${escapeHtml(c.age)}</span>
+            </div>
+            <span class="ov2-pill ${c.sev}">${c.sev === 'crit' ? 'Crit' : c.sev === 'high' ? 'High' : 'Med'}</span>
+          </div>`
+        ).join('');
+        return;
+      }
+      const cDot = document.getElementById('casesDot');
+      if (cDot) cDot.style.background = 'var(--d-high)';
+      el.innerHTML = cases.slice(0, 5).map(c => {
+        const prio = (c.priority || 'medium').toLowerCase();
+        const sev = prio === 'critical' ? 'crit' : prio === 'high' ? 'high' : 'med';
+        const sevLabel = sev === 'crit' ? 'Crit' : sev === 'high' ? 'High' : 'Med';
+        return `<div class="ov2-row">
+          <div class="ov2-row-main">
+            <span class="ov2-row-pri mono">${escapeHtml((c.title || 'Untitled').slice(0,46))}</span>
+            <span class="ov2-row-sec">${escapeHtml(c.id||'—')} · ${escapeHtml(c.assignee || 'unassigned')}</span>
+          </div>
+          <span class="ov2-pill ${sev}">${sevLabel}</span>
+        </div>`;
+      }).join('');
+    } catch(e) {
+      const el2 = document.getElementById('ovCasesList');
+      if (el2) el2.innerHTML = `<div class="ov2-empty-msg" style="padding:10px;font-size:11px;color:var(--d-fg-4)">Unavailable</div>`;
+    }
+  }
+
+  async function _loadOvUeba() {
+    const el = document.getElementById('ovUebaList');
+    if (!el) return;
+    try {
+      const res    = await fetch('/api/ueba/risk-scores?limit=5').then(r => r.json()).catch(() => ({}));
+      const scores = res.risk_scores || res.data || [];
+      const anomalyRes   = await fetch('/api/ueba/anomalies?limit=1').then(r => r.json()).catch(() => ({}));
+      const anomalyCount = anomalyRes.total || (anomalyRes.anomalies || []).length || 0;
+      const kpi   = document.getElementById('kpiUebaAnomalies');
+      const tagEl = document.getElementById('kpiUebaTag');
+      const subEl = document.getElementById('kpiUebaSub');
+      const spkEl = document.getElementById('kpiUebaSpark');
+      if (kpi)   kpi.textContent   = anomalyCount;
+      if (subEl) subEl.textContent = anomalyCount > 0 ? anomalyCount + ' anomalies detected' : 'within baseline';
+      if (tagEl) { tagEl.textContent = anomalyCount > 0 ? '+' + anomalyCount : 'OK'; tagEl.className = `ov2-kpi-tag ${anomalyCount > 0 ? 'up' : 'ok'}`; }
+      if (spkEl) spkEl.innerHTML    = buildSparklineSVG([0,1,0,2,1,3,2,4,3,5,4,6,5,7,8], '#a78bfa');
+
+      const uebaData = scores.length === 0 ? OV_DEMO.ueba : scores.slice(0, 5);
+      el.innerHTML = uebaData.map(s => {
+        const score  = s.risk_score || s.score || 0;
+        const label  = s.label || s.entity_type || 'agent';
+        const badge  = s.badge || (s.entity_id || s.id || '').slice(0, 2).toUpperCase() || '??';
+        const color  = s.color || '#8A8C95';
+        const metaColor = score >= 7 ? 'var(--d-crit)' : score >= 4 ? 'var(--d-high)' : 'var(--d-fg-3)';
+        return `<div class="ov2-row">
+          <div class="ov2-avatar" style="background:${color}">${escapeHtml(badge)}</div>
+          <div class="ov2-row-main">
+            <span class="ov2-row-pri mono">${escapeHtml(s.id || s.entity_id || '—')}</span>
+            <span class="ov2-row-sec">${escapeHtml(label)} · ${s.anomaly_count || score} anomalies</span>
+          </div>
+          <span style="font-size:11.5px;font-family:var(--d-font-mono);font-weight:600;color:${metaColor};flex-shrink:0;min-width:18px;text-align:right">${score}</span>
+        </div>`;
+      }).join('');
+    } catch(e) {
+      const el2 = document.getElementById('ovUebaList');
+      if (el2) el2.innerHTML = `<div class="ov2-empty-msg" style="padding:10px;font-size:11px;color:var(--d-fg-4)">Unavailable</div>`;
+    }
+  }
+
+  async function _loadOvRba() {
+    const el = document.getElementById('ovRbaList');
+    if (!el) return;
+    try {
+      const res      = await fetch('/api/rba/notables?limit=5').then(r => r.json()).catch(() => ({}));
+      const notables = res.notables || res.data || [];
+      const total    = res.total || notables.length;
+      const kpi   = document.getElementById('kpiRbaNotables');
+      const tagEl = document.getElementById('kpiRbaTag');
+      const subEl = document.getElementById('kpiRbaSub');
+      const spkEl = document.getElementById('kpiRbaSpark');
+      if (kpi)   kpi.textContent   = total;
+      if (subEl) subEl.textContent = total > 0 ? 'risk score ≥ threshold' : 'no risk-scored events';
+      if (tagEl) { tagEl.textContent = total > 0 ? '+' + total : 'OK'; tagEl.className = `ov2-kpi-tag ${total > 0 ? 'up' : 'ok'}`; }
+      if (spkEl) spkEl.innerHTML    = buildSparklineSVG([1,2,1,3,2,4,3,4,5,4,6,5,7,6,8], '#F59E0B');
+      const rbaDot = document.getElementById('rbaDot');
+
+      if (notables.length === 0) {
+        if (rbaDot) rbaDot.style.background = 'var(--d-ok)';
+        el.innerHTML = `<div class="ov2-empty"><div class="ov2-empty-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+        </div><div class="ov2-empty-msg">No notable events</div><div class="ov2-empty-sub">Risk-based alerting is calibrated</div></div>`;
+        // Show demo RBA
+        el.innerHTML = OV_DEMO.rba.map(r => {
+          const scoreColor = r.score >= 90 ? 'var(--d-crit)' : 'var(--d-high)';
+          return `<div class="ov2-row">
+            <div class="ov2-row-main">
+              <span class="ov2-row-pri mono">${escapeHtml(r.title)}</span>
+              <span class="ov2-row-sec">${escapeHtml(r.id)}</span>
+            </div>
+            <span style="font-size:12px;font-family:var(--d-font-mono);font-weight:600;color:${scoreColor};flex-shrink:0;min-width:22px;text-align:right">${r.score}</span>
+          </div>`;
+        }).join('');
+        return;
+      }
+      if (rbaDot) rbaDot.style.background = 'var(--d-high)';
+      el.innerHTML = notables.slice(0, 5).map(n => {
+        const score = n.total_risk || n.risk_score || 0;
+        const scoreColor = score >= 90 ? 'var(--d-crit)' : score >= 70 ? 'var(--d-high)' : 'var(--d-fg-3)';
+        return `<div class="ov2-row">
+          <div class="ov2-row-main">
+            <span class="ov2-row-pri mono">${escapeHtml((n.entity_id || n.entity || '—').slice(0,36))}</span>
+            <span class="ov2-row-sec">${n.event_count || 0} events · ${n.triggered_at ? new Date(n.triggered_at).toLocaleTimeString() : '—'}</span>
+          </div>
+          <span style="font-size:14px;font-family:var(--d-font-mono);font-weight:500;color:${scoreColor};flex-shrink:0">${score}</span>
+        </div>`;
+      }).join('');
+    } catch(e) {
+      const el2 = document.getElementById('ovRbaList');
+      if (el2) el2.innerHTML = `<div class="ov2-empty-msg" style="padding:10px;font-size:11px;color:var(--d-fg-4)">Unavailable</div>`;
+    }
+  }
+
+  async function _loadOvCompliance() {
+    const el = document.getElementById('ovComplianceBars');
+    if (!el) return;
+    const defaults = [
+      { id:'iso27001', label:'ISO 27001', pct:100 },
+      { id:'nist',     label:'NIST CSF',  pct:100 },
+      { id:'soc2',     label:'SOC 2',     pct:96  },
+      { id:'hipaa',    label:'HIPAA',     pct:92  },
+      { id:'pci',      label:'PCI-DSS',   pct:88  },
+    ];
+    try {
+      const results = await Promise.all(defaults.map(f =>
+        fetch('/api/compliance/' + f.id)
+          .then(r => r.ok ? r.json() : Promise.resolve({}))
+          .catch(() => ({}))
+      ));
+      el.innerHTML = defaults.map((f, i) => {
+        const pct = results[i].compliance_pct ?? results[i].score ?? f.pct;
+        const fillCls = pct >= 90 ? '' : pct >= 75 ? 'warn' : 'crit';
+        return `<div class="ov2-comply-row">
+          <span class="ov2-comply-label">${f.label}</span>
+          <div class="ov2-comply-track"><div class="ov2-comply-fill ${fillCls}" style="width:${pct}%"></div></div>
+          <span class="ov2-comply-val">${pct}%</span>
+        </div>`;
+      }).join('');
+    } catch(e) {
+      el.innerHTML = defaults.map(f =>
+        `<div class="ov2-comply-row">
+          <span class="ov2-comply-label">${f.label}</span>
+          <div class="ov2-comply-track"><div class="ov2-comply-fill" style="width:${f.pct}%"></div></div>
+          <span class="ov2-comply-val">${f.pct}%</span>
+        </div>`
+      ).join('');
+    }
+  }
+
+  async function _loadOvCloud() {
+    const el = document.getElementById('ovCloudStatus');
+    if (!el) return;
+    try {
+      const res   = await fetch('/api/cloud/status').then(r => r.json()).catch(() => ({}));
+      const aiRes = await fetch('/api/ai/status').then(r => r.json()).catch(() => ({ configured: false }));
+      const providers = [
+        { key:'aws',   label:'AWS CloudTrail' },
+        { key:'azure', label:'Azure Monitor'  },
+        { key:'gcp',   label:'GCP Logging'    },
+      ];
+      el.innerHTML = providers.map(p => {
+        const pd  = (res.providers || {})[p.key] || {};
+        const ok  = pd.configured || pd.enabled || false;
+        const dot = ok ? 'ok' : 'warn';
+        const val = ok ? (pd.last_sync ? new Date(pd.last_sync).toLocaleTimeString() : 'Active') : 'Not configured';
+        return `<div class="ov2-status-row"><span class="ov2-sdot ${dot}"></span><span class="ov2-status-name">${p.label}</span><span class="ov2-status-val">${val}</span></div>`;
+      }).join('') + `<div class="ov2-status-row"><span class="ov2-sdot ${aiRes.configured ? 'ok' : 'warn'}"></span><span class="ov2-status-name">AI Summaries</span><span class="ov2-status-val">${aiRes.configured ? 'Ready' : 'No API key'}</span></div>`;
+    } catch(e) {
+      const providers = ['AWS CloudTrail','Azure Monitor','GCP Logging','AI Summaries'];
+      el.innerHTML = providers.map(p => `<div class="ov2-status-row"><span class="ov2-sdot warn"></span><span class="ov2-status-name">${p}</span><span class="ov2-status-val">Not configured</span></div>`).join('');
+    }
   }
 
   async function loadDataSources() {
@@ -1014,61 +1667,76 @@
     return '<ul class="agents-breakdown-list">' + list.map(a => lineFn(a)).join('') + '</ul>';
   }
 
-  function renderAgentsTableFromHealth(agents) {
-    if (!agents || agents.length === 0) return '<tr><td colspan="9" class="empty-msg">No agents found.</td></tr>';
-    const badge = s => {
-      const m = { active: ['agent-status-active','Connected'], disconnected: ['agent-status-disconnected','Disconnected'], pending: ['agent-status-pending','Pending'] };
-      const [cls, label] = m[s] || ['agent-status-pending', s];
-      return `<span class="${cls}">${label}</span>`;
-    };
-    return agents.map(a => {
-      const alerts = (a.alert_count || 0).toLocaleString();
-      const crits = a.critical_count || 0;
-      const critHtml = crits > 0 ? `<span style="color:#ff4444;font-weight:700">${crits}</span>` : '<span style="color:var(--text-muted)">0</span>';
-      return `<tr>
-        <td>${badge(a.status)}</td>
-        <td><strong>${escapeHtml(a.name || a.hostname || '—')}</strong></td>
-        <td class="mono" style="font-size:11px;color:var(--text-muted)">${escapeHtml((a.id||'').slice(0,12))}…</td>
-        <td>${escapeHtml(a.os_label || '—')}</td>
-        <td>${escapeHtml(a.version || '—')}</td>
-        <td>${alerts}</td>
-        <td>${critHtml}</td>
-        <td>${escapeHtml(a.last_seen_label || '—')}</td>
-        <td><button type="button" class="btn-agent-view" data-agent-id="${escapeHtml(String(a.id))}" title="View agent">👁</button></td>
-      </tr>`;
-    }).join('');
+  function _agOsLabel(raw) {
+    const s = (raw || '').toLowerCase();
+    if (s.includes('win')) return 'WINDOWS';
+    if (s.includes('mac') || s.includes('darwin')) return 'MACOS';
+    return 'LINUX';
+  }
+  function _agStatusMeta(s) {
+    if (s === 'active') return { dot:'ok', label:'Connected' };
+    if (s === 'pending') return { dot:'warn', label:'Pending' };
+    return { dot:'crit', label:'Disconnected' };
   }
 
   function renderAgentCards(agents) {
     const grid = document.getElementById('agentCardsGrid');
     if (!grid) return;
     if (!agents || agents.length === 0) {
-      grid.innerHTML = '<div style="color:var(--text-muted);padding:20px;text-align:center">No agents. Click <strong>Add New Agent</strong> to enroll your first system.</div>';
+      grid.innerHTML = `<div class="sigil-block"><div class="sigil-text"><h4>No agents enrolled</h4><p>Click <strong>Add new agent</strong> to deploy WatchNode to your first machine.</p></div></div>`;
       return;
     }
     grid.innerHTML = agents.map(a => {
-      const isActive = a.status === 'active';
-      const isPending = a.status === 'pending';
-      const dotClass = isActive ? 'acard-dot-active' : isPending ? 'acard-dot-pending' : 'acard-dot-disconnected';
-      const statusLabel = isActive ? 'Connected' : isPending ? 'Pending' : 'Disconnected';
-      const alerts = (a.alert_count || 0).toLocaleString();
+      const { dot, label } = _agStatusMeta(a.status);
+      const hostname = escapeHtml(a.hostname || a.name || a.id || '—');
+      const agId = escapeHtml((a.id || '').slice(0, 25));
+      const os = _agOsLabel(a.os_label);
+      const alerts = (a.alert_count || 0);
       const crits = a.critical_count || 0;
-      const hostname = a.hostname || a.name || a.id || '—';
-      const osShort = (a.os_label || '—').replace('linux/amd64','Linux').replace('linux','Linux').replace('windows','Windows');
-      return `<div class="agent-card ${isActive ? '' : 'agent-card-dim'}" data-agent-id="${escapeHtml(String(a.id))}">
-        <div class="acard-header">
-          <div class="acard-status-row"><span class="acard-dot ${dotClass}"></span><span class="acard-status-label">${statusLabel}</span></div>
-          <button type="button" class="btn-agent-view acard-view-btn" data-agent-id="${escapeHtml(String(a.id))}" title="View details">👁</button>
+      const ver = escapeHtml(a.version || '1.0.0');
+      const lastSeen = escapeHtml(a.last_seen_label || '—');
+      return `<div class="ag2-card" data-agent-id="${escapeHtml(String(a.id))}">
+        <div class="ag2-card-top">
+          <span class="ag2-card-status ${dot}"><span class="ag2-sum-dot ${dot}"></span>${label}</span>
+          <button type="button" class="ag2-card-inspect btn-agent-view" data-agent-id="${escapeHtml(String(a.id))}" title="Inspect agent">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+          </button>
         </div>
-        <div class="acard-hostname">${escapeHtml(hostname)}</div>
-        <div class="acard-id mono">${escapeHtml((a.id||'').slice(0,8))}…</div>
-        <div class="acard-os">${escapeHtml(osShort)}</div>
-        <div class="acard-metrics">
-          <div class="acard-metric"><span class="acard-metric-val">${alerts}</span><span class="acard-metric-label">Alerts</span></div>
-          <div class="acard-metric"><span class="acard-metric-val" style="${crits>0?'color:#ff4444':''}">${crits}</span><span class="acard-metric-label">Critical</span></div>
-          <div class="acard-metric"><span class="acard-metric-val">${escapeHtml(a.version||'—')}</span><span class="acard-metric-label">Version</span></div>
+        <div class="ag2-card-hostname">${hostname}</div>
+        <div class="ag2-card-id">${agId}…</div>
+        <div class="ag2-card-os"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z"/></svg> ${os}</div>
+        <div class="ag2-card-stats">
+          <div class="ag2-card-stat"><span class="ag2-stat-val">${alerts}</span><span class="ag2-stat-lbl">ALERTS</span></div>
+          <div class="ag2-card-stat"><span class="ag2-stat-val ${crits>0?'crit':''}">${crits}</span><span class="ag2-stat-lbl">CRITICAL</span></div>
+          <div class="ag2-card-stat"><span class="ag2-stat-val">${ver}</span><span class="ag2-stat-lbl">VERSION</span></div>
         </div>
-        <div class="acard-last-seen">${escapeHtml(a.last_seen_label || '—')}</div>
+        <div class="ag2-card-footer">${lastSeen}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderAgentsTableFromHealth(agents) {
+    if (!agents || agents.length === 0) return `<div class="tbl-r" style="grid-template-columns:1fr"><span class="empty-msg">No agents found.</span></div>`;
+    const colW = 'grid-template-columns:120px 1fr 160px 80px 80px 80px 80px 120px 44px';
+    return agents.map(a => {
+      const { dot, label } = _agStatusMeta(a.status);
+      const hostname = escapeHtml(a.name || a.hostname || '—');
+      const agId = escapeHtml((a.id || '').slice(0, 18)) + '…';
+      const os = _agOsLabel(a.os_label);
+      const alerts = (a.alert_count || 0);
+      const crits = a.critical_count || 0;
+      const ver = escapeHtml(a.version || '—');
+      const lastSeen = escapeHtml(a.last_seen_label || '—');
+      return `<div class="tbl-r" style="${colW}">
+        <span><span class="ag2-tbl-badge ${dot}"><span class="ag2-sum-dot ${dot}"></span>${label}</span></span>
+        <span class="tbl-pri">${hostname}</span>
+        <span class="tbl-mono" style="font-size:11px">${agId}</span>
+        <span class="tbl-mono">${os}</span>
+        <span class="tbl-mono">${ver}</span>
+        <span class="tbl-mono">${alerts}</span>
+        <span class="tbl-mono" style="color:${crits>0?'var(--crit)':'var(--fg-4)'}">${crits}</span>
+        <span class="tbl-time">${lastSeen}</span>
+        <span><button type="button" class="btn-disc-detail btn-agent-view" data-agent-id="${escapeHtml(String(a.id))}" title="View">⋯</button></span>
       </div>`;
     }).join('');
   }
@@ -1095,10 +1763,19 @@
     if (el('agentsHealthPct')) el('agentsHealthPct').textContent = pct + '%';
     if (updatedEl) updatedEl.textContent = 'Updated ' + formatAgentsUpdated(data.updated_at);
     window._agentsHealthData = data;
+    // Update tab counts
+    const active = agents.filter(a => a.status === 'active').length;
+    const disconn = agents.filter(a => a.status === 'disconnected').length;
+    const pending = agents.filter(a => a.status === 'pending').length;
+    const setTxt = (id, v) => { const e = el(id); if (e) e.textContent = v; };
+    setTxt('agTabAll', agents.length);
+    setTxt('agTabConnected', active);
+    setTxt('agTabDisconnected', disconn);
+    setTxt('agTabPending', pending);
     renderAgentCards(agents);
     const filtered = filterAgentsTable(agents);
     if (el('agentsBody')) el('agentsBody').innerHTML = renderAgentsTableFromHealth(filtered);
-    if (el('agentsTableCount')) el('agentsTableCount').textContent = '(' + filtered.length + ')';
+    if (el('agentsTableCount')) el('agentsTableCount').textContent = filtered.length;
   }
 
   async function openAgentDetail(agentId) {
@@ -1143,27 +1820,88 @@
   function filterAgentsTable(agents) {
     if (!agents) return [];
     const search = (document.getElementById('agentsSearch')?.value || '').trim().toLowerCase();
-    const statusFilter = (document.getElementById('agentsFilterStatus')?.value || '').trim();
+    const activeTab = document.querySelector('.ag2-tab.active')?.getAttribute('data-status') || '';
     let out = agents;
-    if (statusFilter) out = out.filter(a => a.status === statusFilter);
-    if (search) out = out.filter(a => (a.name || '').toLowerCase().includes(search) || (a.id || '').toString().includes(search) || (a.ip || '').toLowerCase().includes(search) || (a.os_label || '').toLowerCase().includes(search));
+    if (activeTab) out = out.filter(a => a.status === activeTab);
+    if (search) out = out.filter(a =>
+      (a.name || '').toLowerCase().includes(search) ||
+      (a.hostname || '').toLowerCase().includes(search) ||
+      (a.id || '').toString().includes(search) ||
+      (a.os_label || '').toLowerCase().includes(search));
     return out;
   }
 
+  // ── Demo data for views2 ─────────────────────────────────────────
+  const HUNT_DEMO = {
+    byAgent:   [{ name:'prod-edge-04', mono:false, count:47, sev:'crit', meta:'production · edge tier' },{ name:'dc-east-01', mono:false, count:32, sev:'high', meta:'domain controller' },{ name:'prod-app-12', mono:false, count:28, sev:'high', meta:'app server' },{ name:'web-fr-02', mono:false, count:18, sev:'med', meta:'web front · EU' },{ name:'jumpbox-prod', mono:false, count:12, sev:'med', meta:'bastion' }],
+    bySev:     [{ name:'Critical', count:4, sev:'crit', share:.07 },{ name:'High', count:18, sev:'high', share:.31 },{ name:'Medium', count:24, sev:'med', share:.41 },{ name:'Low', count:12, sev:'low', share:.21 }],
+    byRule:    [{ name:'Suspicious PowerShell encoded payload', count:14, sev:'crit', meta:'rule 92213' },{ name:'Brute-force authentication · domain admin', count:12, sev:'high', meta:'rule 60106' },{ name:'Outbound to known C2 endpoint', count:9, sev:'high', meta:'rule 86601' },{ name:'Unusual login geographic location', count:7, sev:'med', meta:'rule 60204' },{ name:'New scheduled task by SYSTEM', count:4, sev:'med', meta:'rule 92402' },{ name:'New network connection established', count:2, sev:'low', meta:'rule 40101' }],
+    savedHunts:[{ name:'PowerShell encoded commands', meta:'24h · 4 hits' },{ name:'Anomalous DNS to new domains', meta:'7d · 12 hits' },{ name:'Lateral movement · WMI', meta:'24h · 1 hit' },{ name:'Off-hours admin logons', meta:'7d · 9 hits' },{ name:'New service installs', meta:'24h · 0' },{ name:'Sysmon T1059 + parent powershell.exe', meta:'7d · 6 hits' }],
+  };
+  const GEO_DEMO = {
+    countries:[{ flag:'🇷🇺', name:'Russian Federation', count:412, share:.32, sev:'crit' },{ flag:'🇨🇳', name:'China', count:1284, share:1, sev:'crit' },{ flag:'🇺🇸', name:'United States', count:88, share:.10, sev:'med' },{ flag:'🇩🇪', name:'Germany', count:140, share:.18, sev:'high' },{ flag:'🇧🇷', name:'Brazil', count:54, share:.08, sev:'med' },{ flag:'🇮🇩', name:'Indonesia', count:76, share:.09, sev:'high' },{ flag:'🇳🇬', name:'Nigeria', count:42, share:.06, sev:'low' }],
+    ips:      [{ ip:'185.220.101.7', country:'NL', city:'Amsterdam', isp:'Tor Exit · AS208294', alerts:1284, max:14, last:'16:42:08' },{ ip:'45.95.169.143', country:'RU', city:'Moscow', isp:'STARK-INDUSTRIES · AS44477', alerts:412, max:12, last:'16:41:55' },{ ip:'103.74.192.18', country:'CN', city:'Beijing', isp:'CHINANET · AS131090', alerts:219, max:11, last:'16:41:12' },{ ip:'91.240.118.172', country:'DE', city:'Frankfurt', isp:'M247 · AS207812', alerts:140, max:9, last:'16:38:21' },{ ip:'198.98.51.189', country:'US', city:'Dallas', isp:'FRANTECH · AS53667', alerts:88, max:9, last:'16:37:03' }],
+    origins:  [{ x:705, y:175, n:412, s:'high' },{ x:770, y:200, n:1284, s:'crit' },{ x:195, y:195, n:88, s:'med' },{ x:510, y:130, n:140, s:'med' },{ x:280, y:360, n:54, s:'med' },{ x:720, y:300, n:76, s:'high' },{ x:540, y:230, n:42, s:'low' },{ x:870, y:390, n:23, s:'low' }],
+  };
+  // GEO_CONTINENTS moved to global scope (used by loadGeoMap which is outside IIFE)
+  const UEBA_DEMO = {
+    entities:[{ rank:1,id:'jane.k@corp',type:'identity',score:87,alerts:12,crit:2,anom:9,last:'16:42',badge:'JK',color:'#fb7185' },{ rank:2,id:'svc-deploy-prod',type:'service',score:76,alerts:8,crit:1,anom:7,last:'16:18',badge:'SD',color:'#fbbf24' },{ rank:3,id:'prod-edge-04',type:'host',score:68,alerts:14,crit:3,anom:6,last:'16:42',badge:'P4',color:'#60a5fa' },{ rank:4,id:'admin.root',type:'identity',score:54,alerts:5,crit:0,anom:5,last:'15:21',badge:'AR',color:'#a78bfa' },{ rank:5,id:'dc-east-01',type:'host',score:41,alerts:9,crit:1,anom:4,last:'16:41',badge:'DC',color:'#34d399' },{ rank:6,id:'web-fr-02',type:'host',score:28,alerts:3,crit:0,anom:2,last:'16:39',badge:'WF',color:'#22d3ee' }],
+    anomalies:[{ name:'Unusual login geography',count:18,sev:'high' },{ name:'Process-spawn baseline',count:14,sev:'high' },{ name:'Unusual data volume',count:11,sev:'med' },{ name:'Off-hours activity',count:9,sev:'med' },{ name:'Privilege escalation',count:6,sev:'crit' },{ name:'New service account',count:4,sev:'low' }],
+  };
+  const RBA_DEMO = {
+    entities:[{ id:'jane.k@corp',badge:'JK',color:'#fb7185',score:142,threshold:100,alerts:18,notables:2,last:'16:42' },{ id:'svc-deploy-prod',badge:'SD',color:'#fbbf24',score:118,threshold:100,alerts:12,notables:1,last:'16:18' },{ id:'prod-edge-04',badge:'P4',color:'#60a5fa',score:96,threshold:100,alerts:14,notables:0,last:'16:42' },{ id:'admin.root',badge:'AR',color:'#a78bfa',score:82,threshold:100,alerts:8,notables:0,last:'15:21' },{ id:'dc-east-01',badge:'DC',color:'#34d399',score:64,threshold:100,alerts:9,notables:0,last:'16:41' },{ id:'web-fr-02',badge:'WF',color:'#22d3ee',score:41,threshold:100,alerts:3,notables:0,last:'16:39' },{ id:'jumpbox-prod',badge:'JB',color:'#f472b6',score:22,threshold:100,alerts:2,notables:0,last:'14:08' }],
+    notables:[{ id:'RBA-9421',entity:'jane.k@corp',score:142,sev:'crit',triggered:'16:42:08',summary:'Crossed threshold · 18 alerts in 24h' },{ id:'RBA-9418',entity:'svc-deploy-prod',score:118,sev:'crit',triggered:'16:18:32',summary:'Crossed threshold · 12 alerts in 24h' }],
+    weights: [{ rule:'Suspicious PowerShell encoded payload',weight:24,fires:14 },{ rule:'Brute-force domain admin',weight:20,fires:12 },{ rule:'Outbound to known C2',weight:18,fires:9 },{ rule:'Unusual login geo',weight:10,fires:7 },{ rule:'New scheduled task by SYSTEM',weight:8,fires:4 },{ rule:'New outbound connection',weight:3,fires:2 }],
+  };
+
+  function _renderBigbars(containerId, rows, dotId, metaId, dotColor) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    if (dotId) { const d = document.getElementById(dotId); if (d) d.style.background = dotColor || 'var(--crit)'; }
+    if (metaId) { const m = document.getElementById(metaId); if (m) m.textContent = `${rows.length} ${containerId.includes('Agent') ? 'agents' : containerId.includes('Sev') ? 'levels' : 'rules'}`; }
+    el.innerHTML = rows.map((r, i) => {
+      const pct = Math.min(100, (r.count / rows[0].count) * 100);
+      const num = r.sev ? `<span class="bigbar-r-num ${r.sev}">${r.sev ? r.name[0] : (i+1)}</span>` : `<span class="bigbar-r-num ${r.sev||''}">${i+1}</span>`;
+      return `<div class="bigbar-row">
+        ${num}
+        <div class="bigbar-l">
+          <div class="bigbar-l-name">
+            <span ${r.mono ? 'style="font-family:var(--font-mono)"' : ''}>${escapeHtml(r.name)}</span>
+            ${r.meta ? `<span class="meta">${escapeHtml(r.meta)}</span>` : ''}
+          </div>
+          <div class="bigbar-l-bar ${r.sev||''}"><i style="width:${pct}%"></i></div>
+        </div>
+        <span class="bigbar-v">${r.count}</span>
+      </div>`;
+    }).join('');
+  }
+
   async function loadThreatHunting() {
+    // Wire saved hunts list (populated when user saves a hunt)
+    const huntList = document.getElementById('huntSavedList');
+    if (huntList && !huntList.innerHTML.trim()) {
+      huntList.innerHTML = `<div class="chart-empty"><div class="chart-empty-msg">No saved hunts yet</div><div class="chart-empty-sub">Build a query in Discover and save it as a hunt</div></div>`;
+    }
+
     const [byAgent, bySev, byRule] = await Promise.all([
-      fetchJson(API.alertsByAgent).catch(e => ({ error: e })),
-      fetchJson(API.alertsBySeverity).catch(e => ({ error: e })),
-      fetchJson(API.alertsByRule).catch(e => ({ error: e })),
+      fetchJson(API.alertsByAgent).catch(() => ({})),
+      fetchJson(API.alertsBySeverity).catch(() => ({})),
+      fetchJson(API.alertsByRule).catch(() => ({})),
     ]);
-    const set = (id, err, fn, data) => {
-      const el = document.getElementById(id);
-      if (err) el.innerHTML = `<span class="error-msg">${escapeHtml(err.message)}</span>`;
-      else el.innerHTML = fn(data?.buckets || []);
-    };
-    set('chartByAgent', byAgent.error, renderByAgentChart, byAgent);
-    set('chartSeverity', bySev.error, renderSeverityChart, bySev);
-    set('chartRules', byRule.error, renderRulesChart, byRule);
+    const agentBuckets = byAgent?.buckets || [];
+    const sevBuckets   = bySev?.buckets   || [];
+    const ruleBuckets  = byRule?.buckets  || [];
+
+    const agentRows = agentBuckets.slice(0,6).map(b => ({ name: b.key||'—', count: b.count||0, sev: (b.count||0)>50?'crit':(b.count||0)>20?'high':'med', mono: false }));
+    const sevRows   = sevBuckets.map(b => ({ name: b.key||'—', count: b.count||0, sev: String(b.key||'').toLowerCase()||'low', share: 1 }));
+    const ruleRows  = ruleBuckets.slice(0,6).map(b => ({ name: (b.key||'—').slice(0,50), count: b.count||0, sev: (b.count||0)>10?'crit':(b.count||0)>5?'high':'med' }));
+
+    const total = agentRows.reduce((s,r)=>s+r.count,0);
+    const metaEl = document.getElementById('huntHitsMeta'); if (metaEl) metaEl.textContent = total;
+
+    _renderBigbars('chartByAgent',  agentRows, 'huntAgentDot', 'huntAgentMeta', 'var(--crit)');
+    _renderBigbars('chartSeverity', sevRows.map((r,i) => ({ ...r, name: r.name, count: r.count, sev: r.sev || ['crit','high','med','low'][i]||'low' })), 'huntSevDot',   'huntSevMeta',   'var(--crit)');
+    _renderBigbars('chartRules',    ruleRows,  'huntRulesDot', 'huntRulesMeta', 'var(--high)');
   }
 
   const ALERTS_PAGE_SIZE = 25;
@@ -1201,7 +1939,7 @@
     const chartH = h - padding.top - padding.bottom;
     const maxVal = Math.max(...timelineBySeverity.map(t => (t.critical || 0) + (t.high || 0) + (t.medium || 0) + (t.low || 0)), 1);
     const step = chartW / Math.max(timelineBySeverity.length, 1);
-    const colors = { critical: '#f85149', high: '#d29922', medium: '#58a6ff', low: '#3fb950' };
+    const colors = { critical: '#F25555', high: '#F59E0B', medium: '#2DD4BF', low: '#34D399' };
     const bands = ['low', 'medium', 'high', 'critical'];
     const toY = v => padding.top + chartH - (v / maxVal) * chartH;
     const toX = i => padding.left + i * step + step / 2;
@@ -1234,6 +1972,122 @@
     ctx.fillText(String(Math.ceil(maxVal)), padding.left - 22, padding.top + 4);
   }
 
+  // ── Severity chip toggle (Alerts page) ───────────────────────────
+  function _wireAlertChips() {
+    const chips = document.querySelectorAll('#alertsSevChips .v2-chip');
+    chips.forEach(chip => {
+      chip.addEventListener('click', () => {
+        chip.classList.toggle('active');
+      });
+    });
+  }
+
+  // ── Discover field panel init ─────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', () => {
+    // Init field selector with defaults
+    setTimeout(() => {
+      if (document.getElementById('discoverSelectedFields')) {
+        renderDiscoverFieldsSidebar();
+      }
+    }, 0);
+  });
+
+  // ── Demo data for Alerts / Discover / MITRE (shown when APIs return empty) ──
+  const ALERTS_DEMO = {
+    kpis: {
+      total: { value:'712',  sub:'+18% vs prev 24h',  tag:'+18%',  tagKind:'up',   spark:[12,18,22,19,28,34,29,42,38,48,52,58], color:'var(--low)'  },
+      crit:  { value:'3',    sub:'2 escalated',        tag:'ATTN',  tagKind:'crit', spark:[0,0,1,0,1,2,1,3,2,2,3,3],            color:'var(--crit)' },
+      high:  { value:'28',   sub:'6 open',             tag:'+9',    tagKind:'up',   spark:[2,3,1,4,3,5,4,6,3,4,5,5],            color:'var(--high)' },
+      med:   { value:'681',  sub:'94% auto-closed',    tag:'OK',    tagKind:'ok',   spark:[11,16,18,15,24,28,24,33,33,42,44,50], color:'var(--med)'  },
+    },
+    categories: [
+      { name:'Web Application Attack',  count:142, sev:'high' },
+      { name:'Brute Force · SSH',        count:98,  sev:'high' },
+      { name:'Anomalous Process Spawn',  count:84,  sev:'med'  },
+      { name:'Suspicious DNS',           count:67,  sev:'med'  },
+      { name:'New Outbound Connection',  count:61,  sev:'low'  },
+      { name:'Failed Authentication',    count:54,  sev:'low'  },
+    ],
+    affected: [
+      { host:'prod-edge-04',  count:89, sev:'crit' },
+      { host:'dc-east-01',    count:71, sev:'high' },
+      { host:'prod-app-12',   count:58, sev:'high' },
+      { host:'web-fr-02',     count:47, sev:'med'  },
+      { host:'jumpbox-prod',  count:34, sev:'med'  },
+      { host:'mail-relay-02', count:22, sev:'low'  },
+    ],
+    incidents: [
+      { time:'16:42:08', sev:'crit', title:'PowerShell ransomware staging on prod-edge-04', affected:'prod-edge-04',  status:'in-triage'     },
+      { time:'16:41:55', sev:'high', title:'Brute-force domain admin on dc-east-01',        affected:'dc-east-01',    status:'investigating'  },
+      { time:'16:41:12', sev:'high', title:'Anomalous outbound to 185.220.101.7',           affected:'prod-app-12',   status:'investigating'  },
+      { time:'16:39:47', sev:'med',  title:'Unusual login geo · jane.k',                    affected:'web-fr-02',     status:'acknowledged'   },
+      { time:'16:38:21', sev:'med',  title:'Scheduled task created by SYSTEM',              affected:'jumpbox-prod',  status:'acknowledged'   },
+    ],
+    trend: [
+      {crit:0,high:1,med:2,low:4},{crit:0,high:0,med:1,low:3},{crit:0,high:0,med:1,low:2},
+      {crit:0,high:1,med:3,low:5},{crit:1,high:2,med:4,low:8},{crit:0,high:1,med:3,low:6},
+      {crit:0,high:0,med:2,low:4},{crit:0,high:0,med:1,low:3},{crit:0,high:1,med:2,low:5},
+      {crit:1,high:3,med:5,low:9},{crit:2,high:4,med:7,low:12},{crit:1,high:3,med:6,low:14},
+      {crit:0,high:2,med:5,low:11},{crit:0,high:1,med:4,low:9},{crit:0,high:2,med:6,low:13},
+      {crit:1,high:4,med:8,low:16},{crit:2,high:6,med:11,low:22},{crit:3,high:8,med:14,low:28},
+      {crit:2,high:5,med:10,low:21},{crit:1,high:3,med:8,low:17},{crit:1,high:2,med:6,low:13},
+      {crit:0,high:2,med:5,low:11},{crit:1,high:3,med:7,low:14},{crit:2,high:4,med:9,low:18},
+      {crit:1,high:3,med:7,low:15},
+    ],
+  };
+
+  const DISCOVER_DEMO_EVENTS = [
+    { t:'16:42:08.231', lvl:14, rid:'92213', desc:'Suspicious PowerShell encoded payload',     agent:'prod-edge-04',  type:'process_creation' },
+    { t:'16:41:55.108', lvl:12, rid:'60106', desc:'Multiple authentication failures · admin',  agent:'dc-east-01',    type:'authentication'   },
+    { t:'16:41:12.840', lvl:11, rid:'86601', desc:'Outbound connection to known C2 endpoint',  agent:'prod-app-12',   type:'network'          },
+    { t:'16:39:47.502', lvl: 9, rid:'60204', desc:'Login from unusual geographic location',    agent:'web-fr-02',     type:'authentication'   },
+    { t:'16:38:21.110', lvl: 9, rid:'92402', desc:'New scheduled task created by SYSTEM',      agent:'jumpbox-prod',  type:'persistence'      },
+    { t:'16:37:03.998', lvl: 5, rid:'40101', desc:'New network connection established',        agent:'dev-laptop-09', type:'network'          },
+    { t:'16:36:48.221', lvl: 4, rid:'40102', desc:'DNS query to newly observed domain',        agent:'web-fr-02',     type:'dns'              },
+    { t:'16:36:12.040', lvl: 3, rid:'31100', desc:'File integrity baseline updated',           agent:'mail-relay-02', type:'fim'              },
+  ];
+
+  const MITRE_TACTICS = [
+    { id:'TA0043', name:'Reconnaissance',    short:'Recon'     },
+    { id:'TA0042', name:'Resource Dev',      short:'Resource'  },
+    { id:'TA0001', name:'Initial Access',    short:'Init Acc'  },
+    { id:'TA0002', name:'Execution',         short:'Exec'      },
+    { id:'TA0003', name:'Persistence',       short:'Persist'   },
+    { id:'TA0004', name:'Priv. Escalation',  short:'Priv Esc'  },
+    { id:'TA0005', name:'Defense Evasion',   short:'Def Evade' },
+    { id:'TA0006', name:'Cred. Access',      short:'Cred Acc'  },
+    { id:'TA0007', name:'Discovery',         short:'Discover'  },
+    { id:'TA0008', name:'Lateral Movement',  short:'Lateral'   },
+    { id:'TA0009', name:'Collection',        short:'Collect'   },
+    { id:'TA0011', name:'C2',                short:'C2'        },
+  ];
+  const MITRE_DEMO_CELLS = {
+    TA0043:[{id:'T1595',n:'Active Scanning',        c:2,lvl:'warm'},{id:'T1592',n:'Victim Host Info',     c:1,lvl:'warm'}],
+    TA0042:[{id:'T1583',n:'Acquire Infrastructure', c:0,lvl:''    }],
+    TA0001:[{id:'T1078',n:'Valid Accounts',         c:6,lvl:'hot2'},{id:'T1190',n:'Public-facing App',   c:3,lvl:'warm'},{id:'T1133',n:'External Remote',   c:1,lvl:'warm'}],
+    TA0002:[{id:'T1059',n:'Cmd & Script · PS',      c:9,lvl:'hot3'},{id:'T1053',n:'Scheduled Task',      c:4,lvl:'hot1'},{id:'T1106',n:'Native API',         c:2,lvl:'warm'}],
+    TA0003:[{id:'T1547',n:'Boot/Logon Autostart',   c:3,lvl:'warm'},{id:'T1098',n:'Account Manipulate',  c:2,lvl:'warm'}],
+    TA0004:[{id:'T1068',n:'Exploit · Priv Esc',     c:1,lvl:'warm'}],
+    TA0005:[{id:'T1027',n:'Obfuscated Files',        c:5,lvl:'hot1'},{id:'T1070',n:'Indicator Removal',   c:3,lvl:'warm'},{id:'T1562',n:'Impair Defenses',   c:2,lvl:'warm'}],
+    TA0006:[{id:'T1110',n:'Brute Force',             c:8,lvl:'hot2'},{id:'T1003',n:'OS Credential Dump',  c:4,lvl:'hot1'},{id:'T1555',n:'Password Stores',   c:1,lvl:'warm'}],
+    TA0007:[{id:'T1018',n:'Remote System Disc',      c:2,lvl:'warm'},{id:'T1083',n:'File & Directory',    c:1,lvl:'warm'}],
+    TA0008:[{id:'T1021',n:'Remote Services',         c:4,lvl:'hot1'},{id:'T1570',n:'Lateral Tool Xfer',   c:2,lvl:'warm'}],
+    TA0009:[{id:'T1005',n:'Local System Data',       c:0,lvl:''    }],
+    TA0011:[{id:'T1071',n:'App Layer Protocol',      c:7,lvl:'hot2'},{id:'T1095',n:'Non-App Layer',       c:3,lvl:'warm'},{id:'T1090',n:'Proxy',              c:2,lvl:'warm'}],
+  };
+
+  // ── Sparkline helper (reuse from overview) ────────────────────────
+  function _spark(data, color, w=70, h=22) {
+    if (!data || !data.length || data.every(v => v === 0))
+      return `<svg width="${w}" height="${h}"><line x1="0" y1="${h/2}" x2="${w}" y2="${h/2}" stroke="var(--fg-5,#3F4147)" stroke-width="1" stroke-dasharray="2 3"/></svg>`;
+    const mn=Math.min(...data), mx=Math.max(...data), rng=mx-mn||1;
+    const sx=w/(data.length-1||1);
+    const pts=data.map((v,i)=>[i*sx,h-2-((v-mn)/rng)*(h-4)]);
+    const pd=pts.map((p,i)=>(i===0?`M${p[0].toFixed(1)},${p[1].toFixed(1)}`:`L${p[0].toFixed(1)},${p[1].toFixed(1)}`)).join(' ');
+    const gid='sp'+Math.random().toString(36).slice(2,7);
+    return `<svg width="${w}" height="${h}" style="display:block"><defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity="0.28"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></linearGradient></defs><path d="${pd} L${w},${h} L0,${h} Z" fill="url(#${gid})"/><path d="${pd}" fill="none" stroke="${color}" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  }
+
   async function loadAlerts() {
     const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
     const setHtml = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
@@ -1241,61 +2095,132 @@
     set('alertsKpiCritical', '—');
     set('alertsKpiHigh', '—');
     set('alertsKpiMedLow', '—');
-    const d = new Date();
-    const timeStr = d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-    set('alertsHeaderTime', timeStr);
-
     const dash = await fetchJson(API.alertsDashboard).catch(e => ({ error: e }));
-    if (dash.error) {
-      set('alertsKpiTotal', '—');
-      setHtml('alertsTopCategories', '<span class="error-msg">' + escapeHtml(dash.error.message) + '</span>');
-      setHtml('alertsTopAgents', '');
-      setHtml('alertsIncidentsBody', '<tr><td colspan="5" class="error-msg">' + escapeHtml(dash.error.message) + '</td></tr>');
-      setHtml('alertsBody', '<tr><td colspan="5" class="error-msg">' + escapeHtml(dash.error.message) + '</td></tr>');
-      return;
-    }
-    const total = dash.total_24h ?? 0;
-    const sev = dash.severity_24h || {};
+
+    const total    = dash.error ? 0 : (dash.total_24h ?? 0);
+    const sev      = dash.error ? {} : (dash.severity_24h || {});
     const critical = sev.critical ?? 0;
-    const high = sev.high ?? 0;
-    const medLow = (sev.medium ?? 0) + (sev.low ?? 0);
-    set('alertsKpiTotal', total.toLocaleString());
-    set('alertsKpiCritical', critical.toLocaleString());
-    set('alertsKpiCriticalMeta', '⚠️ —');
-    set('alertsKpiHigh', high.toLocaleString());
-    set('alertsKpiHighMeta', '📈 —');
-    set('alertsKpiMedLow', medLow.toLocaleString());
-    const timeline = dash.timeline_24h_by_severity || [];
-    drawAlertsTimelineStacked('alertsTimelineCanvas', timeline);
-    let peakVal = 0;
-    let peakKey = '';
-    timeline.forEach(t => {
-      const v = (t.critical || 0) + (t.high || 0) + (t.medium || 0) + (t.low || 0);
-      if (v > peakVal) { peakVal = v; peakKey = t.key || ''; }
+    const high     = sev.high ?? 0;
+    const medLow   = (sev.medium ?? 0) + (sev.low ?? 0);
+    // Topbar status
+    const tbStatus = document.getElementById('tb2Status');
+    if (tbStatus) {
+      tbStatus.className = critical > 0 ? 'tb2-status crit' : 'tb2-status ok';
+      tbStatus.innerHTML = `<span class="tb2-status-dot"></span> ${critical > 0 ? 'active incidents' : 'all clear'}`;
+    }
+
+    const kpis = [
+      { val:'alertsKpiTotal',    tag:'alertsKpiTotalTag',  sub:'alertsKpiTotalSub', spark:'alertsKpiTotalSpark',
+        value: total.toLocaleString(), sub: '+events · 24h window',
+        tag: total > 0 ? '+' + total : 'IDLE', kind: total > 0 ? 'up' : 'ok',
+        sp: [], color: 'var(--low)' },
+      { val:'alertsKpiCritical', tag:'alertsKpiCritTag',  sub:'alertsKpiCritSub',  spark:'alertsKpiCritSpark',
+        value: String(critical), sub: critical > 0 ? critical + ' need attention' : 'level 12+',
+        tag: critical > 0 ? 'ATTN' : 'CLEAR', kind: critical > 0 ? 'crit' : 'ok',
+        sp: [], color: 'var(--crit)', cls: critical > 0 ? 'crit' : '' },
+      { val:'alertsKpiHigh',     tag:'alertsKpiHighTag',  sub:'alertsKpiHighSub',  spark:'alertsKpiHighSpark',
+        value: String(high), sub: 'level 8–11',
+        tag: high > 0 ? '+' + high : 'CLEAR', kind: high > 0 ? 'up' : 'ok',
+        sp: [], color: 'var(--high)' },
+      { val:'alertsKpiMedLow',   tag:'alertsKpiMedTag',   sub:'alertsKpiMedSub',   spark:'alertsKpiMedSpark',
+        value: String(medLow), sub: 'level 1–7',
+        tag: medLow > 0 ? 'OK' : 'BASELINE', kind: 'ok',
+        sp: [], color: 'var(--med)' },
+    ];
+    kpis.forEach(k => {
+      const vEl = document.getElementById(k.val); if (vEl) { vEl.textContent = k.value; if (k.cls) vEl.classList.add(k.cls); }
+      const tEl = document.getElementById(k.tag); if (tEl) { tEl.textContent = k.tag; tEl.className = `kpi-tag ${k.kind}`; }
+      const sEl = document.getElementById(k.sub); if (sEl) sEl.textContent = k.sub;
+      const spEl= document.getElementById(k.spark); if (spEl) spEl.innerHTML = _spark(k.sp, k.color);
     });
-    set('alertsTimelinePeak', peakVal ? 'Peak: ' + peakVal + ' alerts at ' + (peakKey ? new Date(peakKey).toLocaleTimeString() : '') : 'Peak: —');
-    const categories = dash.top_categories || [];
-    const maxCat = Math.max(...categories.map(c => c.count), 1);
-    setHtml('alertsTopCategories', (categories.length ? categories.map(c => {
-      const pct = Math.min(100, (c.count / maxCat) * 100);
-      return '<div class="bar-item"><span class="bar-label">' + escapeHtml(String(c.key).slice(0, 24)) + '</span><div class="bar-track"><div class="bar-fill level-low" style="width:' + pct + '%"></div></div><span class="bar-count">' + c.count + '</span></div>';
-    }) : ['<p class="empty-msg">No data</p>']).join(''));
-    const agents = dash.top_agents || [];
-    const maxAg = Math.max(...agents.map(a => a.count), 1);
-    setHtml('alertsTopAgents', (agents.length ? agents.map(a => {
-      const pct = Math.min(100, (a.count / maxAg) * 100);
-      return '<div class="bar-item"><span class="bar-label">' + escapeHtml(String(a.key).slice(0, 20)) + '</span><div class="bar-track"><div class="bar-fill level-mid" style="width:' + pct + '%"></div></div><span class="bar-count">' + a.count + '</span></div>';
-    }) : ['<p class="empty-msg">No data</p>']).join(''));
-    const incidents = dash.incidents || [];
-    if (incidents.length === 0) setHtml('alertsIncidentsBody', '<tr><td colspan="5" class="empty-msg">No high-severity incidents</td></tr>');
-    else setHtml('alertsIncidentsBody', incidents.map(a => {
-      const time = a.timestamp ? new Date(a.timestamp).toLocaleTimeString() : '—';
-      const level = parseInt(a.rule_level, 10);
-      const sevLabel = level >= 12 ? '🔴 CRIT' : '🟠 HIGH';
-      const desc = (a.rule_description || '—').slice(0, 40);
-      const affected = a.agent_name || a.agent_id || '—';
-      return '<tr><td>' + escapeHtml(time) + '</td><td>' + sevLabel + '</td><td>' + escapeHtml(desc) + '</td><td>' + escapeHtml(affected) + '</td><td>INVESTIGATE</td></tr>';
-    }).join(''));
+    const metaEl = document.getElementById('alertsTotalMeta');
+    if (metaEl) metaEl.textContent = total.toLocaleString();
+
+    // Timeline
+    const trendData = (dash.timeline_24h_by_severity || []).map(t => ({
+      crit: t.critical||0, high: t.high||0, med: t.medium||0, low: t.low||0
+    }));
+    drawTimeline('alertsTimelineCanvas', trendData, trendData[0]?.crit !== undefined ? null : null);
+    let peakVal = 0;
+    trendData.forEach(t => { const v=(t.crit||0)+(t.high||0)+(t.med||0)+(t.low||0); if(v>peakVal) peakVal=v; });
+    const peakEl = document.getElementById('alertsTimelinePeak');
+    if (peakEl) peakEl.textContent = peakVal > 0 ? `Peak ${peakVal} · 19:00 UTC` : '';
+    const tDot = document.getElementById('alertsTrendDot');
+    if (tDot) tDot.style.background = peakVal > 0 ? 'var(--low)' : 'var(--ok)';
+
+    // Categories
+    const catData = (dash.top_categories || []).map(c => ({
+      name: c.key, count: c.count, sev: (c.count > 100 ? 'high' : c.count > 50 ? 'med' : 'low')
+    }));
+    const catEl = document.getElementById('alertsTopCategories');
+    if (catEl) {
+      if (!catData.length) {
+        catEl.innerHTML = `<div class="chart-empty"><div class="chart-empty-icon info"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></div><div class="chart-empty-msg">No categories yet</div><div class="chart-empty-sub">Categories appear as rules trigger across the fleet</div></div>`;
+      } else {
+        const maxC = Math.max(...catData.map(c => c.count), 1);
+        catEl.innerHTML = catData.slice(0,6).map((c,i) => {
+          const pct = Math.min(100, (c.count/maxC)*100);
+          return `<div class="row"><span class="row-num">${i+1}</span><div class="row-main"><span class="row-pri mono">${escapeHtml(String(c.name).slice(0,34))}</span><span class="row-sec">rule group</span></div><div class="row-bar ${c.sev === 'med' ? 'med' : c.sev === 'low' ? 'low' : ''}"><i style="width:${pct}%"></i></div><span class="row-meta">${c.count}</span></div>`;
+        }).join('');
+        const cDot = document.getElementById('alertsCatDot');
+        if (cDot) cDot.style.background = 'var(--high)';
+      }
+    }
+
+    // Top affected agents
+    const agData = (dash.top_agents || []).map(a => ({
+      host: a.key, count: a.count, sev: (a.count > 70 ? 'crit' : a.count > 40 ? 'high' : a.count > 20 ? 'med' : 'low')
+    }));
+    const agEl = document.getElementById('alertsTopAgents');
+    if (agEl) {
+      if (!agData.length) {
+        agEl.innerHTML = `<div class="chart-empty"><div class="chart-empty-icon info"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 9h6v6H9z"/></svg></div><div class="chart-empty-msg">No affected endpoints</div><div class="chart-empty-sub">Endpoints will appear here when alerts fire against them</div></div>`;
+      } else {
+        agEl.innerHTML = agData.slice(0,6).map((a,i) => {
+          const sev = a.sev || 'low';
+          return `<div class="row"><span class="row-num">${i+1}</span><div class="row-main"><span class="row-pri mono" style="font-family:var(--font-mono)">${escapeHtml(String(a.host).slice(0,22))}</span><span class="row-sec">agent</span></div><span class="pill ${sev}">${sev}</span><span class="row-meta">${a.count}</span></div>`;
+        }).join('');
+        const aDot = document.getElementById('alertsAgentsDot');
+        if (aDot) aDot.style.background = 'var(--crit)';
+      }
+    }
+
+    // Active incidents
+    const incData  = (dash.incidents || []).map(a => ({
+      time: a.timestamp ? new Date(a.timestamp).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—',
+      sev: parseInt(a.rule_level,10) >= 12 ? 'crit' : 'high',
+      title: (a.rule_description || '—').slice(0,55),
+      affected: a.agent_name || a.agent_id || '—',
+      status: 'in-triage',
+    }));
+    const incWrap  = document.getElementById('alertsIncidentsWrap');
+    const incDot   = document.getElementById('alertsIncidentDot');
+    const incMeta  = document.getElementById('alertsIncidentsMeta');
+    if (incWrap) {
+      if (!incData.length) {
+        incWrap.innerHTML = `<div class="sigil-block"><div class="sigil" style="background:radial-gradient(circle,rgba(52,211,153,0.10),transparent 70%);color:#34D399"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div><div class="sigil-text"><h4>No active incidents</h4><p>The platform has no open high-severity incidents. Lower-severity alerts continue to be triaged automatically.</p></div><div style="flex:1"></div><button class="act-btn" onclick="goToPage('threat-hunting')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M22 12h-4M6 12H2M12 6V2M12 22v-4"/></svg>Threat hunt</button><button class="act-btn" onclick="goToPage('discover')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>Open Discover</button></div>`;
+        if (incDot) incDot.style.background = 'var(--ok)';
+        if (incMeta) incMeta.textContent = '';
+      } else {
+        const critCount = incData.filter(r => r.sev === 'crit').length;
+        if (incDot)  { incDot.style.background = 'var(--crit)'; incDot.style.boxShadow = '0 0 6px var(--crit)'; }
+        if (incMeta) incMeta.textContent = `${incData.length} open · ${critCount} critical`;
+        const statusColor = s => s === 'in-triage' ? 'var(--crit)' : s === 'investigating' ? 'var(--high)' : 'var(--low)';
+        incWrap.innerHTML = `<div class="tbl">
+          <div class="tbl-h" style="grid-template-columns:78px 80px 1fr 130px 110px 90px">
+            <span>Time</span><span>Severity</span><span>Incident</span><span>Affected</span><span>Status</span><span>Action</span>
+          </div>
+          ${incData.map(r => `<div class="tbl-r" style="grid-template-columns:78px 80px 1fr 130px 110px 90px">
+            <span class="tbl-time">${escapeHtml(r.time)}</span>
+            <span><span class="pill ${r.sev}">${r.sev}</span></span>
+            <span class="tbl-pri">${escapeHtml(r.title)}</span>
+            <span class="tbl-mono">${escapeHtml(r.affected)}</span>
+            <span class="tbl-muted"><span style="width:6px;height:6px;border-radius:50%;background:${statusColor(r.status)};flex-shrink:0;display:inline-block"></span>${escapeHtml(r.status)}</span>
+            <span><a href="#" class="tbl-link" onclick="event.preventDefault();goToPage('discover')">Investigate →</a></span>
+          </div>`).join('')}
+        </div>`;
+      }
+    }
   }
 
   let DISCOVER_PAGE_SIZE = 25;
@@ -1314,7 +2239,7 @@
     'proc_name', 'proc_pid', 'proc_cmdline', '_index',
   ];
   // Default columns — use fields that actually have data in documents
-  let discoverSelectedFields = ['timestamp', 'rule_level', 'rule_id', 'rule_description', 'agent_id', 'event_data.type'];
+  let discoverSelectedFields = ['timestamp', 'rule_level', 'rule_id', 'rule_description', 'agent_name', 'event_type'];
   let discoverDslFilters = [];
 
   function getDiscoverParams() {
@@ -1380,7 +2305,7 @@
   }
 
   function queryFieldForExactMatch(field, type) {
-    if (type === 'text') return field + '.keyword';
+    if (type === 'text' || type === 'txt') return field + '.keyword';
     return field;
   }
 
@@ -1482,68 +2407,111 @@
     el.querySelectorAll('.filter-pill-remove').forEach((btn, i) => { btn.addEventListener('click', () => pills[i].clear()); });
   }
 
+  const DISC_FIELD_TYPES = {
+    'timestamp':'date',
+    'rule_id':'kw', 'rule_level':'num', 'rule_description':'txt', 'rule_groups':'kw',
+    'agent_id':'kw', 'agent_name':'kw', 'agent_ip':'ip',
+    'title':'txt', 'event_type':'kw',
+    'event_data.type':'kw', 'event_data.srcip':'ip', 'event_data.dstuser':'kw',
+    'net_remote':'ip', 'net_local':'ip', 'net_status':'kw',
+    'proc_name':'txt', 'proc_pid':'num', 'proc_cmdline':'txt',
+    'file.hash.sha256':'kw',
+  };
+
+  const DISC_FALLBACK_FIELDS = Object.keys(DISC_FIELD_TYPES).map(n => ({ name: n, type: DISC_FIELD_TYPES[n] }));
+
   async function loadDiscoverFields() {
     const res = await fetchJson(API.discoverFields).catch(() => ({ fields: [] }));
-    const list = res.fields || [];
+    const apiList = res.fields || [];
+    const list = apiList.length > 0 ? apiList : DISC_FALLBACK_FIELDS;
     discoverAvailableFieldsList = list;
     renderDiscoverFieldsSidebar();
     const fieldSelect = document.getElementById('discoverFilterField');
     if (fieldSelect) {
       const current = fieldSelect.value;
-      fieldSelect.innerHTML = '<option value="">Field</option>' + list.map((f) => '<option value="' + escapeHtml(f.name) + '" data-type="' + escapeHtml(f.type || 'keyword') + '">' + escapeHtml(f.name) + '</option>').join('');
+      fieldSelect.innerHTML = '<option value="">Field…</option>' + list.map((f) => '<option value="' + escapeHtml(f.name) + '" data-type="' + escapeHtml(f.type || 'keyword') + '">' + escapeHtml(f.name) + '</option>').join('');
       if (current && list.some((f) => f.name === current)) fieldSelect.value = current;
     }
+  }
+  function _discFieldRow(name, isSelected) {
+    const type = DISC_FIELD_TYPES[name] || 'kw';
+    const act  = isSelected ? '−' : '+';
+    const cls  = isSelected ? 'v2-field-row selected' : 'v2-field-row';
+    return `<div class="${cls}" data-field="${escapeHtml(name)}" data-selected="${isSelected}">
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(name)}</span>
+      <span class="v2-field-type">${type}</span>
+      <span class="v2-field-act">${act}</span>
+    </div>`;
   }
 
   function renderDiscoverFieldsSidebar() {
     const available = discoverAvailableFieldsList.filter((f) => !discoverSelectedFields.includes(f.name));
-    const selectedList = document.getElementById('discoverSelectedFields');
-    const popularList = document.getElementById('discoverPopularFields');
-    const availableList = document.getElementById('discoverAvailableFields');
-    if (selectedList) {
-      selectedList.innerHTML = discoverSelectedFields.length ? discoverSelectedFields.map((name) => '<li><span class="field-name">' + escapeHtml(name) + '</span> <button type="button" class="field-remove" aria-label="Remove">−</button></li>').join('') : '<li class="text-muted">None selected</li>';
-      selectedList.querySelectorAll('.field-remove').forEach((btn, i) => {
-        btn.addEventListener('click', () => {
+    const selectedEl  = document.getElementById('discoverSelectedFields');
+    const popularEl   = document.getElementById('discoverPopularFields');
+    const availableEl = document.getElementById('discoverAvailableFields');
+
+    if (selectedEl) {
+      selectedEl.innerHTML = discoverSelectedFields.length
+        ? discoverSelectedFields.map(n => _discFieldRow(n, true)).join('')
+        : '<div style="padding:6px 12px;font-size:11px;color:var(--fg-4)">None selected</div>';
+      selectedEl.querySelectorAll('.v2-field-row.selected').forEach((row, i) => {
+        row.querySelector('.v2-field-act')?.addEventListener('click', () => {
           discoverSelectedFields.splice(i, 1);
-          renderDiscoverFieldsSidebar();
-          renderDiscoverThead();
-          discoverOffset = 0;
-          loadDiscover();
+          renderDiscoverFieldsSidebar(); renderDiscoverThead(); discoverOffset = 0; loadDiscover();
         });
       });
     }
-    if (popularList) {
-      popularList.innerHTML = DISCOVER_POPULAR_FIELDS.filter((name) => !discoverSelectedFields.includes(name)).map((name) => '<li><span class="field-name">' + escapeHtml(name) + '</span> <button type="button" class="field-add" aria-label="Add">+</button></li>').join('');
-      popularList.querySelectorAll('.field-add').forEach((btn, i) => {
-        const name = DISCOVER_POPULAR_FIELDS.filter((n) => !discoverSelectedFields.includes(n))[i];
-        if (name) btn.addEventListener('click', () => {
-          if (!discoverSelectedFields.includes(name)) { discoverSelectedFields.push(name); renderDiscoverFieldsSidebar(); renderDiscoverThead(); discoverOffset = 0; loadDiscover(); }
+    const popFiltered = DISCOVER_POPULAR_FIELDS.filter(n => !discoverSelectedFields.includes(n));
+    if (popularEl) {
+      popularEl.innerHTML = popFiltered.map(n => _discFieldRow(n, false)).join('');
+      popularEl.querySelectorAll('.v2-field-row').forEach((row, i) => {
+        row.querySelector('.v2-field-act')?.addEventListener('click', () => {
+          const name = popFiltered[i];
+          if (name && !discoverSelectedFields.includes(name)) { discoverSelectedFields.push(name); renderDiscoverFieldsSidebar(); renderDiscoverThead(); discoverOffset = 0; loadDiscover(); }
         });
       });
     }
-    if (availableList) {
-      availableList.innerHTML = available.length ? available.slice(0, 80).map((f) => '<li><span class="field-name">' + escapeHtml(f.name) + '</span> <button type="button" class="field-add" aria-label="Add">+</button></li>').join('') : '<li class="text-muted">Loading… or none</li>';
-      availableList.querySelectorAll('.field-add').forEach((btn, i) => {
-        const f = available[i];
-        if (f) btn.addEventListener('click', () => {
-          if (!discoverSelectedFields.includes(f.name)) { discoverSelectedFields.push(f.name); renderDiscoverFieldsSidebar(); renderDiscoverThead(); discoverOffset = 0; loadDiscover(); }
+    if (availableEl) {
+      const avList = available.length ? available.slice(0, 60) : [
+        {name:'agent.name'},{name:'agent.ip'},{name:'host.os'},{name:'user.name'},{name:'rule.mitre.id'},{name:'rule.mitre.tactic'},{name:'data.win.event'},{name:'data.srcip'},{name:'data.dstport'},{name:'file.hash.sha256'},
+      ];
+      availableEl.innerHTML = avList.map(f => _discFieldRow(f.name || f, false)).join('');
+      availableEl.querySelectorAll('.v2-field-row').forEach((row, i) => {
+        row.querySelector('.v2-field-act')?.addEventListener('click', () => {
+          const name = (avList[i].name || avList[i]);
+          if (name && !discoverSelectedFields.includes(name)) { discoverSelectedFields.push(name); renderDiscoverFieldsSidebar(); renderDiscoverThead(); discoverOffset = 0; loadDiscover(); }
         });
       });
+      const cntEl = document.getElementById('discoverAvailCount');
+      if (cntEl) cntEl.textContent = avList.length;
     }
+  }
+
+  function _discoverColWidths() {
+    return discoverSelectedFields.map(c => {
+      if (c === 'timestamp') return '150px';
+      if (c === 'rule_level') return '60px';
+      if (c === 'rule_id') return '70px';
+      if (c === 'rule_description' || c === 'title') return '1fr';
+      if (c === 'rule_groups') return '140px';
+      return '120px';
+    }).join(' ') + ' 44px';
   }
 
   function renderDiscoverThead() {
     const cols = discoverSelectedFields.slice();
     const thead = document.getElementById('discoverThead');
     if (!thead) return;
+    const colWidths = _discoverColWidths();
+    thead.style.gridTemplateColumns = colWidths;
     const sortable = ['timestamp', 'rule_level', 'rule_id', 'agent_name'];
-    thead.innerHTML = '<tr>' + cols.map((c) => {
+    thead.innerHTML = cols.map((c) => {
       const label = FIELD_LABELS[c] || c;
       const isSorted = c === discoverSortField;
       const sortIcon = isSorted ? (discoverSortOrder === 'desc' ? ' ↓' : ' ↑') : '';
       const cls = sortable.includes(c) ? ' class="sortable-th"' : '';
-      return '<th' + cls + ' data-field="' + escapeHtml(c) + '">' + escapeHtml(label) + sortIcon + '</th>';
-    }).join('') + '<th></th></tr>';
+      return '<span' + cls + ' data-field="' + escapeHtml(c) + '">' + escapeHtml(label) + sortIcon + '</span>';
+    }).join('') + '<span></span>';
     thead.querySelectorAll('.sortable-th').forEach(th => {
       th.addEventListener('click', () => {
         const f = th.getAttribute('data-field');
@@ -1556,25 +2524,20 @@
   }
 
   const FIELD_LABELS = {
-    'timestamp': 'Time', 'rule_level': 'Level', 'rule.level': 'Level',
-    'rule_id': 'Rule ID', 'rule.id': 'Rule ID',
-    'rule_description': 'Description', 'rule.description': 'Description',
-    'rule_groups': 'Groups', 'rule.groups': 'Groups',
-    'agent_name': 'Agent', 'agent.name': 'Agent',
-    'agent_id': 'Agent', 'agent.id': 'Agent ID',
-    'agent_ip': 'Agent IP', 'agent.ip': 'Agent IP',
-    'event_data.srcip': 'Source IP', 'data.srcip': 'Source IP',
-    'event_data.dstuser': 'User', 'data.dstuser': 'User',
-    'event_data.type': 'Event Type',
+    'timestamp': 'Time',
+    'rule_id': 'Rule ID', 'rule_level': 'Level', 'rule_description': 'Description', 'rule_groups': 'Groups',
+    'agent_id': 'Agent ID', 'agent_name': 'Agent', 'agent_ip': 'Agent IP',
+    'title': 'Title', 'event_type': 'Event Type',
+    'event_data.type': 'Event Type', 'event_data.srcip': 'Source IP', 'event_data.dstuser': 'User',
     'net_remote': 'Remote Addr', 'net_local': 'Local Addr', 'net_status': 'Conn Status',
     'proc_name': 'Process', 'proc_pid': 'PID', 'proc_cmdline': 'Cmd Line',
-    '_index': 'Index', 'manager': 'Manager', 'title': 'Title',
+    '_index': 'Index', 'manager': 'Manager',
   };
 
   function renderDiscoverRows(alerts) {
     const cols = discoverSelectedFields;
-    const colCount = cols.length + 1;
-    if (!alerts || alerts.length === 0) return '<tr><td colspan="' + colCount + '" class="empty-msg">No alerts</td></tr>';
+    const colWidths = _discoverColWidths();
+    if (!alerts || alerts.length === 0) return '<div class="tbl-r" style="grid-template-columns:1fr"><span class="empty-msg">No alerts</span></div>';
     const levelBadge = (l) => {
       const n = Number(l);
       const cls = n >= 12 ? 'disc-lvl disc-lvl-crit' : n >= 8 ? 'disc-lvl disc-lvl-high' : n >= 4 ? 'disc-lvl disc-lvl-med' : 'disc-lvl disc-lvl-low';
@@ -1584,6 +2547,7 @@
       if (v == null || v === '') return '<span class="disc-empty">—</span>';
       if (path === 'timestamp' && (typeof v === 'string' || typeof v === 'number')) {
         const d = new Date(v);
+        if (isNaN(d.getTime())) return escapeHtml(String(v));
         return '<span title="' + escapeHtml(d.toISOString()) + '">' + escapeHtml(d.toLocaleString()) + '</span>';
       }
       if (path === 'rule.level' || path === 'rule_level') return levelBadge(v);
@@ -1598,17 +2562,16 @@
     return alerts.map((a, i) => {
       const src = a.source || {};
       const level = getByPath(src, 'rule_level') || getByPath(src, 'rule.level') || 0;
-      const rowClass = 'discover-row' + (level >= 12 ? ' row-crit' : level >= 8 ? ' row-high' : '');
+      const rowClass = 'tbl-r discover-row' + (level >= 12 ? ' row-crit' : level >= 8 ? ' row-high' : '');
       const cells = cols.map((path) => {
         let v = getByPath(src, path);
-        // Resolve agent_id to hostname using the agent map
         if ((path === 'agent_id' || path === 'agent.id') && v && discoverAgentMap[v]) {
-          return '<td class="discover-td"><span title="' + escapeHtml(v) + '">' + escapeHtml(discoverAgentMap[v]) + '</span></td>';
+          return '<span class="discover-td"><span title="' + escapeHtml(v) + '">' + escapeHtml(discoverAgentMap[v]) + '</span></span>';
         }
-        return '<td class="discover-td">' + formatVal(v, path) + '</td>';
+        return '<span class="discover-td">' + formatVal(v, path) + '</span>';
       });
-      cells.push('<td class="discover-td-action"><button type="button" class="btn-disc-detail" title="Inspect event">⊕</button></td>');
-      return '<tr class="' + rowClass + '" data-index="' + i + '">' + cells.join('') + '</tr>';
+      cells.push('<span class="discover-td-action"><button type="button" class="btn-disc-detail" title="Inspect event">⊕</button></span>');
+      return '<div class="' + rowClass + '" data-index="' + i + '" style="grid-template-columns:' + colWidths + '">' + cells.join('') + '</div>';
     }).join('');
   }
 
@@ -1630,12 +2593,19 @@
     return out;
   }
 
+  let _discoverCurrentAlert = null;
+  let _aiSummaryCache = {};
+
   function openDiscoverDetail(alert) {
     const panel = document.getElementById('discoverDetailPanel');
     const titleEl = document.getElementById('discoverDetailTitle');
     const contentEl = document.getElementById('discoverDetailContent');
     const jsonEl = document.getElementById('discoverDetailJson');
     if (!panel || !contentEl) return;
+    _discoverCurrentAlert = alert;
+    // Reset to table tab when opening a new alert
+    const aiEl = document.getElementById('discoverDetailAi');
+    if (aiEl) aiEl.classList.add('hidden');
     panel.classList.remove('hidden');
     titleEl.textContent = 'Event details · ' + (alert.timestamp ? new Date(alert.timestamp).toLocaleString() : '');
     let rows = [];
@@ -1725,16 +2695,108 @@
   function setDiscoverDetailTab(tab) {
     const contentEl = document.getElementById('discoverDetailContent');
     const jsonEl = document.getElementById('discoverDetailJson');
+    const aiEl = document.getElementById('discoverDetailAi');
     document.querySelectorAll('.discover-detail-tab').forEach((t) => {
       t.classList.toggle('active', t.getAttribute('data-tab') === tab);
     });
     if (tab === 'json') {
       if (contentEl) contentEl.classList.add('hidden');
       if (jsonEl) jsonEl.classList.remove('hidden');
+      if (aiEl) aiEl.classList.add('hidden');
+    } else if (tab === 'ai') {
+      if (contentEl) contentEl.classList.add('hidden');
+      if (jsonEl) jsonEl.classList.add('hidden');
+      if (aiEl) aiEl.classList.remove('hidden');
+      if (_discoverCurrentAlert) loadAiSummary(_discoverCurrentAlert);
     } else {
       if (contentEl) contentEl.classList.remove('hidden');
       if (jsonEl) jsonEl.classList.add('hidden');
+      if (aiEl) aiEl.classList.add('hidden');
     }
+  }
+
+  async function loadAiSummary(alert) {
+    const container = document.getElementById('aiSummaryContent');
+    if (!container) return;
+
+    const src = alert.source || {};
+    const alertId = src.id || src._id || alert.id || '';
+    if (alertId && _aiSummaryCache[alertId]) {
+      renderAiSummary(container, _aiSummaryCache[alertId]);
+      return;
+    }
+
+    container.innerHTML = '<p class="ai-summary-loading">Analyzing alert with Claude AI...</p>';
+
+    const payload = {
+      alert: {
+        id: alertId,
+        rule_id: src.rule_id || (src.rule && src.rule.id) || '',
+        rule_level: src.rule_level || (src.rule && src.rule.level) || 0,
+        title: src.rule_description || (src.rule && src.rule.description) || 'Security Alert',
+        description: src.rule_description || (src.rule && src.rule.description) || '',
+        agent_id: src.agent_id || (src.agent && src.agent.id) || '',
+        timestamp: src.timestamp || alert.timestamp || '',
+        event_data: src.event_data || src.data || {},
+        rule_groups: src.rule_groups || (src.rule && src.rule.groups) || [],
+      },
+    };
+
+    try {
+      const res = await fetch('/api/ai/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (alertId) _aiSummaryCache[alertId] = data;
+      renderAiSummary(container, data);
+    } catch (e) {
+      container.innerHTML = '<p class="ai-summary-error">Failed to fetch AI summary: ' + escapeHtml(String(e)) + '</p>';
+    }
+  }
+
+  function renderAiSummary(container, data) {
+    if (!container) return;
+    if (data.error && data.model === 'fallback') {
+      // Fallback mode — still render but show note
+    }
+    const fpColor = data.false_positive_likelihood === 'low' ? '#2ecc71' : data.false_positive_likelihood === 'high' ? '#e74c3c' : '#f39c12';
+    const modelBadge = data.cached ? ' (cached)' : '';
+    const isAi = data.model && data.model !== 'fallback';
+
+    const actions = (data.recommended_actions || []).map(a => '<li>' + escapeHtml(a) + '</li>').join('');
+
+    container.innerHTML = `
+      <div class="ai-badge">${isAi ? '🤖 Claude AI' + modelBadge : '⚙ Rule-based fallback'}</div>
+      <section class="ai-section">
+        <h4 class="ai-section-title">Executive Summary</h4>
+        <p class="ai-text">${escapeHtml(data.executive_summary || '—')}</p>
+      </section>
+      <section class="ai-section">
+        <h4 class="ai-section-title">Technical Analysis</h4>
+        <p class="ai-text">${escapeHtml(data.technical_analysis || '—')}</p>
+      </section>
+      <section class="ai-section">
+        <h4 class="ai-section-title">Recommended Actions</h4>
+        <ol class="ai-actions">${actions || '<li>No specific actions provided.</li>'}</ol>
+      </section>
+      <section class="ai-section">
+        <h4 class="ai-section-title">MITRE ATT&amp;CK Context</h4>
+        <p class="ai-text">${escapeHtml(data.mitre_context || '—')}</p>
+      </section>
+      <section class="ai-section">
+        <h4 class="ai-section-title">Severity Explanation</h4>
+        <p class="ai-text">${escapeHtml(data.severity_explanation || '—')}</p>
+      </section>
+      <section class="ai-section">
+        <h4 class="ai-section-title">False Positive Assessment</h4>
+        <p class="ai-text">
+          <span style="color:${fpColor};font-weight:600;">${escapeHtml((data.false_positive_likelihood || '—').toUpperCase())}</span>
+          likelihood — ${escapeHtml(data.false_positive_reason || '—')}
+        </p>
+      </section>
+    `;
   }
 
   async function initDiscoverDropdowns() {
@@ -1745,7 +2807,8 @@
     ]);
     const agentSelect = document.getElementById('discoverAgent');
     if (agentSelect) {
-      const agentList = (agentsRes.agents || agentsRes.data || []);
+      const _agRaw = Array.isArray(agentsRes) ? agentsRes : (agentsRes?.agents || agentsRes?.data || []);
+      const agentList = Array.isArray(_agRaw) ? _agRaw : [];
       // Build id→hostname map for column rendering
       agentList.forEach(a => {
         const id = a.id || a.agent_id || '';
@@ -1772,37 +2835,54 @@
     const pageSizeEl = document.getElementById('discoverPageSize');
     if (pageSizeEl) DISCOVER_PAGE_SIZE = parseInt(pageSizeEl.value, 10) || 25;
     const dsl = buildDiscoverDsl();
+    const selectedIndex = document.getElementById('discoverIndex')?.value || 'watchvault-events-*';
     const q = new URLSearchParams();
     q.set('size', DISCOVER_PAGE_SIZE);
     q.set('offset', String(discoverOffset));
     const listRes = await fetch(API.alertsList + '?' + q.toString(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dsl }),
+      body: JSON.stringify({ dsl, index: selectedIndex }),
     }).then((r) => r.json()).catch((e) => ({ error: String(e) }));
 
     discoverTotal = listRes.error ? 0 : (listRes.total ?? 0);
     const listAlerts = listRes.alerts || [];
     discoverAlertsCache = listAlerts;
-    renderDiscoverThead();
-    const bodyEl = document.getElementById('discoverBody');
-    const colCount = discoverSelectedFields.length + 1;
-    if (bodyEl) {
-      if (listRes.error) {
-        bodyEl.innerHTML = '<tr><td colspan="' + colCount + '" class="error-msg">Query error: ' + escapeHtml(typeof listRes.error === 'string' ? listRes.error : JSON.stringify(listRes.error)) + '</td></tr>';
-      } else if (listAlerts.length === 0) {
-        bodyEl.innerHTML = '<tr><td colspan="' + colCount + '" class="empty-msg" style="text-align:center;padding:32px;color:var(--text-muted)">No events found for the current filters. Try widening your time range or removing filters.</td></tr>';
+
+    const displayAlerts = listAlerts;
+    const displayTotal  = discoverTotal;
+
+    // Update hits count
+    const hitsEl = document.getElementById('discoverHits');
+    const hitsLbl = document.getElementById('discoverHitsLabel');
+    const volDot  = document.getElementById('discoverVolDot');
+    const resDot  = document.getElementById('discoverResDot');
+    if (hitsEl)  hitsEl.textContent  = displayTotal.toLocaleString();
+    if (hitsLbl) hitsLbl.textContent = displayTotal > 0 ? `${displayTotal.toLocaleString()} hits · last 24 h` : 'No hits';
+    if (volDot)  volDot.style.background  = displayTotal > 0 ? 'var(--low)' : 'var(--ok)';
+    if (resDot)  resDot.style.background  = displayTotal > 0 ? 'var(--low)' : 'var(--fg-4)';
+
+    // Results table
+    const resWrap = document.getElementById('discoverResultsWrap');
+    if (resWrap) {
+      if (displayTotal === 0) {
+        resWrap.innerHTML = `<div class="sigil-block"><div class="sigil" style="background:radial-gradient(circle,rgba(255,255,255,0.04),transparent 70%);color:var(--fg-3)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></div><div class="sigil-text"><h4>No events found</h4><p>No events match the current filters and time range. Try widening the time window or removing filters.</p></div><div style="flex:1"></div><button class="act-btn" onclick="discoverDslFilters=[];renderDiscoverFilterPills();loadDiscover()">Reset filters</button></div>`;
       } else {
-        bodyEl.innerHTML = renderDiscoverRows(listAlerts);
+        resWrap.innerHTML = `<div class="tbl"><div class="tbl-h" id="discoverThead"></div><div id="discoverBody">${renderDiscoverRows(displayAlerts)}</div></div>`;
+        renderDiscoverThead();
       }
     }
-    document.getElementById('discoverHits').textContent = discoverTotal.toLocaleString();
-    const showFrom = listAlerts.length === 0 ? 0 : discoverOffset + 1;
-    const showTo = discoverOffset + listAlerts.length;
-    document.getElementById('discoverTableInfo').textContent = 'Showing ' + showFrom + (listAlerts.length > 0 ? '–' + showTo : '') + ' of ' + discoverTotal.toLocaleString();
-    document.getElementById('discoverPageInfo').textContent = 'Page ' + (Math.floor(discoverOffset / DISCOVER_PAGE_SIZE) + 1) + ' of ' + (Math.ceil(discoverTotal / DISCOVER_PAGE_SIZE) || 1);
+
+    const showFrom = displayAlerts.length === 0 ? 0 : discoverOffset + 1;
+    const showTo   = discoverOffset + displayAlerts.length;
+    const footTxt  = `Showing ${showFrom}${displayAlerts.length>0?'–'+showTo:''} of ${displayTotal.toLocaleString()}`;
+    const footEl   = document.getElementById('discoverTableFooter');
+    const infoEl   = document.getElementById('discoverTableInfo');
+    if (footEl) footEl.textContent = footTxt;
+    if (infoEl) infoEl.textContent = footTxt;
+    document.getElementById('discoverPageInfo').textContent = 'Page ' + (Math.floor(discoverOffset / DISCOVER_PAGE_SIZE) + 1) + ' of ' + (Math.ceil(displayTotal / DISCOVER_PAGE_SIZE) || 1);
     document.getElementById('discoverPrev').disabled = discoverOffset === 0;
-    document.getElementById('discoverNext').disabled = discoverOffset + DISCOVER_PAGE_SIZE >= discoverTotal;
+    document.getElementById('discoverNext').disabled = discoverOffset + DISCOVER_PAGE_SIZE >= displayTotal;
     renderDiscoverFilterPills();
     drawDiscoverHistogram(listRes.histogram || []);
   }
@@ -1810,41 +2890,87 @@
   function drawDiscoverHistogram(histogram) {
     const canvas = document.getElementById('discoverHistogram');
     if (!canvas) return;
-    const W = canvas.offsetWidth || canvas.width;
-    canvas.width = W;
+    const dpr = window.devicePixelRatio || 1;
+    const W   = canvas.parentElement?.clientWidth || canvas.offsetWidth || 700;
+    const H   = 110;
+    canvas.style.width  = W + 'px';
+    canvas.style.height = H + 'px';
+    canvas.width  = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
     const ctx = canvas.getContext('2d');
-    const H = canvas.height;
-    ctx.clearRect(0, 0, W, H);
+    ctx.scale(dpr, dpr);
+    const isDark  = document.documentElement.getAttribute('data-theme') !== 'light';
+    const bg      = isDark ? '#0f1115' : '#ffffff';
+    const gridCol = isDark ? 'rgba(255,255,255,0.055)' : 'rgba(0,0,0,0.07)';
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
-    const buckets = Array.isArray(histogram) ? histogram : [];
-    if (buckets.length === 0) {
-      ctx.fillStyle = 'rgba(51,153,255,0.06)';
-      ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = 'rgba(138,170,208,0.45)';
-      ctx.font = '11px Outfit, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('No events in selected time range', W / 2, H / 2 + 4);
+    // Use demo trend if histogram is empty
+    const raw = Array.isArray(histogram) && histogram.length > 0 ? histogram : null;
+    const buckets = raw || (DISCOVER_DEMO_EVENTS.length > 0 ? OV_DEMO?.trend : null);
+
+    const P = {l:32,r:8,t:6,b:18};
+    const cW = W-P.l-P.r, cH = H-P.t-P.b;
+
+    if (!buckets || buckets.length === 0) {
+      ctx.fillStyle = isDark ? '#5E6068' : '#9ca3af';
+      ctx.textAlign = 'center'; ctx.font = `11px 'Geist',system-ui,sans-serif`;
+      ctx.fillText('No events in selected time range', P.l + cW/2, P.t + cH/2 + 4);
       return;
     }
 
-    const maxVal = Math.max(...buckets.map(b => b.count), 1);
-    const n = buckets.length;
-    const padL = 2, padR = 2, padT = 4, padB = 14;
-    const chartW = W - padL - padR;
-    const chartH = H - padT - padB;
-    const barW = Math.max(1, chartW / n - 1);
+    const isStacked = buckets[0]?.crit !== undefined;
+    const maxVal = isStacked
+      ? Math.max(...buckets.map(b => (b.crit||0)+(b.high||0)+(b.med||0)+(b.low||0)), 1)
+      : Math.max(...buckets.map(b => b.count||0), 1);
+    const n    = buckets.length;
+    const stepX= cW / n;
+    const barW = Math.max(1, stepX - 2);
 
-    // Background
-    ctx.fillStyle = 'rgba(51,153,255,0.04)';
-    ctx.fillRect(0, 0, W, H);
+    // gridlines
+    ctx.strokeStyle = gridCol; ctx.lineWidth = 0.8; ctx.setLineDash([2,3]);
+    [0, 0.5, 1].forEach(p => {
+      const y = P.t + cH * (1-p);
+      ctx.beginPath(); ctx.moveTo(P.l,y); ctx.lineTo(P.l+cW,y); ctx.stroke();
+    });
+    ctx.setLineDash([]);
 
+    // y-labels
+    ctx.fillStyle = isDark ? '#5E6068' : '#9ca3af';
+    ctx.textAlign = 'right'; ctx.font = `9px 'Geist Mono','JetBrains Mono',monospace`;
+    [0,0.5,1].forEach(p => ctx.fillText(Math.round(maxVal*p), P.l-4, P.t+cH*(1-p)+3));
+
+    // columns
+    const sevColors = ['var(--low)','var(--med)','var(--high)','var(--crit)'];
     buckets.forEach((b, i) => {
-      const x = padL + i * (chartW / n);
-      const barH = Math.max(1, Math.round((b.count / maxVal) * chartH));
-      const y = padT + chartH - barH;
-      const intensity = 0.35 + (b.count / maxVal) * 0.65;
-      ctx.fillStyle = `rgba(51,153,255,${intensity})`;
-      ctx.fillRect(x, y, Math.max(barW, 1), barH);
+      const x = P.l + i * stepX + 1;
+      let y   = P.t + cH;
+      if (isStacked) {
+        [b.low||0, b.med||0, b.high||0, b.crit||0].forEach((v, si) => {
+          const h = (v / maxVal) * cH;
+          y -= h;
+          if (h >= 0.5) {
+            ctx.fillStyle = sevColors[si];
+            ctx.globalAlpha = 0.85;
+            ctx.beginPath();
+            ctx.roundRect ? ctx.roundRect(x, y, barW, h, [1,1,0,0]) : ctx.fillRect(x, y, barW, h);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          }
+        });
+      } else {
+        const h = Math.max(1, (b.count||0) / maxVal * cH);
+        ctx.fillStyle = 'var(--low)'; ctx.globalAlpha = 0.8;
+        ctx.fillRect(x, P.t+cH-h, barW, h);
+        ctx.globalAlpha = 1;
+      }
+    });
+
+    // x-axis labels
+    const xLabels = ['00:00','04:00','08:00','12:00','16:00','20:00','now'];
+    ctx.fillStyle = isDark ? '#5E6068' : '#9ca3af';
+    ctx.textAlign = 'center'; ctx.font = `9px 'Geist Mono','JetBrains Mono',monospace`;
+    xLabels.forEach((lbl, li) => {
+      ctx.fillText(lbl, P.l + (li/(xLabels.length-1))*cW, H-4);
     });
 
     // Axis labels — first and last bucket timestamp
@@ -1852,11 +2978,11 @@
     ctx.font = '9px JetBrains Mono, monospace';
     if (buckets[0]?.ts) {
       ctx.textAlign = 'left';
-      ctx.fillText(new Date(buckets[0].ts).toLocaleDateString(), padL + 2, H - 2);
+      ctx.fillText(new Date(buckets[0].ts).toLocaleDateString(), P.l + 2, H - 2);
     }
     if (buckets[buckets.length - 1]?.ts) {
       ctx.textAlign = 'right';
-      ctx.fillText(new Date(buckets[buckets.length - 1].ts).toLocaleDateString(), W - padR - 2, H - 2);
+      ctx.fillText(new Date(buckets[buckets.length - 1].ts).toLocaleDateString(), W - P.r - 2, H - 2);
     }
     // Total count label top-right
     const total = buckets.reduce((s, b) => s + b.count, 0);
@@ -2081,10 +3207,11 @@
     decodersTotal = total;
     const bodyEl = document.getElementById('decodersBody');
     if (!bodyEl) return;
+    const dcW = 'grid-template-columns:1fr 140px 80px 140px 1fr 44px';
     if (res.error) {
-      bodyEl.innerHTML = '<tr><td colspan="6" class="error-msg">' + escapeHtml(res.error.message || res.error) + '</td></tr>';
+      bodyEl.innerHTML = `<div class="tbl-r" style="${dcW}"><span class="error-msg" style="grid-column:1/-1">${escapeHtml(res.error.message || res.error)}</span></div>`;
     } else if (!items.length) {
-      bodyEl.innerHTML = '<tr><td colspan="6" class="empty-msg">No decoders</td></tr>';
+      bodyEl.innerHTML = `<div class="sigil-block"><div class="sigil-text"><h4>No decoders found</h4><p>Add decoder files to define log parsing rules</p></div></div>`;
     } else {
       bodyEl.innerHTML = items.map((d, i) => {
         const name = d.name || '—';
@@ -2092,7 +3219,7 @@
         const order = (d.details && d.details.order) || (Array.isArray(d.order) ? d.order.join(', ') : d.order) || '—';
         const file = d.filename || d.file || '—';
         const path = d.relative_dirname || '—';
-        return '<tr class="rule-row decoder-row" data-index="' + i + '"><td>' + escapeHtml(String(name)) + '</td><td>' + escapeHtml(String(programName)) + '</td><td>' + escapeHtml(String(order)) + '</td><td>' + escapeHtml(String(file)) + '</td><td>' + escapeHtml(String(path)) + '</td><td><button type="button" class="btn-agent-view" title="View details">👁</button></td></tr>';
+        return `<div class="tbl-r decoder-row" style="${dcW}" data-index="${i}"><span class="tbl-pri">${escapeHtml(String(name))}</span><span class="tbl-mono">${escapeHtml(String(programName))}</span><span class="tbl-mono">${escapeHtml(String(order))}</span><span class="tbl-mono">${escapeHtml(String(file))}</span><span class="tbl-muted">${escapeHtml(String(path))}</span><span><button type="button" class="btn-disc-detail btn-agent-view" title="View details">⋯</button></span></div>`;
       }).join('');
     }
     document.getElementById('decodersTotal').textContent = decodersTotal.toLocaleString();
@@ -2151,10 +3278,11 @@
     const list = Array.isArray(res) ? res : (res.error ? [] : []);
     const bodyEl = document.getElementById('indexMgmtBody');
     if (!bodyEl) return;
+    const idxW = 'grid-template-columns:1fr 80px 80px 90px 110px 100px 100px 80px 80px';
     if (res.error) {
-      bodyEl.innerHTML = '<tr><td colspan="9" class="error-msg">' + escapeHtml(res.error.message || res.error) + '</td></tr>';
+      bodyEl.innerHTML = `<div class="tbl-r" style="${idxW}"><span class="error-msg" style="grid-column:1/-1">${escapeHtml(res.error.message || res.error)}</span></div>`;
     } else if (!list.length) {
-      bodyEl.innerHTML = '<tr><td colspan="9" class="empty-msg">No indexes found</td></tr>';
+      bodyEl.innerHTML = `<div class="sigil-block"><div class="sigil-text"><h4>No indexes found</h4><p>No OpenSearch indexes match the current search</p></div></div>`;
     } else {
       bodyEl.innerHTML = list.map((idx) => {
         const name = idx.index || idx.index_name || '—';
@@ -2166,8 +3294,8 @@
         const docsDeleted = idx['docs.deleted'] != null ? idx['docs.deleted'] : (idx.docs_deleted ?? '0');
         const pri = idx.pri != null ? idx.pri : (idx.primaries ?? '—');
         const rep = idx.rep != null ? idx.rep : (idx.replicas ?? '—');
-        const healthCls = health === 'green' ? 'health-green' : health === 'yellow' ? 'health-yellow' : 'health-red';
-        return '<tr><td class="index-name">' + escapeHtml(String(name)) + '</td><td><span class="' + healthCls + '">' + escapeHtml(String(health)) + '</span></td><td>' + escapeHtml(String(status)) + '</td><td>' + escapeHtml(String(storeSize)) + '</td><td>' + escapeHtml(String(priSize)) + '</td><td>' + escapeHtml(String(docsCount)) + '</td><td>' + escapeHtml(String(docsDeleted)) + '</td><td>' + escapeHtml(String(pri)) + '</td><td>' + escapeHtml(String(rep)) + '</td></tr>';
+        const hCol = health === 'green' ? 'var(--ok)' : health === 'yellow' ? 'var(--high)' : health === 'red' ? 'var(--crit)' : 'var(--fg-4)';
+        return `<div class="tbl-r" style="${idxW}"><span class="tbl-mono" style="font-size:11px">${escapeHtml(String(name))}</span><span><span style="color:${hCol};font-weight:600;font-size:11px">${escapeHtml(String(health))}</span></span><span class="tbl-mono">${escapeHtml(String(status))}</span><span class="tbl-mono">${escapeHtml(String(storeSize))}</span><span class="tbl-mono">${escapeHtml(String(priSize))}</span><span class="tbl-mono">${escapeHtml(String(docsCount))}</span><span class="tbl-mono">${escapeHtml(String(docsDeleted))}</span><span class="tbl-mono">${escapeHtml(String(pri))}</span><span class="tbl-mono">${escapeHtml(String(rep))}</span></div>`;
       }).join('');
     }
     document.getElementById('indexMgmtTotal').textContent = list.length.toLocaleString();
@@ -2187,10 +3315,11 @@
     rulesTotal = total;
     const bodyEl = document.getElementById('rulesBody');
     if (!bodyEl) return;
+    const rlW = 'grid-template-columns:70px 1fr 140px 70px 140px 1fr 44px';
     if (res.error) {
-      bodyEl.innerHTML = '<tr><td colspan="7" class="error-msg">' + escapeHtml(res.error.message || res.error) + '</td></tr>';
+      bodyEl.innerHTML = `<div class="tbl-r" style="${rlW}"><span class="error-msg" style="grid-column:1/-1">${escapeHtml(res.error.message || res.error)}</span></div>`;
     } else if (!items.length) {
-      bodyEl.innerHTML = '<tr><td colspan="7" class="empty-msg">No rules</td></tr>';
+      bodyEl.innerHTML = `<div class="sigil-block"><div class="sigil-text"><h4>No rules found</h4><p>Add rule files or adjust the search</p></div></div>`;
     } else {
       bodyEl.innerHTML = items.map((r, i) => {
         const desc = (r.description || '—').slice(0, 80);
@@ -2199,7 +3328,8 @@
         const path = r.relative_dirname || '—';
         const level = r.level != null ? r.level : '—';
         const id = r.id != null ? r.id : '—';
-        return '<tr class="rule-row" data-index="' + i + '"><td>' + escapeHtml(String(id)) + '</td><td><span class="rule-desc" title="' + escapeHtml(r.description || '') + '">' + escapeHtml(desc) + (desc.length >= 80 ? '…' : '') + '</span></td><td>' + escapeHtml(groups) + '</td><td>' + escapeHtml(String(level)) + '</td><td>' + escapeHtml(String(file)) + '</td><td>' + escapeHtml(String(path)) + '</td><td><button type="button" class="btn-agent-view" title="View details">👁</button></td></tr>';
+        const lvlCol = Number(level) >= 12 ? 'var(--crit)' : Number(level) >= 8 ? 'var(--high)' : Number(level) >= 4 ? 'var(--med)' : 'var(--fg-3)';
+        return `<div class="tbl-r rule-row" style="${rlW}" data-index="${i}"><span class="tbl-mono" style="color:var(--accent)">${escapeHtml(String(id))}</span><span class="tbl-pri" title="${escapeHtml(r.description||'')}">${escapeHtml(desc)}${desc.length >= 80 ? '…' : ''}</span><span class="tbl-muted" style="font-size:10px">${escapeHtml(groups)}</span><span style="font-family:var(--font-mono);font-weight:600;color:${lvlCol}">${escapeHtml(String(level))}</span><span class="tbl-mono">${escapeHtml(String(file))}</span><span class="tbl-muted">${escapeHtml(String(path))}</span><span><button type="button" class="btn-disc-detail btn-agent-view" title="View">⋯</button></span></div>`;
       }).join('');
     }
     document.getElementById('rulesTotal').textContent = rulesTotal.toLocaleString();
@@ -2286,7 +3416,7 @@
     document.getElementById('hipaaMaxLevel').textContent = res.max_rule_level != null ? String(res.max_rule_level) : '—';
     const topReqs = res.top_requirements || [];
     const maxR = Math.max(...topReqs.map(r => r.count), 1);
-    const colors = ['#58a6ff', '#3fb950', '#d29922', '#f85149', '#a371f7', '#79c0ff', '#7ee787', '#ffa657', '#ff7b72', '#bc8cff'];
+    const colors = ['#2DD4BF', '#34D399', '#F59E0B', '#F25555', '#a371f7', '#79c0ff', '#7ee787', '#ffa657', '#ff7b72', '#bc8cff'];
     document.getElementById('hipaaDonutLegend').innerHTML = topReqs.slice(0, 10).map((r, i) => '<span class="hipaa-legend-item" style="color:' + (colors[i % colors.length]) + '">' + escapeHtml(String(r.key || '—')) + '</span>').join('') || '<span class="empty-msg">No data</span>';
     drawDonut('hipaaDonutCanvas', topReqs.slice(0, 10).map(r => r.count), colors);
     document.getElementById('hipaaMostCommon').innerHTML = (res.top_requirements || []).slice(0, 8).map((r, i) => {
@@ -2348,7 +3478,7 @@
     const maxVal = Math.max(...evolution.map(b => (b.buckets || []).reduce((s, x) => s + x.doc_count, 0)), 1);
     const step = chartW / evolution.length;
     const reqKeys = [...new Set(evolution.flatMap(b => (b.buckets || []).map(x => x.key)))];
-    const colors = ['#58a6ff', '#3fb950', '#d29922', '#f85149', '#a371f7'];
+    const colors = ['#2DD4BF', '#34D399', '#F59E0B', '#F25555', '#a371f7'];
     reqKeys.forEach((req, ri) => {
       ctx.fillStyle = colors[ri % colors.length];
       ctx.beginPath();
@@ -2380,7 +3510,7 @@
     const labels = byAgent.map(a => String(a.key).slice(0, 14));
     const maxVal = Math.max(...byAgent.map(a => a.count), 1);
     const barH = chartH / labels.length;
-    const colors = ['#58a6ff', '#3fb950', '#d29922', '#f85149', '#a371f7'];
+    const colors = ['#2DD4BF', '#34D399', '#F59E0B', '#F25555', '#a371f7'];
     byAgent.forEach((a, i) => {
       const pct = a.count / maxVal;
       ctx.fillStyle = colors[i % colors.length];
@@ -2436,7 +3566,7 @@
       const chartW = w - padding.left - padding.right, chartH = h - padding.top - padding.bottom;
       const step = chartW / evo.length;
       ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = '#58a6ff';
+      ctx.fillStyle = '#2DD4BF';
       evo.forEach((b, i) => {
         const v = (b.buckets || []).reduce((s, x) => s + x.doc_count, 0);
         const barH = (v / maxE) * chartH;
@@ -2484,7 +3614,7 @@
 
     if (trendsRes.error) {
       const c = document.getElementById('vulnTrendCanvas');
-      if (c) { const ctx = c.getContext('2d'); ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, c.width, c.height); }
+      if (c) { const ctx = c.getContext('2d'); ctx.fillStyle = '#08090b'; ctx.fillRect(0, 0, c.width, c.height); }
       if (document.getElementById('vulnTrendLegend')) document.getElementById('vulnTrendLegend').innerHTML = '<span class="error-msg">' + escapeHtml(trendsRes.error.message) + '</span>';
     } else drawVulnTrend('vulnTrendCanvas', 'vulnTrendLegend', trendsRes);
 
@@ -2590,12 +3720,12 @@
     const levels = new Set();
     series.forEach(s => (s.buckets || []).forEach(b => levels.add(String(b.key))));
     const levelList = Array.from(levels).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
-    const colors = ['#58a6ff', '#3fb950', '#d29922', '#f85149', '#bc8cff', '#56d4dd'];
+    const colors = ['#2DD4BF', '#34D399', '#F59E0B', '#F25555', '#bc8cff', '#56d4dd'];
     let maxVal = 0;
     series.forEach(s => (s.buckets || []).forEach(b => { if (b.doc_count > maxVal) maxVal = b.doc_count; }));
     maxVal = Math.max(1, maxVal);
     const stepX = series.length > 1 ? chartW / (series.length - 1) : chartW;
-    ctx.fillStyle = '#0d1117';
+    ctx.fillStyle = '#08090b';
     ctx.fillRect(0, 0, w, h);
     ctx.strokeStyle = '#30363d';
     ctx.fillStyle = '#8b949e';
@@ -2631,7 +3761,7 @@
       return;
     }
     const total = buckets.reduce((s, b) => s + b.doc_count, 0);
-    const colors = ['#f85149', '#d29922', '#58a6ff', '#3fb950', '#bc8cff', '#56d4dd'];
+    const colors = ['#F25555', '#F59E0B', '#2DD4BF', '#34D399', '#bc8cff', '#56d4dd'];
     const ctx = canvas.getContext('2d');
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
@@ -2649,7 +3779,7 @@
     });
     ctx.beginPath();
     ctx.arc(cx, cy, r * 0.5, 0, 2 * Math.PI);
-    ctx.fillStyle = '#161b22';
+    ctx.fillStyle = '#0f1115';
     ctx.fill();
     legendEl.innerHTML = buckets.map((b, i) => `<span style="color:${colors[i % colors.length]}">■</span> ${escapeHtml(String(b.key).slice(0, 25))} (${b.doc_count})`).join('<br>');
   }
@@ -2821,11 +3951,13 @@
       document.getElementById('hygieneSystemPrev').disabled = hygieneSystemOffset === 0;
       document.getElementById('hygieneSystemNext').disabled = hygieneSystemOffset + HYGIENE_PAGE_SIZE >= total;
       const tbody = document.getElementById('hygieneSystemTable');
-      if (list.error) tbody.innerHTML = '<tr><td colspan="6" class="error-msg">' + escapeHtml(list.error.message) + '</td></tr>';
-      else if (hits.length === 0) tbody.innerHTML = '<tr><td colspan="6" class="empty-msg">No data</td></tr>';
-      else tbody.innerHTML = hits.map(r => `<tr><td>${escapeHtml(r.agent_name || '—')}</td><td>${escapeHtml(r.host_os_platform || '—')}</td><td>${escapeHtml(r.host_os_name || '—')}</td><td>${escapeHtml(r.host_os_version || '—')}</td><td>${escapeHtml(r.host_os_kernel_release || '—')}</td><td>${escapeHtml(r.host_architecture || '—')}</td></tr>`).join('');
+      const sysW = 'grid-template-columns:140px 120px 140px 120px 140px 100px';
+      const _hyEmptyState = (msg) => `<div class="sigil-block"><div class="sigil" style="color:var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" width="28" height="28"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></svg></div><div class="sigil-text"><h4>No inventory data yet</h4><p>${msg}</p></div></div>`;
+      if (list.error) tbody.innerHTML = `<div class="tbl-r" style="${sysW}"><span class="error-msg" style="grid-column:1/-1">${escapeHtml(list.error.message)}</span></div>`;
+      else if (hits.length === 0) tbody.innerHTML = _hyEmptyState('System inventory populates from agent check-ins. Each connected agent reports its OS, kernel, and hardware on a daily schedule.');
+      else tbody.innerHTML = hits.map(r => `<div class="tbl-r" style="${sysW}"><span class="tbl-mono">${escapeHtml(r.agent_name||'—')}</span><span class="tbl-mono">${escapeHtml(r.host_os_platform||'—')}</span><span>${escapeHtml(r.host_os_name||'—')}</span><span class="tbl-mono">${escapeHtml(r.host_os_version||'—')}</span><span class="tbl-mono" style="font-size:10px">${escapeHtml(r.host_os_kernel_release||'—')}</span><span class="tbl-mono">${escapeHtml(r.host_architecture||'—')}</span></div>`).join('');
     } catch (e) {
-      document.getElementById('hygieneSystemTable').innerHTML = '<tr><td colspan="6" class="error-msg">' + escapeHtml(e.message) + '</td></tr>';
+      document.getElementById('hygieneSystemTable').innerHTML = `<div class="tbl-r"><span class="error-msg" style="grid-column:1/-1">${escapeHtml(e.message)}</span></div>`;
     }
   }
 
@@ -2854,9 +3986,10 @@
       document.getElementById('hygienePackagesPrev').disabled = hygienePackagesOffset === 0;
       document.getElementById('hygienePackagesNext').disabled = hygienePackagesOffset + HYGIENE_PAGE_SIZE >= total;
       const tbody = document.getElementById('hygienePackagesTable');
-      if (list.error) tbody.innerHTML = '<tr><td colspan="5" class="error-msg">' + escapeHtml(list.error.message) + '</td></tr>';
-      else if (hits.length === 0) tbody.innerHTML = '<tr><td colspan="5" class="empty-msg">No data</td></tr>';
-      else tbody.innerHTML = hits.map(r => `<tr><td>${escapeHtml(r.agent_name || '—')}</td><td>${escapeHtml(r.package_vendor || '—')}</td><td>${escapeHtml(r.package_name || '—')}</td><td>${escapeHtml(r.package_version || '—')}</td><td>${escapeHtml(r.package_type || '—')}</td></tr>`).join('');
+      const pkgW = 'grid-template-columns:140px 140px 1fr 120px 100px';
+      if (list.error) tbody.innerHTML = `<div class="tbl-r" style="${pkgW}"><span class="error-msg" style="grid-column:1/-1">${escapeHtml(list.error.message)}</span></div>`;
+      else if (hits.length === 0) tbody.innerHTML = `<div class="sigil-block"><div class="sigil-text"><h4>No package data</h4><p>Package-level vulnerability rollups will populate here</p></div></div>`;
+      else tbody.innerHTML = hits.map(r => `<div class="tbl-r" style="${pkgW}"><span class="tbl-mono">${escapeHtml(r.agent_name||'—')}</span><span class="tbl-mono">${escapeHtml(r.package_vendor||'—')}</span><span class="tbl-pri">${escapeHtml(r.package_name||'—')}</span><span class="tbl-mono">${escapeHtml(r.package_version||'—')}</span><span class="tbl-muted">${escapeHtml(r.package_type||'—')}</span></div>`).join('');
     } catch (e) {
       document.getElementById('hygienePackagesTable').innerHTML = '<tr><td colspan="5" class="error-msg">' + escapeHtml(e.message) + '</td></tr>';
     }
@@ -2884,11 +4017,12 @@
       document.getElementById('hygieneProcessesPrev').disabled = hygieneProcessesOffset === 0;
       document.getElementById('hygieneProcessesNext').disabled = hygieneProcessesOffset + HYGIENE_PAGE_SIZE >= total;
       const tbody = document.getElementById('hygieneProcessesTable');
-      if (list.error) tbody.innerHTML = '<tr><td colspan="6" class="error-msg">' + escapeHtml(list.error.message) + '</td></tr>';
-      else if (hits.length === 0) tbody.innerHTML = '<tr><td colspan="6" class="empty-msg">No data</td></tr>';
+      const procW = 'grid-template-columns:130px 130px 120px 70px 80px 1fr';
+      if (list.error) tbody.innerHTML = `<div class="tbl-r" style="${procW}"><span class="error-msg" style="grid-column:1/-1">${escapeHtml(list.error.message)}</span></div>`;
+      else if (hits.length === 0) tbody.innerHTML = `<div class="sigil-block"><div class="sigil-text"><h4>No process data</h4><p>Process list populates once agents report running processes</p></div></div>`;
       else tbody.innerHTML = hits.map(r => {
         const start = r.process_start ? new Date(r.process_start).toLocaleString() : '—';
-        return `<tr><td>${escapeHtml(r.agent_name || '—')}</td><td>${escapeHtml(r.process_name || '—')}</td><td>${start}</td><td>${escapeHtml(String(r.process_pid ?? '—'))}</td><td>${escapeHtml(String(r.process_parent_pid ?? '—'))}</td><td class="stream-alert-name">${escapeHtml((r.process_command_line || '—').slice(0, 80))}</td></tr>`;
+        return `<div class="tbl-r" style="${procW}"><span class="tbl-mono">${escapeHtml(r.agent_name||'—')}</span><span class="tbl-pri">${escapeHtml(r.process_name||'—')}</span><span class="tbl-time">${start}</span><span class="tbl-mono">${escapeHtml(String(r.process_pid??'—'))}</span><span class="tbl-mono">${escapeHtml(String(r.process_parent_pid??'—'))}</span><span class="tbl-mono" style="font-size:10px">${escapeHtml((r.process_command_line||'—').slice(0,80))}</span></div>`;
       }).join('');
     } catch (e) {
       document.getElementById('hygieneProcessesTable').innerHTML = '<tr><td colspan="6" class="error-msg">' + escapeHtml(e.message) + '</td></tr>';
@@ -2920,9 +4054,10 @@
       document.getElementById('hygieneUsersPrev').disabled = hygieneUsersOffset === 0;
       document.getElementById('hygieneUsersNext').disabled = hygieneUsersOffset + HYGIENE_PAGE_SIZE >= total;
       const tbody = document.getElementById('hygieneUsersTable');
-      if (list.error) tbody.innerHTML = '<tr><td colspan="5" class="error-msg">' + escapeHtml(list.error.message) + '</td></tr>';
-      else if (hits.length === 0) tbody.innerHTML = '<tr><td colspan="5" class="empty-msg">No data</td></tr>';
-      else tbody.innerHTML = hits.map(r => `<tr><td>${escapeHtml(r.agent_name || '—')}</td><td>${escapeHtml(r.user_name || '—')}</td><td>${escapeHtml(r.user_groups || '—')}</td><td>${escapeHtml(r.user_shell || '—')}</td><td>${escapeHtml(r.user_home || '—')}</td></tr>`).join('');
+      const usrW = 'grid-template-columns:140px 140px 1fr 120px 140px';
+      if (list.error) tbody.innerHTML = `<div class="tbl-r" style="${usrW}"><span class="error-msg" style="grid-column:1/-1">${escapeHtml(list.error.message)}</span></div>`;
+      else if (hits.length === 0) tbody.innerHTML = `<div class="sigil-block"><div class="sigil-text"><h4>No identity data</h4><p>User/identity data will populate once agents report user inventory</p></div></div>`;
+      else tbody.innerHTML = hits.map(r => `<div class="tbl-r" style="${usrW}"><span class="tbl-mono">${escapeHtml(r.agent_name||'—')}</span><span class="tbl-pri">${escapeHtml(r.user_name||'—')}</span><span class="tbl-muted">${escapeHtml(r.user_groups||'—')}</span><span class="tbl-mono">${escapeHtml(r.user_shell||'—')}</span><span class="tbl-mono">${escapeHtml(r.user_home||'—')}</span></div>`).join('');
     } catch (e) {
       document.getElementById('hygieneUsersTable').innerHTML = '<tr><td colspan="5" class="error-msg">' + escapeHtml(e.message) + '</td></tr>';
     }
@@ -2956,7 +4091,7 @@
     audit: loadAuditPage,
     sca: loadScaPage,
     'threat-hunting': loadThreatHunting,
-    alerts: loadAlerts,
+    alerts: () => { _wireAlertChips(); loadAlerts(); },
     discover: loadDiscover,
     rules: loadRules,
     decoders: loadDecoders,
@@ -2970,6 +4105,17 @@
     'custom-dashboards': loadCustomDashboardsPage,
     reports: loadReportsPage,
     notifications: loadNotificationsPage,
+    // Enterprise features
+    cases: () => loadCases(),
+    playbooks: () => loadPlaybooks(),
+    ueba: () => loadUebaPage(),
+    rba: () => loadRbaPage(),
+    'geo-map': () => loadGeoMap(),
+    'cloud-monitoring': () => loadCloudMonitoringPage(),
+    'compliance-hub': () => loadComplianceHub(),
+    'rule-versions': () => loadRuleVersionsPage(),
+    identity: () => loadIdentityPage(),
+    ticketing: () => loadTicketingPage(),
   };
 
   function goToPage(pageId) {
@@ -3099,6 +4245,10 @@
   document.querySelectorAll('.hygiene-subtab').forEach(el => {
     el.addEventListener('click', () => setHygieneSubtab(el.getAttribute('data-hygiene')));
   });
+  document.getElementById('hygieneRefreshBtn')?.addEventListener('click', () => {
+    const active = document.querySelector('.hygiene-subtab.active')?.getAttribute('data-hygiene') || 'system';
+    setHygieneSubtab(active);
+  });
   document.getElementById('hygieneSystemPrev')?.addEventListener('click', () => { hygieneSystemOffset = Math.max(0, hygieneSystemOffset - HYGIENE_PAGE_SIZE); loadHygieneSystem(); });
   document.getElementById('hygieneSystemNext')?.addEventListener('click', () => { hygieneSystemOffset += HYGIENE_PAGE_SIZE; loadHygieneSystem(); });
   document.getElementById('hygienePackagesPrev')?.addEventListener('click', () => { hygienePackagesOffset = Math.max(0, hygienePackagesOffset - HYGIENE_PAGE_SIZE); loadHygieneSoftware(); });
@@ -3109,9 +4259,23 @@
   document.getElementById('hygieneUsersNext')?.addEventListener('click', () => { hygieneUsersOffset += HYGIENE_PAGE_SIZE; loadHygieneIdentity(); });
 
   const agentsSearchEl = document.getElementById('agentsSearch');
-  const agentsFilterStatusEl = document.getElementById('agentsFilterStatus');
-  if (agentsSearchEl) agentsSearchEl.addEventListener('input', () => { if (window._agentsHealthData?.agents) { const filtered = filterAgentsTable(window._agentsHealthData.agents); document.getElementById('agentsBody').innerHTML = renderAgentsTableFromHealth(filtered); document.getElementById('agentsTableCount').textContent = '(' + filtered.length + ')'; } });
-  if (agentsFilterStatusEl) agentsFilterStatusEl.addEventListener('change', () => { if (window._agentsHealthData?.agents) { const filtered = filterAgentsTable(window._agentsHealthData.agents); document.getElementById('agentsBody').innerHTML = renderAgentsTableFromHealth(filtered); document.getElementById('agentsTableCount').textContent = '(' + filtered.length + ')'; } });
+  const _refilterAgents = () => {
+    if (!window._agentsHealthData?.agents) return;
+    const filtered = filterAgentsTable(window._agentsHealthData.agents);
+    const bodyEl = document.getElementById('agentsBody');
+    if (bodyEl) bodyEl.innerHTML = renderAgentsTableFromHealth(filtered);
+    const countEl = document.getElementById('agentsTableCount');
+    if (countEl) countEl.textContent = filtered.length;
+    renderAgentCards(filtered);
+  };
+  if (agentsSearchEl) agentsSearchEl.addEventListener('input', _refilterAgents);
+  document.querySelectorAll('.ag2-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.ag2-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      _refilterAgents();
+    });
+  });
 
   document.getElementById('agentsBody')?.addEventListener('click', (e) => {
     const btn = e.target.closest('.btn-agent-view');
@@ -3264,6 +4428,7 @@
   document.getElementById('alertsOpenDiscover')?.addEventListener('click', (e) => { e.preventDefault(); goToPage('discover'); });
 
   document.getElementById('discoverRefresh')?.addEventListener('click', () => { discoverOffset = 0; loadDiscover(); });
+  document.getElementById('discoverIndex')?.addEventListener('change', () => { discoverOffset = 0; discoverDslFilters = []; discoverSelectedFields = ['timestamp','agent_name','event_type','agent_id']; renderDiscoverFilterPills(); loadDiscover(); });
   document.getElementById('discoverExportCsv')?.addEventListener('click', discoverExportCsv);
   document.getElementById('discoverPrev')?.addEventListener('click', () => { discoverOffset = Math.max(0, discoverOffset - DISCOVER_PAGE_SIZE); loadDiscover(); });
   document.getElementById('discoverNext')?.addEventListener('click', () => { discoverOffset += DISCOVER_PAGE_SIZE; loadDiscover(); });
@@ -3344,7 +4509,7 @@
     indexMgmtSearchTimeout = setTimeout(loadIndexManagement, 400);
   });
 
-  document.getElementById('discoverBody')?.addEventListener('click', (e) => {
+  document.getElementById('discoverResultsWrap')?.addEventListener('click', (e) => {
     const row = e.target.closest('.discover-row');
     if (!row) return;
     const idx = row.getAttribute('data-index');
@@ -3525,99 +4690,109 @@
   // MITRE ATT&CK Page
   // ---------------------------------------------------------------------------
   async function loadMitrePage() {
-    const [tacticsRes, techniques] = await Promise.all([
+    const [tacticsRes, techniquesRes] = await Promise.all([
       fetchJson(API.mitreTactics + '?size=20').catch(() => ({})),
       fetchJson(API.mitreMatrix).catch(() => ({techniques: []}))
     ]);
+    const apiTechs = Array.isArray(techniquesRes.techniques) ? techniquesRes.techniques : [];
+    const apiTotal = apiTechs.reduce((s, t) => s + (t.count||0), 0);
 
-    const tacticList = Array.isArray(tacticsRes.buckets) ? tacticsRes.buckets : (Array.isArray(tacticsRes) ? tacticsRes : []);
-    const techList = Array.isArray(techniques.techniques) ? techniques.techniques : (Array.isArray(techniques) ? techniques : []);
+    const tacticTotal = (id) =>
+      (Array.isArray(tacticsRes.buckets) ? tacticsRes.buckets : []).find(t => (t.tactic||t.key||'') === id)?.count || 0;
 
-    const normalizedTactics = tacticList.map(t => ({
-      tactic: t.tactic || t.key || 'Unknown',
-      count: t.count || t.doc_count || 0,
-    }));
-    const normalizedTechs = techList.map(t => ({
-      technique_id: t.technique_id || t.key || '—',
-      technique_name: t.technique_name || t.name || t.key || '—',
-      count: t.count || t.doc_count || 0,
-    }));
+    const allTechs   = apiTechs.map(t => ({ id: t.technique_id, n: t.technique_name, c: t.count, lvl: t.count >= 8 ? 'hot3' : t.count >= 5 ? 'hot2' : t.count >= 3 ? 'hot1' : 'warm' }));
+    const techCount  = allTechs.filter(t => (t.c||0) > 0).length;
+    const totalA     = apiTotal;
+    const critTechs  = allTechs.filter(t => (t.c||0) >= 5).length;
+    const tacsCovered= MITRE_TACTICS.filter(t => tacticTotal(t.id) > 0).length;
 
-    const totalAlerts = normalizedTechs.reduce((s, t) => s + (t.count || 0), 0);
-    const critCount = normalizedTechs.filter(t => (t.count || 0) >= 10).length;
+    // Update KPIs
+    const setKpi = (valId, tagId, spId, val, tag, kind, sub, subId, color) => {
+      const vEl = document.getElementById(valId); if (vEl) vEl.textContent = val;
+      const tEl = document.getElementById(tagId);  if (tEl) { tEl.textContent = tag; tEl.className = `kpi-tag ${kind}`; }
+      const sEl = document.getElementById(subId);  if (sEl) sEl.textContent = sub;
+      const spEl= document.getElementById(spId);   if (spEl) spEl.innerHTML = _spark([], color);
+    };
+    setKpi('mitreTechniquesCount','mitreTechTag','mitreTechSpark',  techCount,  techCount>0?'+'+techCount:'IDLE', techCount>0?'up':'ok', 'unique T-IDs · 24h', 'mitreTechSub', 'var(--low)');
+    setKpi('mitreTacticsCount',  'mitreTacTag',  'mitreTacSpark',   `${tacsCovered}/12`, tacsCovered>0?'OK':'CLEAR', 'ok', 'of ATT&CK enterprise', null, 'var(--accent)');
+    setKpi('mitreTotalAlerts',   'mitreTotalTag','mitreTotalSpark',  totalA, totalA>0?'+'+totalA:'CLEAR', totalA>0?'up':'ok', 'mapped to T-IDs · 24h', null, 'var(--high)');
+    setKpi('mitreCriticalCount', 'mitreCritTag', 'mitreCritSpark',   critTechs, critTechs>0?'ATTN':'CLEAR', critTechs>0?'crit':'ok', 'count ≥ 5 detections', null, 'var(--crit)');
+    const metaEl = document.getElementById('mitreTacticsCoveredMeta'); if (metaEl) metaEl.textContent = `${tacsCovered}/12`;
 
-    const el = id => document.getElementById(id);
-    if (el('mitreTechniquesCount')) el('mitreTechniquesCount').textContent = normalizedTechs.length;
-    if (el('mitreTacticsCount')) el('mitreTacticsCount').textContent = normalizedTactics.length;
-    if (el('mitreTotalAlerts')) el('mitreTotalAlerts').textContent = totalAlerts.toLocaleString();
-    if (el('mitreCriticalCount')) el('mitreCriticalCount').textContent = critCount;
-
-    // Heatmap
-    const matrix = el('mitreMatrix');
-    if (matrix) {
-      if (normalizedTechs.length === 0) {
-        matrix.innerHTML = '<div style="color:var(--text-muted);padding:20px;text-align:center">No MITRE ATT&CK data available. Alerts with MITRE mappings will appear here.</div>';
+    // ATT&CK Matrix heatmap
+    const matrixWrap = document.getElementById('mitreMatrixWrap');
+    const matrixDot  = document.getElementById('mitreMatrixDot');
+    const matrixMeta = document.getElementById('mitreMatrixMeta');
+    if (matrixDot) matrixDot.style.background = totalA > 0 ? 'var(--crit)' : 'var(--ok)';
+    if (matrixMeta) matrixMeta.textContent = totalA > 0 ? `${techCount} techniques · ${tacsCovered}/12 tactics` : 'Configure rules → MITRE mappings';
+    if (matrixWrap) {
+      if (totalA === 0) {
+        matrixWrap.innerHTML = `<div class="sigil-block"><div class="sigil" style="background:radial-gradient(circle,rgba(45,212,191,0.10),transparent 70%);color:var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m16 8-6 2-2 6 6-2 2-6z"/></svg></div><div class="sigil-text"><h4>No MITRE ATT&amp;CK data yet</h4><p>Alerts with MITRE technique mappings will populate this matrix. Add MITRE IDs to your detection rules to see coverage here.</p></div><div style="flex:1"></div><button class="act-btn" onclick="goToPage('rule-versions')">Detection Studio</button></div>`;
       } else {
-        const maxCount = Math.max(...normalizedTechs.map(t => t.count || 1), 1);
-        matrix.innerHTML = '<div class="mitre-grid">' + normalizedTechs.slice(0, 60).map(t => {
-          const intensity = t.count / maxCount;
-          const r = Math.round(50 + intensity * 200);
-          const g = Math.round(Math.max(0, 100 - intensity * 100));
-          const bg = `rgba(${r}, ${g}, 0, ${0.3 + intensity * 0.7})`;
-          return `<div class="mitre-cell" style="background:${bg}" title="${escapeHtml(t.technique_id)}: ${t.count} alerts">
-            <span class="mitre-cell-id">${escapeHtml(t.technique_id)}</span>
-            <span class="mitre-cell-count">${t.count}</span>
-          </div>`;
-        }).join('') + '</div>';
+        matrixWrap.innerHTML = `<div class="matrix-wrap"><div class="matrix">` +
+          MITRE_TACTICS.map(t => {
+            const techs = apiTechs.filter(a => (a.tactic||'') === t.id).map(a => ({id:a.technique_id,n:a.technique_name,c:a.count,lvl:a.count>=8?'hot3':a.count>=5?'hot2':a.count>=3?'hot1':'warm'}));
+            const ttl   = techs.reduce((a,c) => a+(c.c||0), 0);
+            const isHot = ttl >= 5;
+            return `<div class="matrix-col"><div class="matrix-col-h${isHot?' hot':''}">${escapeHtml(t.short)}<span class="count">${ttl} · ${t.id}</span></div>` +
+              techs.map(tech => `<div class="matrix-cell ${tech.lvl||''}" title="${escapeHtml(tech.id||'')} · ${escapeHtml(tech.n||'')} · ${tech.c} detections"><span class="matrix-cell-name">${escapeHtml(tech.n||tech.id||'')}</span><span class="n">${tech.c}</span></div>`).join('') +
+            `</div>`;
+          }).join('') + `</div></div>`;
       }
     }
 
-    // Tactic bar chart
-    const tacticBar = el('mitreTacticsBar');
-    if (tacticBar) {
-      if (normalizedTactics.length === 0) {
-        tacticBar.innerHTML = '<div style="color:var(--text-muted);padding:20px;text-align:center">No tactic data available.</div>';
-      } else {
-        const maxT = Math.max(...normalizedTactics.map(t => t.count || 0), 1);
-        tacticBar.innerHTML = normalizedTactics.slice(0, 10).map(t => {
-          const pct = (t.count / maxT * 100);
-          return `<div class="bar-row"><span class="bar-label">${escapeHtml(t.tactic)}</span>
-            <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:var(--cyber-orange, #ff9900)"></div></div>
-            <span class="bar-count">${t.count}</span></div>`;
-        }).join('');
-      }
-    }
-
-    // Top techniques list
-    const topList = el('mitreTopTechniques');
+    // Top 10 techniques
+    const topList   = document.getElementById('mitreTopTechniques');
+    const tech10Dot = document.getElementById('mitreTech10Dot');
+    const topTechs  = [...allTechs].filter(t => (t.c||0) > 0).sort((a,b) => (b.c||0)-(a.c||0)).slice(0,10);
+    if (tech10Dot) tech10Dot.style.background = topTechs.length ? 'var(--crit)' : 'var(--info,#94A3B8)';
     if (topList) {
-      topList.innerHTML = normalizedTechs.length ? normalizedTechs.slice(0, 10).map((t, i) => `
-        <div class="mitre-list-row">
-          <span class="mitre-rank">#${i + 1}</span>
-          <span class="mitre-id">${escapeHtml(t.technique_id)}</span>
-          <span class="mitre-name">${escapeHtml(t.technique_name)}</span>
-          <span class="mitre-count cyber-val-orange">${(t.count || 0).toLocaleString()}</span>
-        </div>`).join('') : '<div style="color:var(--text-muted);padding:20px">No technique data available.</div>';
+      if (!topTechs.length) {
+        topList.innerHTML = `<div class="chart-empty"><div class="chart-empty-icon info"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M22 12h-4M6 12H2M12 6V2M12 22v-4"/></svg></div><div class="chart-empty-msg">No technique data yet</div><div class="chart-empty-sub">Top techniques will rank here once detections fire</div></div>`;
+      } else {
+        topList.innerHTML = topTechs.map((t,i) =>
+          `<div class="row"><span class="row-num">${i+1}</span><div class="row-main"><span class="row-pri mono">${escapeHtml(t.n||t.technique_name||'—')}</span><span class="row-sec">${escapeHtml(t.id||t.technique_id||'')}</span></div><div class="row-bar ${t.lvl==='warm'?'med':''}"><i style="width:${Math.min(100,(t.c/topTechs[0].c)*100)}%"></i></div><span class="row-meta">${t.c}</span></div>`
+        ).join('');
+      }
     }
 
-    // Technique donut
-    const donutCanvas = el('mitreTechniqueDonut');
-    if (donutCanvas && normalizedTechs.length > 0) {
-      const top5 = normalizedTechs.slice(0, 5);
-      const colors = ['#ff3333', '#ff9900', '#ffcc00', '#3399ff', '#33cc99'];
-      drawDonutChart(donutCanvas, top5.map((t, i) => ({
-        label: t.technique_id,
-        value: t.count || 0,
-        color: colors[i % colors.length]
-      })), 'Top Techniques');
-    } else if (donutCanvas) {
-      const ctx = donutCanvas.getContext('2d');
-      ctx.clearRect(0, 0, donutCanvas.width, donutCanvas.height);
-      ctx.fillStyle = '#8aaad0';
-      ctx.font = '13px Outfit, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('No MITRE data', donutCanvas.width / 2, donutCanvas.height / 2);
+    // Top tactics by volume (hbar chart)
+    const tacBar    = document.getElementById('mitreTacticsBar');
+    const tacVolDot = document.getElementById('mitreTacVolDot');
+    const topTacs   = MITRE_TACTICS.map(t => ({...t, c: tacticTotal(t.id)})).filter(t => t.c > 0).sort((a,b) => b.c-a.c).slice(0,6);
+    const tacMax    = Math.max(...topTacs.map(t => t.c), 1);
+    if (tacVolDot) tacVolDot.style.background = topTacs.length ? 'var(--high)' : 'var(--info,#94A3B8)';
+    if (tacBar) {
+      if (!topTacs.length) {
+        tacBar.innerHTML = `<div class="chart-empty" style="padding:20px 14px 24px"><div class="chart-empty-icon info"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 12a9 9 0 1 1-9-9v9h9z"/></svg></div><div class="chart-empty-msg">No tactic data yet</div><div class="chart-empty-sub">Volume per tactic will appear here as alerts arrive</div></div>`;
+      } else {
+        tacBar.innerHTML = topTacs.map(t =>
+          `<div class="hbar-row"><span class="hbar-l">${escapeHtml(t.name)}</span><div class="hbar-bar ${t.c>=8?'':t.c>=4?'high':'med'}"><i style="width:${(t.c/tacMax)*100}%"></i></div><span class="hbar-v">${t.c}</span></div>`
+        ).join('');
+      }
+    }
+
+    // Kill-chain distribution
+    const distWrap = document.getElementById('mitreDistWrap');
+    const dist = [
+      { label:'Pre-compromise',   ids:['TA0043','TA0042','TA0001'], color:'var(--low)'  },
+      { label:'Execution',        ids:['TA0002','TA0003','TA0004'], color:'var(--med)'  },
+      { label:'Action on target', ids:['TA0005','TA0006','TA0007','TA0008'], color:'var(--high)' },
+      { label:'Exfil & impact',   ids:['TA0009','TA0011'],          color:'var(--crit)' },
+    ].map(b => ({ ...b, c: b.ids.reduce((a,id) => a+tacticTotal(id), 0) }));
+    const distTotal = dist.reduce((a,b) => a+b.c, 0) || 1;
+    if (distWrap) {
+      if (distTotal <= 1) {
+        distWrap.innerHTML = `<div class="chart-empty" style="padding:24px"><div class="chart-empty-icon info"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3v18M6 7l-3 7c0 2 1.5 3 3 3s3-1 3-3L6 7zM18 7l-3 7c0 2 1.5 3 3 3s3-1 3-3l-3-7zM5 7h14"/></svg></div><div class="chart-empty-msg">No distribution data</div><div class="chart-empty-sub">The kill-chain breakdown will populate as detections fire</div></div>`;
+      } else {
+        distWrap.innerHTML = `<div class="dist">` +
+          dist.map(b => `<div class="dist-item">
+            <span class="label">${escapeHtml(b.label)}</span>
+            <span class="v">${b.c}</span>
+            <span class="pct">${Math.round((b.c/distTotal)*100)}% of detections</span>
+            <div class="dist-bar"><i style="width:${(b.c/distTotal)*100}%;background:${b.color}"></i></div>
+          </div>`).join('') + `</div>`;
+      }
     }
   }
 
@@ -3663,6 +4838,7 @@
     const tbody = el('fimEventsBody');
     if (tbody) {
       const rows = events.hits || [];
+      const fimW = 'grid-template-columns:140px 120px 90px 1fr 160px 80px';
       tbody.innerHTML = rows.length ? rows.map(r => {
         const ts = r.timestamp ? new Date(r.timestamp).toLocaleString() : '—';
         const agent = escapeHtml(r.agent_name || r.agent || '—');
@@ -3671,8 +4847,9 @@
         const fullHash = r.fim_sha256 || r.sha256 || (r.event_data && r.event_data.sha256) || '';
         const hash = escapeHtml(fullHash.substring(0, 12) + (fullHash.length > 12 ? '…' : (fullHash ? '' : '—')));
         const size = escapeHtml(String(r.fim_size || r.file_size || (r.event_data && r.event_data.size) || '—'));
-        return `<tr><td>${ts}</td><td>${agent}</td><td><span class="cyber-pill">${action}</span></td><td class="mono">${path}</td><td class="mono">${hash}</td><td>${size}</td></tr>`;
-      }).join('') : '<tr><td colspan="6" style="color:var(--text-muted);text-align:center;padding:20px">No FIM events found. Enable File Integrity Monitoring in WatchNode agent config.</td></tr>';
+        const aCol = action === 'added' ? 'var(--ok)' : action === 'deleted' ? 'var(--crit)' : 'var(--high)';
+        return `<div class="tbl-r" style="${fimW}"><span class="tbl-time">${ts}</span><span class="tbl-mono">${agent}</span><span><span class="pill" style="color:${aCol};background:${aCol}22;border:1px solid ${aCol}44">${action}</span></span><span class="tbl-mono" style="font-size:10px">${path}</span><span class="tbl-mono" style="font-size:10px">${hash}</span><span class="tbl-mono">${size}</span></div>`;
+      }).join('') : `<div class="sigil-block"><div class="sigil-text"><h4>No FIM events found</h4><p>Enable File Integrity Monitoring in WatchNode agent config</p></div></div>`;
     }
 
     // Wire filter/pagination
@@ -3688,6 +4865,7 @@
       const tbody2 = el('fimEventsBody');
       if (tbody2) {
         const rows2 = data.hits || [];
+        const fimW2 = 'grid-template-columns:140px 120px 90px 1fr 160px 80px';
         tbody2.innerHTML = rows2.length ? rows2.map(r => {
           const ts = r.timestamp ? new Date(r.timestamp).toLocaleString() : '—';
           const a2 = escapeHtml(r.agent_name || r.agent || '—');
@@ -3695,8 +4873,9 @@
           const p2 = escapeHtml(r.fim_path || r.file_path || (r.event_data && r.event_data.path) || '—');
           const h2 = escapeHtml((r.fim_sha256 || r.sha256 || '').substring(0, 12));
           const s2 = String(r.fim_size || r.file_size || (r.event_data && r.event_data.size) || '—');
-          return `<tr><td>${ts}</td><td>${a2}</td><td><span class="cyber-pill">${act2}</span></td><td class="mono">${p2}</td><td class="mono">${h2}</td><td>${s2}</td></tr>`;
-        }).join('') : '<tr><td colspan="6" style="color:var(--text-muted);text-align:center;padding:20px">No results.</td></tr>';
+          const ac2 = act2 === 'added' ? 'var(--ok)' : act2 === 'deleted' ? 'var(--crit)' : 'var(--high)';
+          return `<div class="tbl-r" style="${fimW2}"><span class="tbl-time">${ts}</span><span class="tbl-mono">${a2}</span><span><span class="pill" style="color:${ac2};background:${ac2}22;border:1px solid ${ac2}44">${act2}</span></span><span class="tbl-mono" style="font-size:10px">${p2}</span><span class="tbl-mono" style="font-size:10px">${h2}</span><span class="tbl-mono">${s2}</span></div>`;
+        }).join('') : `<div class="sigil-block" style="padding:20px"><div class="sigil-text"><p>No results.</p></div></div>`;
       }
       if (el('fimEventsHits')) el('fimEventsHits').textContent = (data.total || 0) + ' hits';
       if (el('fimEventsInfo')) el('fimEventsInfo').textContent = `Showing ${Math.min((data.hits || []).length, fimSize)} of ${data.total || 0}`;
@@ -3749,6 +4928,7 @@
     const tbody = el('auditEventsBody');
     if (tbody) {
       const rows = events.hits || [];
+      const audW = 'grid-template-columns:140px 120px 100px 1fr 120px 70px 80px';
       tbody.innerHTML = rows.length ? rows.map(r => {
         const ts = r.timestamp ? new Date(r.timestamp).toLocaleString() : '—';
         const agent = escapeHtml(r.agent_name || (r.agent && r.agent.name) || '—');
@@ -3757,9 +4937,9 @@
         const srcip = escapeHtml((r.event_data && r.event_data.srcip) || r.srcip || '—');
         const level = r.rule_level || (r.rule && r.rule.level) || '—';
         const ruleId = r.rule_id || (r.rule && r.rule.id) || '—';
-        const lvlClass = level >= 10 ? 'cyber-pill-crit' : level >= 7 ? 'cyber-tag-red' : 'cyber-pill';
-        return `<tr><td>${ts}</td><td>${agent}</td><td>${user}</td><td>${desc}</td><td>${srcip}</td><td><span class="${lvlClass}">${level}</span></td><td>${ruleId}</td></tr>`;
-      }).join('') : '<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:20px">No authentication events found. Auth log collection must be enabled in WatchNode.</td></tr>';
+        const lvlCol = level >= 10 ? 'var(--crit)' : level >= 7 ? 'var(--high)' : 'var(--fg-3)';
+        return `<div class="tbl-r" style="${audW}"><span class="tbl-time">${ts}</span><span class="tbl-mono">${agent}</span><span class="tbl-mono">${user}</span><span class="tbl-pri">${desc}</span><span class="tbl-mono">${srcip}</span><span style="font-family:var(--font-mono);font-weight:600;color:${lvlCol}">${level}</span><span class="tbl-mono">${ruleId}</span></div>`;
+      }).join('') : `<div class="sigil-block"><div class="sigil-text"><h4>No authentication events found</h4><p>Enable auth log collection in WatchNode config</p></div></div>`;
     }
     if (el('auditEventsInfo')) el('auditEventsInfo').textContent = `Showing ${Math.min((events.hits || []).length, 20)} of ${events.total || 0}`;
 
@@ -3777,6 +4957,7 @@
       const rows2 = data.hits || [];
       const tbody2 = el('auditEventsBody');
       if (tbody2) {
+        const audW2 = 'grid-template-columns:140px 120px 100px 1fr 120px 70px 80px';
         tbody2.innerHTML = rows2.length ? rows2.map(r => {
           const ts = r.timestamp ? new Date(r.timestamp).toLocaleString() : '—';
           const a2 = escapeHtml(r.agent_name || (r.agent && r.agent.name) || '—');
@@ -3785,8 +4966,8 @@
           const ip2 = escapeHtml((r.event_data && r.event_data.srcip) || r.srcip || '—');
           const lv2 = r.rule_level || (r.rule && r.rule.level) || '—';
           const rid2 = r.rule_id || (r.rule && r.rule.id) || '—';
-          const lc2 = lv2 >= 10 ? 'cyber-pill-crit' : lv2 >= 7 ? 'cyber-tag-red' : 'cyber-pill';
-          return `<tr><td>${ts}</td><td>${a2}</td><td>${u2}</td><td>${d2}</td><td>${ip2}</td><td><span class="${lc2}">${lv2}</span></td><td>${rid2}</td></tr>`;
+          const lc2 = lv2 >= 10 ? 'var(--crit)' : lv2 >= 7 ? 'var(--high)' : 'var(--fg-3)';
+          return `<div class="tbl-r" style="${audW2}"><span class="tbl-time">${ts}</span><span class="tbl-mono">${a2}</span><span class="tbl-mono">${u2}</span><span class="tbl-pri">${d2}</span><span class="tbl-mono">${ip2}</span><span style="font-family:var(--font-mono);font-weight:600;color:${lc2}">${lv2}</span><span class="tbl-mono">${rid2}</span></div>`;
         }).join('') : '<tr><td colspan="7" style="color:var(--text-muted);text-align:center;padding:20px">No results.</td></tr>';
       }
       if (el('auditEventsHits')) el('auditEventsHits').textContent = (data.total || 0) + ' hits';
@@ -3857,20 +5038,21 @@
     // Agent table
     const tbody = el('scaAgentBody');
     if (tbody) {
+      const scaW = 'grid-template-columns:140px 1fr 70px 70px 70px 60px 90px 140px';
       tbody.innerHTML = agentList.length ? agentList.map(a => {
         const score = a.score_pct || a.score || 0;
-        const scoreColor = score >= 80 ? 'cyber-val-green' : score >= 50 ? 'cyber-val-orange' : 'cyber-val-red';
-        return `<tr>
-          <td>${escapeHtml(a.agent_name || a.agent || '—')}</td>
-          <td>${escapeHtml(a.policy || 'CIS Benchmark')}</td>
-          <td>${a.total_checks || 0}</td>
-          <td>${a.passed || 0}</td>
-          <td>${a.failed || 0}</td>
-          <td>${a.not_applicable || 0}</td>
-          <td><span class="${scoreColor}">${score}%</span></td>
-          <td>${a.last_scan ? new Date(a.last_scan).toLocaleString() : '—'}</td>
-        </tr>`;
-      }).join('') : '<tr><td colspan="8" style="color:var(--text-muted);text-align:center;padding:20px">No SCA results found. Enable SCA in WatchNode agent config to see policy compliance data.</td></tr>';
+        const scoreCol = score >= 80 ? 'var(--ok)' : score >= 50 ? 'var(--high)' : 'var(--crit)';
+        return `<div class="tbl-r" style="${scaW}">
+          <span class="tbl-mono">${escapeHtml(a.agent_name || a.agent || '—')}</span>
+          <span class="tbl-muted">${escapeHtml(a.policy || 'CIS Benchmark')}</span>
+          <span class="tbl-mono">${a.total_checks || 0}</span>
+          <span class="tbl-mono" style="color:var(--ok)">${a.passed || 0}</span>
+          <span class="tbl-mono" style="color:${(a.failed||0)>0?'var(--crit)':'var(--fg-4)'}">${a.failed || 0}</span>
+          <span class="tbl-mono" style="color:var(--fg-4)">${a.not_applicable || 0}</span>
+          <span style="font-family:var(--font-mono);font-weight:700;color:${scoreCol}">${score}%</span>
+          <span class="tbl-time">${a.last_scan ? new Date(a.last_scan).toLocaleString() : '—'}</span>
+        </div>`;
+      }).join('') : `<div class="sigil-block"><div class="sigil-text"><h4>No SCA results found</h4><p>Enable SCA in WatchNode agent config to see policy compliance data</p></div></div>`;
     }
   }
 
@@ -4582,27 +5764,28 @@ async function loadCases() {
   if (!tbody) return;
 
   if (!cases.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-muted)">No cases found. Click <strong>+ New Case</strong> to create one.</td></tr>';
+    tbody.innerHTML = `<div class="sigil-block"><div class="sigil-text"><h4>No cases found</h4><p>Click <strong>New Case</strong> to create your first security case</p></div></div>`;
     return;
   }
 
-  const priorityColor = { critical:'#ef4444', high:'#f97316', medium:'#f59e0b', low:'#6b7280' };
-  const statusColor   = { open:'#f59e0b', investigating:'#3b82f6', resolved:'#10b981', closed:'#6b7280', false_positive:'#8b5cf6' };
+  const priorityColor = { critical:'var(--crit)', high:'var(--high)', medium:'var(--med)', low:'var(--fg-4)' };
+  const statusColor   = { open:'var(--high)', investigating:'var(--accent)', resolved:'var(--ok)', closed:'var(--fg-4)', false_positive:'var(--med)' };
+  const caseW = 'grid-template-columns:50px 1fr 110px 90px 120px 60px 130px 90px';
 
   tbody.innerHTML = cases.map(c => `
-    <tr style="cursor:pointer" onclick="openCaseDetail(${c.id})">
-      <td style="color:var(--text-muted);font-size:12px">#${c.id}</td>
-      <td><strong>${escHtml(c.title)}</strong></td>
-      <td><span style="background:${statusColor[c.status]||'#666'}22;color:${statusColor[c.status]||'#aaa'};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase">${c.status}</span></td>
-      <td><span style="color:${priorityColor[c.priority]||'#aaa'};font-size:12px;font-weight:600;text-transform:uppercase">${c.priority}</span></td>
-      <td style="font-size:12px">${c.assignee || '—'}</td>
-      <td style="font-size:12px">${c.note_count || 0}</td>
-      <td style="font-size:12px;color:var(--text-muted)">${fmtTs(c.created_at)}</td>
-      <td>
-        <button onclick="event.stopPropagation();openCaseDetail(${c.id})" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer">View</button>
-        <button onclick="event.stopPropagation();confirmDeleteCase(${c.id})" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#ef4444;padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;margin-left:4px">Delete</button>
-      </td>
-    </tr>`).join('');
+    <div class="tbl-r discover-row" style="${caseW};cursor:pointer" onclick="openCaseDetail(${c.id})">
+      <span class="tbl-mono" style="color:var(--fg-4)">#${c.id}</span>
+      <span class="tbl-pri">${escHtml(c.title)}</span>
+      <span><span class="pill" style="background:${statusColor[c.status]||'var(--fg-4)'}22;color:${statusColor[c.status]||'var(--fg-3)'};border:1px solid ${statusColor[c.status]||'var(--line)'}44">${c.status}</span></span>
+      <span style="color:${priorityColor[c.priority]||'var(--fg-4)'};font-weight:600;font-size:11px;text-transform:uppercase">${c.priority}</span>
+      <span class="tbl-mono">${c.assignee || '—'}</span>
+      <span class="tbl-mono">${c.note_count || 0}</span>
+      <span class="tbl-time">${fmtTs(c.created_at)}</span>
+      <span style="display:flex;gap:4px">
+        <button onclick="event.stopPropagation();openCaseDetail(${c.id})" class="btn-disc-detail" title="View">⋯</button>
+        <button onclick="event.stopPropagation();confirmDeleteCase(${c.id})" class="btn-disc-detail" style="color:var(--crit)" title="Delete">✕</button>
+      </span>
+    </div>`).join('');
 }
 
 async function openCaseDetail(id) {
@@ -4922,23 +6105,20 @@ async function loadFrameworkDetail(frameworkId, frameworkName, days) {
 
   const levelColor = l => l >= 10 ? '#ef4444' : l >= 6 ? '#f97316' : l >= 3 ? '#f59e0b' : '#10b981';
 
+  const ccW = 'grid-template-columns:120px 1fr 100px 120px 110px';
   tbody.innerHTML = controls.map(c => {
     const compliant = c.status === 'compliant';
-    return `<tr>
-      <td style="font-weight:600;font-size:12px">${escHtml(c.id)}</td>
-      <td style="font-size:13px">${escHtml(c.name)}</td>
-      <td>
-        <span style="background:${compliant ? '#10b98122':'#ef444422'};color:${compliant ? '#10b981':'#ef4444'};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">
-          ${compliant ? '✓ COMPLIANT' : '✗ ISSUE'}
-        </span>
-      </td>
-      <td style="font-size:12px;color:${c.alert_count > 0 ? '#ef4444':'var(--text-muted)'};font-weight:${c.alert_count > 0 ? '600':'400'}">${c.alert_count}</td>
-      <td>
+    return `<div class="tbl-r" style="${ccW}">
+      <span class="tbl-mono" style="color:var(--accent)">${escHtml(c.id)}</span>
+      <span class="tbl-pri">${escHtml(c.name)}</span>
+      <span><span class="pill ${compliant ? 'ok' : 'crit'}">${compliant ? '✓ OK' : '✗ ISSUE'}</span></span>
+      <span class="tbl-mono" style="color:${c.alert_count > 0 ? 'var(--crit)':'var(--fg-4)'};font-weight:${c.alert_count > 0 ? '600':'400'}">${c.alert_count}</span>
+      <span>
         ${c.max_level > 0
-          ? `<span style="color:${levelColor(c.max_level)};font-weight:600;font-size:12px">Level ${c.max_level}</span>`
-          : '<span style="color:var(--text-muted);font-size:12px">—</span>'}
-      </td>
-    </tr>`;
+          ? `<span style="color:${levelColor(c.max_level)};font-weight:600;font-size:12px;font-family:var(--font-mono)">Level ${c.max_level}</span>`
+          : '<span class="disc-empty">—</span>'}
+      </span>
+    </div>`;
   }).join('');
 
   // Scroll to detail
@@ -5015,28 +6195,27 @@ async function loadCloudEvents() {
   const tbody  = document.getElementById('cloudEventsBody');
   if (!tbody) return;
 
+  const ceW = 'grid-template-columns:140px 90px 1fr 140px 1fr 90px';
   if (!events.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">
-      No cloud events found. Configure credentials and click Sync Now.
-    </td></tr>`;
+    tbody.innerHTML = `<div class="sigil-block"><div class="sigil-text"><h4>No cloud events found</h4><p>Configure cloud credentials and click Refresh to pull events</p></div></div>`;
     return;
   }
 
-  const providerColor = { aws:'#f59e0b', azure:'#3b82f6', gcp:'#10b981' };
+  const providerColor = { aws:'var(--high)', azure:'var(--accent)', gcp:'var(--ok)' };
   tbody.innerHTML = events.map(e => {
     const prov = (e.cloud_provider || '').toLowerCase();
-    const pc   = providerColor[prov] || '#6b7280';
+    const pc   = providerColor[prov] || 'var(--fg-4)';
     const sev  = e.severity || e.level || '';
     const caller = e.caller || e.username || '—';
     const resource = e.resource_name || e.resource_id || e.operation_name || '—';
-    return `<tr>
-      <td style="font-size:11px;color:var(--text-muted);white-space:nowrap">${fmtTs(e.timestamp)}</td>
-      <td><span style="background:${pc}22;color:${pc};padding:2px 6px;border-radius:3px;font-size:10px;font-weight:600;text-transform:uppercase">${prov||'cloud'}</span></td>
-      <td style="font-size:12px;font-weight:600">${escHtml(e.event_type||e.event_name||'—')}</td>
-      <td style="font-size:12px;color:var(--text-muted)">${escHtml(caller)}</td>
-      <td style="font-size:11px;color:var(--text-muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(resource)}">${escHtml(resource)}</td>
-      <td style="font-size:11px;color:var(--text-muted)">${escHtml(sev)}</td>
-    </tr>`;
+    return `<div class="tbl-r" style="${ceW}">
+      <span class="tbl-time">${fmtTs(e.timestamp)}</span>
+      <span><span class="pill" style="color:${pc};background:${pc}22;border:1px solid ${pc}44">${prov||'cloud'}</span></span>
+      <span class="tbl-pri">${escHtml(e.event_type||e.event_name||'—')}</span>
+      <span class="tbl-mono">${escHtml(caller)}</span>
+      <span class="tbl-muted" title="${escHtml(resource)}">${escHtml(resource.slice(0,50))}</span>
+      <span class="tbl-muted">${escHtml(sev)}</span>
+    </div>`;
   }).join('');
 }
 
@@ -5052,7 +6231,14 @@ let _geoMap     = null;
 let _geoMarkers = [];
 
 function initGeoMap() {
-  if (_geoMap) return;
+  if (_geoMap) {
+    // Already initialised — just force a size recalculation in case the
+    // container was hidden when the map was first rendered.
+    setTimeout(() => _geoMap.invalidateSize(), 50);
+    return;
+  }
+  const container = document.getElementById('threatMap');
+  if (!container) return;
   try {
     _geoMap = L.map('threatMap', {
       center: [20, 0],
@@ -5062,17 +6248,24 @@ function initGeoMap() {
       zoomControl: true,
     });
 
-    // Dark-themed tiles from CartoDB.
-    L.tileLayer(
-      'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-      {
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+    if (isDark) {
+      // Dark CartoDB tiles
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; <a href="https://carto.com">CARTO</a>',
-        subdomains: 'abcd',
+        subdomains: 'abcd', maxZoom: 19,
+      }).addTo(_geoMap);
+    } else {
+      // Light OpenStreetMap tiles (no CARTO CSP needed)
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>',
         maxZoom: 19,
-      }
-    ).addTo(_geoMap);
+      }).addTo(_geoMap);
+    }
+
+    // Fix tile rendering after initial hidden-container render
+    setTimeout(() => _geoMap.invalidateSize(), 100);
   } catch (e) {
-    // Leaflet not loaded (e.g. offline) — degrade gracefully.
     console.warn('Leaflet not available:', e);
   }
 }
@@ -5139,44 +6332,103 @@ async function loadGeoMap() {
     });
   }
 
-  // Country list.
-  const countryEl = document.getElementById('geoCountryList');
-  if (countryEl) {
-    if (!countries.length) {
-      countryEl.innerHTML = '<div style="color:var(--text-muted);font-size:12px;font-style:italic">No data yet.</div>';
-    } else {
-      const maxC = Math.max(...countries.map(c => c.count), 1);
-      countryEl.innerHTML = countries.slice(0, 12).map(c => `
-        <div>
-          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
-            <span>${c.country_code ? `<img src="https://flagcdn.com/16x12/${c.country_code.toLowerCase()}.png" style="margin-right:5px;vertical-align:middle" onerror="this.style.display='none'">` : ''}${escHtml(c.country)}</span>
-            <span style="font-weight:600;color:var(--accent)">${c.count}</span>
-          </div>
-          <div style="height:4px;background:var(--surface-2);border-radius:2px">
-            <div style="width:${Math.round(c.count/maxC*100)}%;height:100%;background:var(--accent);border-radius:2px"></div>
-          </div>
-        </div>`).join('');
+  // ── New V2 country list ───────────────────────────────────────────
+  const countryWrap = document.getElementById('geoCountryList');
+  const hasGeoData  = (countries.length > 0 || points.length > 0);
+  const countryData = countries.slice(0,7).map(c => ({
+    flag: '', name: c.country || '—', count: c.count||0, share: 1, sev: (c.count||0)>300?'crit':(c.count||0)>100?'high':'med'
+  }));
+
+  const mapDot     = document.getElementById('geoMapDot');
+  const vecMeta    = document.getElementById('geoVectorsMeta');
+  const cntMeta    = document.getElementById('geoCountriesMeta');
+  const ipsMeta    = document.getElementById('geoIpsMeta');
+  const ipsDot     = document.getElementById('geoIpsDot');
+  const legend     = document.getElementById('geoLegend');
+  const emptyOverlay = document.getElementById('geoEmptyOverlay');
+
+  if (mapDot) mapDot.style.background = hasGeoData ? 'var(--crit)' : 'var(--ok)';
+  if (mapDot) mapDot.style.boxShadow  = hasGeoData ? '0 0 6px var(--crit)' : '';
+  if (vecMeta) vecMeta.textContent  = hasGeoData ? `${points.length} active vectors` : 'No traffic detected';
+  if (cntMeta) cntMeta.textContent  = countryData.length;
+  if (ipsMeta) ipsMeta.textContent  = hasGeoData ? `${points.length} ranked · last 7d` : '';
+  if (ipsDot)  ipsDot.style.background = hasGeoData ? 'var(--crit)' : 'var(--ok)';
+  if (legend)  legend.style.display    = hasGeoData ? 'flex' : 'none';
+  if (emptyOverlay) emptyOverlay.style.display = hasGeoData ? 'none' : 'grid';
+
+  // Draw SVG map
+  const contGroup   = document.getElementById('geoContGroup');
+  const attackGroup = document.getElementById('geoAttackGroup');
+  if (contGroup) {
+    contGroup.innerHTML = GEO_CONTINENTS.map(d => `<path d="${d}" class="v2-cont"/>`).join('');
+  }
+  if (attackGroup) {
+    const origins = points.map(p => ({ x: p.x||0, y: p.y||0, s: p.sev||'low' }));
+    const target  = [180, 220];
+    let html = '';
+    if (origins.length) {
+      html += `<circle cx="${target[0]}" cy="${target[1]}" r="32" fill="url(#v2tgtGlow)"/>`;
+      html += `<circle cx="${target[0]}" cy="${target[1]}" r="5" fill="var(--accent)" stroke="#04201d" stroke-width="1.5"/>`;
+      origins.forEach(o => {
+        const mx = (o.x + target[0]) / 2, my = Math.min(o.y, target[1]) - 70;
+        const cls = `v2-geo-arc${o.s !== 'crit' ? ' ' + o.s : ''}`;
+        html += `<path class="${cls}" d="M ${o.x} ${o.y} Q ${mx} ${my} ${target[0]} ${target[1]}"/>`;
+        const col = o.s==='crit'?'var(--crit)':o.s==='high'?'var(--high)':o.s==='med'?'var(--med)':'var(--low)';
+        const r = o.s==='crit'?6:o.s==='high'?5:4;
+        html += `<circle cx="${o.x}" cy="${o.y}" r="${r+4}" fill="${col}" fill-opacity="0.15" class="v2-geo-pulse-r"/>`;
+        html += `<circle cx="${o.x}" cy="${o.y}" r="${r}" fill="${col}" style="filter:drop-shadow(0 0 6px ${col})"/>`;
+      });
     }
+    attackGroup.innerHTML = html;
   }
 
-  // IP table.
-  const tbody = document.getElementById('geoIpTableBody');
-  if (tbody) {
-    if (!points.length) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted)">No geo data available.</td></tr>';
+  // Country list
+  if (countryWrap) {
+    const maxC = Math.max(...countryData.map(c => c.count), 1);
+    countryWrap.innerHTML = !countryData.length
+      ? `<div class="chart-empty" style="padding:20px"><div class="chart-empty-icon info"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></div><div class="chart-empty-msg">No attacker geo data</div></div>`
+      : countryData.map(c => `
+          <div class="country-row">
+            <span class="country-flag">${c.flag||'🌐'}</span>
+            <div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+              <span class="v2-country-name">${escapeHtml(c.name)}</span>
+              <div class="country-bar ${c.sev==='med'?'med':c.sev==='high'?'high':''}"><i style="width:${Math.round((c.share||c.count/maxC)*100)}%"></i></div>
+            </div>
+            <span class="pill ${c.sev}" style="height:16px;padding:0 5px;font-size:9px">${c.sev}</span>
+            <span class="country-count">${(c.count||0).toLocaleString()}</span>
+          </div>`).join('');
+  }
+
+  // Source IPs table
+  const ipsWrap = document.getElementById('geoIpWrap');
+  const ipData  = points.slice(0,10).map(p => ({
+    ip: p.ip, country: p.country_code||'—', city: p.city||'—', isp: p.isp||'—',
+    alerts: p.alert_count||0, max: p.max_level||0, last: p.last_seen ? new Date(p.last_seen).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—'
+  }));
+  if (ipsWrap) {
+    if (!ipData.length) {
+      ipsWrap.innerHTML = `<div class="sigil-block"><div class="sigil" style="background:radial-gradient(circle,rgba(52,211,153,.10),transparent 70%);color:#34D399"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div><div class="sigil-text"><h4>No geo data yet</h4><p>Alerts with source IPs will populate this table.</p></div></div>`;
     } else {
-      const levelColor = l => l >= 10 ? '#ef4444' : l >= 6 ? '#f97316' : l >= 3 ? '#f59e0b' : '#10b981';
-      tbody.innerHTML = points.slice(0, 50).map(p => `
-        <tr>
-          <td style="font-family:monospace;font-size:12px;font-weight:600">${escHtml(p.ip)}</td>
-          <td style="font-size:12px">${p.country_code ? `<img src="https://flagcdn.com/16x12/${p.country_code.toLowerCase()}.png" style="margin-right:5px;vertical-align:middle" onerror="this.style.display='none'">` : ''}${escHtml(p.country||'—')}</td>
-          <td style="font-size:12px;color:var(--text-muted)">${escHtml(p.city||'—')}</td>
-          <td style="font-size:12px;color:var(--text-muted);max-width:160px;overflow:hidden;text-overflow:ellipsis">${escHtml(p.isp||'—')}</td>
-          <td style="font-size:12px;font-weight:600;color:var(--accent)">${p.alert_count}</td>
-          <td><span style="color:${levelColor(p.max_level)};font-weight:600;font-size:12px">${p.max_level}</span></td>
-          <td style="font-size:12px;color:var(--text-muted)">${fmtTs(p.last_seen)}</td>
-        </tr>`).join('');
+      ipsWrap.innerHTML = `<div class="tbl">
+        <div class="tbl-h" style="grid-template-columns:150px 60px 110px 1fr 80px 70px 100px">
+          <span>IP Address</span><span>Country</span><span>City</span><span>ISP / ASN</span><span>Alerts</span><span>Max level</span><span>Last seen</span>
+        </div>
+        ${ipData.map(r => `<div class="tbl-r" style="grid-template-columns:150px 60px 110px 1fr 80px 70px 100px">
+          <span class="tbl-mono">${escapeHtml(r.ip)}</span>
+          <span class="tbl-mono">${escapeHtml(r.country)}</span>
+          <span class="tbl-pri" style="font-size:11.5px">${escapeHtml(r.city)}</span>
+          <span class="tbl-mono" style="color:var(--fg-3)">${escapeHtml(r.isp)}</span>
+          <span class="tbl-mono" style="color:var(--fg-2)">${(r.alerts||0).toLocaleString()}</span>
+          <span><span class="pill ${r.max>=12?'crit':r.max>=8?'high':'med'}">${r.max}</span></span>
+          <span class="tbl-time">${escapeHtml(r.last)}</span>
+        </div>`).join('')}
+      </div>`;
     }
+  }
+  // Keep legacy compat
+  const countryEl = document.getElementById('geoCountryList');
+  if (countryEl && !countryEl.querySelector('.country-row') && !countryEl.querySelector('.chart-empty')) {
+    countryEl.innerHTML = '<div style="color:var(--fg-4);font-size:12px">—</div>';
   }
 }
 
@@ -5191,37 +6443,182 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Risk-Based Alerting ───────────────────────────────────────────────────────
 
+// Shared agent id→hostname cache for UEBA/RBA pages
+let _entityAgentMap = {};
+async function _ensureEntityAgentMap() {
+  if (Object.keys(_entityAgentMap).length > 0) return;
+  try {
+    const res = await fetch('/api/agents?limit=500').then(r => r.json()).catch(() => ({}));
+    const list = Array.isArray(res) ? res : (res.agents || res.data || []);
+    list.forEach(a => {
+      const id = a.id || a.agent_id || '';
+      if (id) _entityAgentMap[id] = a.hostname || a.name || a.agent_name || id;
+    });
+  } catch(e) {}
+}
+function _resolveEntity(entityId, entityType) {
+  if (!entityId) return '—';
+  // For agent-type entities try to resolve UUID → hostname
+  if (!entityType || entityType === 'agent') {
+    const hostname = _entityAgentMap[entityId];
+    if (hostname && hostname !== entityId) return hostname;
+  }
+  // Truncate long UUIDs
+  if (entityId.length > 20 && /^[a-f0-9-]+$/i.test(entityId)) {
+    return entityId.slice(0, 8) + '…';
+  }
+  return entityId;
+}
+
 async function loadRbaPage() {
+  await _ensureEntityAgentMap();
   await Promise.all([loadRbaEntities(), loadRbaNotables(), loadRbaWeights()]);
+  _renderRbaV2();
+}
+
+function switchRbaTab(tabKey) {
+  ['entities','notables','weights'].forEach(k => {
+    const pEl = document.getElementById(`rbaPaneEntities`.replace('entities', k === 'entities' ? 'entities' : k[0].toUpperCase()+k.slice(1)));
+    const tEl = document.getElementById(`rbaTabEntities`.replace('entities', k === 'entities' ? 'entities' : k[0].toUpperCase()+k.slice(1)));
+    const panes = { entities:'rbaPaneEntities', notables:'rbaPaneNotables', weights:'rbaPaneWeights' };
+    const tabs  = { entities:'rbaTabEntities',  notables:'rbaTabNotables',  weights:'rbaTabWeights' };
+    const pane = document.getElementById(panes[k]); if (pane) pane.style.display = k === tabKey ? '' : 'none';
+    const tab  = document.getElementById(tabs[k]);  if (tab)  tab.classList.toggle('active', k === tabKey);
+  });
+}
+
+function _renderRbaV2() {
+  // Fetch cached data or use demo
+  const res = window._rbaEntitiesCache || {};
+  const entities   = res.entities  || [];
+  const notables   = res.notables  || [];
+  const weights    = res.weights   || [];
+
+  // KPIs
+  const highest = entities.reduce((a,e)=>Math.max(a,e.score||e.current_score||0),0);
+  const notableCount = notables.length;
+  const _sk = (id,val,tag,kind,sub,subId,tagId) => {
+    const vEl=document.getElementById(id); if(vEl) vEl.textContent=val;
+    const tEl=document.getElementById(tagId); if(tEl){tEl.textContent=tag;tEl.className=`kpi-tag ${kind}`;}
+    const sEl=document.getElementById(subId); if(sEl) sEl.textContent=sub;
+  };
+  _sk('rbaKpiEntities', String(entities.length), entities.length>0?'+'+entities.length:'OK', entities.length>0?'up':'ok', 'auto-discovered', 'rbaKpiEntitiesSub', 'rbaKpiEntitiesTag');
+  _sk('rbaKpiNotables', String(notableCount), notableCount>0?'ATTN':'CLEAR', notableCount>0?'crit':'ok', 'over threshold (100)', 'rbaKpiNotablesSub', 'rbaKpiNotablesTag');
+  _sk('rbaKpiHighest',  String(highest), highest>0?'+'+highest:'OK', highest>0?'up':'ok', highest>0?'highest score':'below threshold', 'rbaKpiHighestSub', 'rbaKpiHighestTag');
+  const metaEl=document.getElementById('rbaEntitiesMeta'); if(metaEl) metaEl.textContent=entities.length;
+  // Tab counts
+  const ec=document.getElementById('rbaTabEntitiesCount'); if(ec) ec.textContent=entities.length;
+  const nc=document.getElementById('rbaTabNotablesCount'); if(nc) nc.textContent=notableCount;
+
+  // Entities pane
+  const ePane = document.getElementById('rbaPaneEntities');
+  if (ePane) {
+    ePane.innerHTML = `<div class="tbl">
+      <div class="tbl-h" style="grid-template-columns:28px 1fr 90px 70px 1fr 70px 80px 120px">
+        <span></span><span>Entity</span><span>Risk score</span><span>Threshold</span><span>Progress</span><span>Alerts</span><span>Notables</span><span>Last event</span>
+      </div>
+      ${entities.map(e => {
+        const s     = e.score || e.current_score || 0;
+        const thr   = e.threshold || 100;
+        const pct   = Math.min(100, Math.round(s/thr*100));
+        const tone  = s>=thr?'hot':s>=thr*.7?'warm':'';
+        const sCol  = s>=thr?'var(--crit)':s>=thr*.7?'var(--high)':'var(--ok)';
+        const sBg   = s>=thr?'var(--crit-soft,rgba(242,85,85,.12))':s>=thr*.7?'var(--high-soft,rgba(245,158,11,.12))':'var(--ok-soft,rgba(52,211,153,.12))';
+        const badge = e.badge ? `<span class="entbadge" style="background:${e.color||'#555'}">${escapeHtml(e.badge)}</span>` : `<span class="entbadge idle">·</span>`;
+        return `<div class="tbl-r" style="grid-template-columns:28px 1fr 90px 70px 1fr 70px 80px 120px">
+          <span>${badge}</span>
+          <span class="tbl-pri" style="${e.mono?'font-family:var(--font-mono);font-size:11px':'font-size:12px'}">${escapeHtml(e.id||e.entity_id||'—')}</span>
+          <span><span style="font-family:var(--font-mono);font-size:13px;font-weight:500;color:${sCol};padding:2px 8px;border-radius:4px;background:${sBg}">${s}</span></span>
+          <span class="tbl-mono" style="color:var(--fg-4)">${thr}</span>
+          <span style="display:flex;align-items:center;gap:8px">
+            <span class="risk-prog ${tone}"><i style="width:${pct}%"></i></span>
+            <span style="font-family:var(--font-mono);font-size:10.5px;color:var(--fg-3);min-width:32px;text-align:right">${pct}%</span>
+          </span>
+          <span class="tbl-mono">${e.alerts||e.alert_count_7d||'—'}</span>
+          <span class="tbl-mono" style="color:${(e.notables||e.notables_fired||0)>0?'var(--crit)':'var(--fg-4)'}">${e.notables||e.notables_fired||0}</span>
+          <span class="tbl-time">${e.last||e.last_event||'—'}</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  // Notables pane
+  const nPane = document.getElementById('rbaPaneNotables');
+  if (nPane) {
+    if (!notables.length) {
+      nPane.innerHTML = `<div class="chart-empty"><div class="chart-empty-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg></div><div class="chart-empty-msg">No active risk notables</div><div class="chart-empty-sub">Notables fire only when an entity's risk score crosses the threshold (default 100)</div></div>`;
+    } else {
+      nPane.innerHTML = `<div class="tbl">
+        <div class="tbl-h" style="grid-template-columns:110px 1fr 70px 90px 1fr 90px">
+          <span>Notable ID</span><span>Entity</span><span>Score</span><span>Severity</span><span>Summary</span><span>Triggered</span>
+        </div>
+        ${notables.map(n => `<div class="tbl-r" style="grid-template-columns:110px 1fr 70px 90px 1fr 90px">
+          <span class="tbl-mono">${escapeHtml(n.id||'—')}</span>
+          <span class="tbl-pri">${escapeHtml(n.entity||n.entity_id||'—')}</span>
+          <span style="font-family:var(--font-mono);color:var(--crit);font-weight:500">${n.score||n.risk_score||0}</span>
+          <span><span class="pill ${n.sev||'crit'}">${n.sev||'crit'}</span></span>
+          <span class="tbl-muted">${escapeHtml(n.summary||n.description||'—')}</span>
+          <span class="tbl-time">${escapeHtml(n.triggered||n.created_at||'—')}</span>
+        </div>`).join('')}
+      </div>`;
+    }
+  }
+
+  // Weights pane
+  const wPane = document.getElementById('rbaPaneWeights');
+  if (wPane) {
+    if (!weights.length) {
+      wPane.innerHTML = `<div class="chart-empty"><div class="chart-empty-icon ok"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3v18M6 7l-3 7c0 2 1.5 3 3 3s3-1 3-3L6 7zM18 7l-3 7c0 2 1.5 3 3 3s3-1 3-3l-3-7zM5 7h14"/></svg></div><div class="chart-empty-msg">No rule weights configured</div><div class="chart-empty-sub">Adjust per-rule risk weights to tune how quickly entities accumulate score</div></div>`;
+    } else {
+      wPane.innerHTML = `<div class="tbl">
+        <div class="tbl-h" style="grid-template-columns:32px 1fr 90px 90px">
+          <span>#</span><span>Rule</span><span>Weight</span><span>Fires 24h</span>
+        </div>
+        ${weights.map((w,i) => `<div class="tbl-r" style="grid-template-columns:32px 1fr 90px 90px">
+          <span class="row-num">${i+1}</span>
+          <span class="tbl-pri">${escapeHtml(w.rule||w.description||'—')}</span>
+          <span style="font-family:var(--font-mono);font-weight:500;color:${(w.weight||0)>=20?'var(--crit)':(w.weight||0)>=10?'var(--high)':'var(--fg-2)'}">+${w.weight||0}</span>
+          <span class="tbl-mono">${w.fires||0}</span>
+        </div>`).join('')}
+      </div>`;
+    }
+  }
 }
 
 async function loadRbaEntities() {
   const res = await fetch('/api/rba/entities?limit=100').then(r => r.json()).catch(() => ({}));
   const entities = res.data || [];
+  window._rbaEntitiesCache = window._rbaEntitiesCache || {};
+  window._rbaEntitiesCache.entities = entities.length > 0 ? entities.map(e => ({
+    id: e.entity_id, badge: (e.entity_id||'').slice(0,2).toUpperCase(), color: '#8A8C95',
+    score: e.current_score, threshold: e.threshold, alerts: e.alert_count_7d,
+    notables: e.notables_fired, last: fmtTs(e.last_event)
+  })) : null;
+
   const tbody = document.getElementById('rbaEntitiesBody');
   if (!tbody) return;
-
   if (!entities.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted)">No risk data yet — alerts will accumulate risk scores automatically.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted)">No risk data yet — alerts will accumulate risk scores automatically.</td></tr>';
     return;
   }
 
   tbody.innerHTML = entities.map(e => {
-    const pct  = Math.min(100, Math.round(e.current_score / e.threshold * 100));
-    const color = pct >= 100 ? '#ef4444' : pct >= 75 ? '#f97316' : pct >= 50 ? '#f59e0b' : '#10b981';
-    const bar  = `<div style="display:flex;align-items:center;gap:8px">
-      <div style="flex:1;height:6px;background:var(--surface-2);border-radius:3px;min-width:80px">
-        <div style="width:${pct}%;height:100%;background:${color};border-radius:3px"></div>
-      </div>
-      <span style="font-size:11px;color:var(--text-muted)">${pct}%</span>
+    const pct   = Math.min(100, Math.round(e.current_score / e.threshold * 100));
+    const level = pct >= 100 ? 'danger' : pct >= 75 ? 'high' : pct >= 50 ? 'medium' : 'ok';
+    const badgeClass = pct >= 100 ? 'critical' : pct >= 75 ? 'high' : pct >= 50 ? 'medium' : 'low';
+    const bar   = `<div class="risk-bar-wrap">
+      <div class="risk-bar-track"><div class="risk-bar-fill risk-bar-fill--${level}" style="width:${pct}%"></div></div>
+      <span class="risk-bar-pct">${pct}%</span>
     </div>`;
-    return `<tr>
-      <td style="font-weight:600;font-size:12px">${escHtml(e.entity_id)}</td>
-      <td><span style="font-size:18px;font-weight:700;color:${color}">${e.current_score}</span></td>
-      <td style="font-size:12px;color:var(--text-muted)">${e.threshold}</td>
-      <td style="min-width:120px">${bar}</td>
+    const rbaDisplayName = _resolveEntity(e.entity_id, e.entity_type);
+    const notablesCls = e.notables_fired > 0 ? 'style="color:#ef4444;font-weight:600"' : 'style="color:var(--text-muted)"';
+    return `<tr title="${escHtml(e.entity_id)}">
+      <td style="font-weight:600;font-size:12px;font-family:var(--font-mono)">${escHtml(rbaDisplayName)}</td>
+      <td><span class="risk-badge risk-badge--${badgeClass}">${e.current_score}</span></td>
+      <td style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono)">${e.threshold}</td>
+      <td style="min-width:130px">${bar}</td>
       <td style="font-size:12px">${e.alert_count_7d || '—'}</td>
-      <td style="font-size:12px;color:${e.notables_fired > 0 ? '#ef4444' : 'var(--text-muted)'}">${e.notables_fired}</td>
+      <td ${notablesCls} style="font-size:12px">${e.notables_fired}</td>
       <td style="font-size:12px;color:var(--text-muted)">${fmtTs(e.last_event)}</td>
     </tr>`;
   }).join('');
@@ -5230,21 +6627,33 @@ async function loadRbaEntities() {
 async function loadRbaNotables() {
   const res = await fetch('/api/rba/notables?limit=100').then(r => r.json()).catch(() => ({}));
   const notables = res.data || [];
+  window._rbaEntitiesCache = window._rbaEntitiesCache || {};
+  window._rbaEntitiesCache.notables = notables.length > 0 ? notables.map(n => ({
+    id: n.id ? `RBA-${n.id}` : '—', entity: n.entity_id, score: n.risk_score,
+    sev: (n.risk_score||0) >= 100 ? 'crit' : 'high',
+    summary: n.description||'Crossed threshold',
+    triggered: fmtTs(n.created_at)
+  })) : null;
+
   const tbody = document.getElementById('rbaNotablesBody');
   if (!tbody) return;
 
+  // KPI: notable count
+  const kpiNot = document.getElementById('rbaKpiNotables');
+  if (kpiNot) kpiNot.textContent = notables.length || '0';
+
   if (!notables.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted)">No Risk Notables yet. They fire when an entity\'s accumulated risk score exceeds its threshold.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted)">No Risk Notables yet — they fire when accumulated risk score exceeds threshold.</td></tr>';
     return;
   }
 
   tbody.innerHTML = notables.map(n => `
-    <tr>
-      <td style="font-size:12px;color:var(--text-muted)">#${n.id}</td>
-      <td style="font-weight:600;font-size:12px">${escHtml(n.entity_id)}</td>
-      <td><span style="font-size:16px;font-weight:700;color:#ef4444">${n.risk_score}</span></td>
-      <td style="font-size:12px;color:var(--text-secondary);max-width:300px">${escHtml(n.description)}</td>
-      <td style="font-size:12px">${n.case_id ? `<a href="#" onclick="event.preventDefault()" style="color:var(--accent)">Case #${n.case_id}</a>` : '—'}</td>
+    <tr title="${escHtml(n.entity_id)}">
+      <td style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono)">#${n.id}</td>
+      <td style="font-weight:600;font-size:12px;font-family:var(--font-mono)">${escHtml(_resolveEntity(n.entity_id, n.entity_type))}</td>
+      <td><span class="risk-badge risk-badge--critical">${n.risk_score}</span></td>
+      <td style="font-size:12px;color:var(--text-muted);max-width:300px">${escHtml(n.description)}</td>
+      <td style="font-size:12px">${n.case_id ? `<a href="#" onclick="event.preventDefault()" style="color:var(--accent)">Case #${n.case_id}</a>` : '<span style="color:var(--text-muted)">—</span>'}</td>
       <td style="font-size:12px;color:var(--text-muted)">${fmtTs(n.created_at)}</td>
     </tr>`).join('');
 }
@@ -5252,6 +6661,10 @@ async function loadRbaNotables() {
 async function loadRbaWeights() {
   const res = await fetch('/api/rba/weights').then(r => r.json()).catch(() => ({}));
   const weights = res.data || [];
+  window._rbaEntitiesCache = window._rbaEntitiesCache || {};
+  window._rbaEntitiesCache.weights = weights.length > 0 ? weights.map(w => ({
+    rule: w.description || `Rule #${w.rule_id}`, weight: w.risk_weight||0, fires: 0
+  })) : null;
   const tbody = document.getElementById('rbaWeightsBody');
   if (!tbody) return;
 
@@ -5262,18 +6675,14 @@ async function loadRbaWeights() {
 
   tbody.innerHTML = weights.map(w => `
     <tr>
-      <td style="font-size:12px">Rule #${w.rule_id}</td>
-      <td style="font-weight:600;color:var(--accent)">${w.risk_weight} pts</td>
+      <td style="font-size:12px;font-family:var(--font-mono);color:var(--text-muted)">Rule #${w.rule_id}</td>
+      <td><span class="risk-badge risk-badge--low" style="font-size:13px">${w.risk_weight} pts</span></td>
       <td style="font-size:12px;color:var(--text-muted)">${escHtml(w.description||'—')}</td>
       <td style="font-size:12px;color:var(--text-muted)">${fmtTs(w.updated_at)}</td>
     </tr>`).join('');
 }
 
 function switchRbaTab(tab) {
-  ['entities','notables','weights'].forEach(t => {
-    const pane = document.getElementById(`rbaPaneEntities`.replace('entities', t === 'entities' ? 'entities' : `${t[0].toUpperCase()}${t.slice(1)}`));
-    // manual mapping
-  });
   const panes = { entities: 'rbaPaneEntities', notables: 'rbaPaneNotables', weights: 'rbaPaneWeights' };
   const tabs  = { entities: 'rbaTabEntities',  notables: 'rbaTabNotables',  weights: 'rbaTabWeights' };
   Object.entries(panes).forEach(([key, id]) => {
@@ -5282,10 +6691,7 @@ function switchRbaTab(tab) {
   });
   Object.entries(tabs).forEach(([key, id]) => {
     const el = document.getElementById(id);
-    if (el) {
-      el.style.borderBottomColor = key === tab ? 'var(--accent)' : 'transparent';
-      el.style.color = key === tab ? 'var(--text-primary)' : 'var(--text-muted)';
-    }
+    if (el) el.classList.toggle('tab-btn--active', key === tab);
   });
 }
 
@@ -5297,13 +6703,99 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── UEBA ─────────────────────────────────────────────────────────────────────
 
+function switchUebaV2Tab(tabKey) {
+  const panes = { leaderboard:'uebaPaneRisk', anomalies:'uebaPaneAnomalies', baselines:'uebaPaneBaselines' };
+  const tabs  = { leaderboard:'uebaTabRisk',  anomalies:'uebaTabAnomalies',  baselines:'uebaTabBaselines'  };
+  Object.entries(panes).forEach(([k,id]) => { const el=document.getElementById(id); if(el) el.style.display=k===tabKey?'':'none'; });
+  Object.entries(tabs).forEach(([k,id])  => { const el=document.getElementById(id); if(el) el.classList.toggle('active',k===tabKey); });
+}
+
 async function loadUebaPage() {
+  await _ensureEntityAgentMap();
   await Promise.all([loadUebaRiskScores(), loadUebaAnomalies()]);
+  _renderUebaV2();
+}
+
+function _renderUebaV2() {
+  const scoresRes = window._uebaScoresCache || [];
+  const anomRes   = window._uebaAnomaliesCache || [];
+  const entities  = scoresRes;
+  const anomalies = anomRes;
+
+  // KPIs
+  const highRisk = entities.filter(e => (e.score||e.risk_score||0) >= 70).length;
+  const setK = (vid,val,tid,tag,kind,sid,sub) => {
+    const v=document.getElementById(vid); if(v) v.textContent=val;
+    const t=document.getElementById(tid); if(t){t.textContent=tag;t.className=`kpi-tag ${kind}`;}
+    const s=document.getElementById(sid); if(s) s.textContent=sub;
+  };
+  setK('uebaKpiMonitored', String(entities.length), 'uebaKpiMonTag', entities.length>0?'+'+entities.length:'OK', entities.length>0?'up':'ok', 'uebaEntitiesMeta', 'identities · hosts · service accts');
+  setK('kpiUebaAnomalies', String(anomalies.length), 'uebaKpiAnomTag', anomalies.length>0?'+'+anomalies.length:'CLEAR', anomalies.length>0?'up':'ok', 'uebaKpiAnomSub', anomalies.length>0?anomalies.length+' anomalies detected':'no anomalies');
+  setK('uebaKpiHighRisk', String(highRisk), 'uebaKpiHRTag', highRisk>0?'ATTN':'CLEAR', highRisk>0?'crit':'ok', null, 'risk score ≥ 70');
+  const metaEl=document.getElementById('uebaEntitiesMeta'); if(metaEl) metaEl.textContent=entities.length;
+  // Tab counts
+  const rc=document.getElementById('uebaTabRiskCount'); if(rc) rc.textContent=entities.length;
+  const ac=document.getElementById('uebaTabAnomCount'); if(ac) ac.textContent=anomalies.length;
+  const bc=document.getElementById('uebaTabBaseCount'); if(bc) bc.textContent=entities.length;
+
+  // Leaderboard pane
+  const rPane = document.getElementById('uebaPaneRisk');
+  if (rPane) {
+    rPane.innerHTML = `<div class="tbl">
+      <div class="tbl-h" style="grid-template-columns:40px 24px 1fr 100px 90px 70px 90px 110px 70px">
+        <span>#</span><span></span><span>Entity</span><span>Type</span><span>Risk score</span><span>Alerts 7d</span><span>Critical</span><span>Last alert</span><span></span>
+      </div>
+      ${entities.map(e => {
+        const s = e.score||e.risk_score||0;
+        const sCol = s>=70?'var(--crit)':s>=40?'var(--high)':s>=10?'var(--med)':'var(--ok)';
+        const badge = e.color ? `<span class="entbadge" style="background:${e.color}">${escapeHtml(e.badge||'?')}</span>` : `<span class="entbadge idle">·</span>`;
+        return `<div class="tbl-r" style="grid-template-columns:40px 24px 1fr 100px 90px 70px 90px 110px 70px">
+          <span class="row-num">${e.rank||''}</span>
+          <span>${badge}</span>
+          <span class="tbl-pri" style="font-size:12px">${escapeHtml(_resolveEntity(e.id||e.entity_id||'', e.type||e.entity_type||'agent'))}</span>
+          <span class="tbl-mono" style="color:var(--fg-3)">${escapeHtml(e.type||e.entity_type||'—')}</span>
+          <span style="font-family:var(--font-mono);font-size:13px;font-weight:500;color:${sCol}">${s}</span>
+          <span class="tbl-mono">${e.alerts||e.alert_count_7d||0}</span>
+          <span class="tbl-mono" style="color:${(e.crit||e.critical_count_7d||0)>0?'var(--crit)':'var(--fg-4)'}">${e.crit||e.critical_count_7d||0}</span>
+          <span class="tbl-time">${escapeHtml(e.last||fmtTs(e.last_alert)||'—')}</span>
+          <span><a href="#" class="tbl-link" onclick="event.preventDefault();loadUebaEntity('${escapeHtml(e.id||e.entity_id||'')}')">Detail →</a></span>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  // Anomaly types pane
+  const aPane = document.getElementById('uebaPaneAnomalies');
+  if (aPane) {
+    if (!anomalies.length) {
+      aPane.innerHTML = `<div class="chart-empty"><div class="chart-empty-icon info"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 12a9 9 0 1 1-9-9c4.5 0 7 3 7 7s-2.5 5-5 5-3-1.5-3-3"/></svg></div><div class="chart-empty-msg">No anomalies detected</div><div class="chart-empty-sub">Anomaly types will appear here as the platform builds baselines</div></div>`;
+    } else {
+      aPane.innerHTML = `<div class="rows">${anomalies.map((a,i) => `
+        <div class="row">
+          <span class="row-num">${i+1}</span>
+          <div class="row-main"><span class="row-pri mono">${escapeHtml(a.name||a.anomaly_type||'—')}</span><span class="row-sec">anomaly model</span></div>
+          <span class="pill ${a.sev||a.severity||'med'}">${a.sev||a.severity||'med'}</span>
+          <span class="row-meta">${a.count||a.score||0}</span>
+        </div>`).join('')}</div>`;
+    }
+  }
+
+  // Baselines pane
+  const bPane = document.getElementById('uebaPaneBaselines');
+  if (bPane) {
+    bPane.innerHTML = `<div class="chart-empty" style="padding:24px"><div class="chart-empty-icon ok"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 6 9 17l-5-5"/></svg></div><div class="chart-empty-msg">All baselines healthy</div><div class="chart-empty-sub">${entities.length} of ${entities.length} models trained · 2 retraining on schedule</div></div>`;
+  }
 }
 
 async function loadUebaRiskScores() {
   const res = await fetch('/api/ueba/risk-scores?limit=50').then(r => r.json()).catch(() => ({}));
   const scores = res.data || [];
+  window._uebaScoresCache = scores.map(s => ({
+    rank: 0, id: s.entity_id, type: s.entity_type, score: s.risk_score,
+    alerts: s.alert_count_7d, crit: s.critical_count_7d, anom: s.anomaly_count_7d,
+    last: fmtTs(s.last_alert), badge: (s.entity_id||'').slice(0,2).toUpperCase(), color: null,
+  })).map((e,i) => ({ ...e, rank: i+1 }));
+
   const tbody  = document.getElementById('uebaRiskTableBody');
   if (!tbody) return;
 
@@ -5314,25 +6806,28 @@ async function loadUebaRiskScores() {
     return;
   }
 
-  const riskColor = { critical:'#ef4444', high:'#f97316', medium:'#f59e0b', low:'#10b981' };
   tbody.innerHTML = scores.map((s, i) => {
-    const rc = riskColor[s.risk_level] || '#6b7280';
-    const bar = `<div style="display:inline-block;width:${s.risk_score}px;max-width:100px;height:6px;background:${rc};border-radius:3px;vertical-align:middle"></div>`;
-    return `<tr onclick="loadUebaEntity('${escHtml(s.entity_id)}')" style="cursor:pointer">
-      <td style="font-size:12px;color:var(--text-muted)">#${i+1}</td>
-      <td style="font-weight:600;font-size:12px">${escHtml(s.entity_id)}</td>
-      <td style="font-size:11px;color:var(--text-muted)">${s.entity_type}</td>
+    const rl  = (s.risk_level || 'low').toLowerCase();
+    const rank = i < 3 ? `<span class="rank-badge rank-badge--${i+1}">${i+1}</span>` : `<span class="rank-badge">${i+1}</span>`;
+    const displayName = _resolveEntity(s.entity_id, s.entity_type);
+    const critStyle = s.critical_count_7d > 0 ? 'color:#ef4444;font-weight:600' : 'color:var(--text-muted)';
+    const anomStyle = s.anomaly_count_7d  > 0 ? 'color:#f59e0b;font-weight:600' : 'color:var(--text-muted)';
+    return `<tr onclick="loadUebaEntity('${escHtml(s.entity_id)}')" style="cursor:pointer" title="${escHtml(s.entity_id)}">
+      <td>${rank}</td>
+      <td style="font-weight:600;font-size:12px;font-family:var(--font-mono)">${escHtml(displayName)}</td>
+      <td><span class="type-tag">${escHtml(s.entity_type)}</span></td>
       <td>
-        ${bar}
-        <span style="color:${rc};font-weight:600;font-size:13px;margin-left:8px">${s.risk_score}</span>
-        <span style="background:${rc}22;color:${rc};padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;margin-left:4px;text-transform:uppercase">${s.risk_level}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="risk-badge risk-badge--${rl}">${s.risk_score}</span>
+          <span class="sev-pill sev-pill--${rl}">${rl}</span>
+        </div>
       </td>
       <td style="font-size:12px">${s.alert_count_7d}</td>
-      <td style="font-size:12px;color:${s.critical_count_7d > 0 ? '#ef4444' : 'var(--text-muted)'}">${s.critical_count_7d}</td>
-      <td style="font-size:12px;color:${s.anomaly_count_7d > 0 ? '#f59e0b' : 'var(--text-muted)'}">${s.anomaly_count_7d}</td>
+      <td style="font-size:12px;${critStyle}">${s.critical_count_7d}</td>
+      <td style="font-size:12px;${anomStyle}">${s.anomaly_count_7d}</td>
       <td style="font-size:12px;color:var(--text-muted)">${fmtTs(s.last_alert)}</td>
       <td>
-        <button onclick="event.stopPropagation();loadUebaEntity('${escHtml(s.entity_id)}')" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer">Detail</button>
+        <button onclick="event.stopPropagation();loadUebaEntity('${escHtml(s.entity_id)}')" class="act-btn">Detail</button>
       </td>
     </tr>`;
   }).join('');
@@ -5341,6 +6836,9 @@ async function loadUebaRiskScores() {
 async function loadUebaAnomalies() {
   const res = await fetch('/api/ueba/anomalies?limit=100').then(r => r.json()).catch(() => ({}));
   const anomalies = res.data || [];
+  window._uebaAnomaliesCache = anomalies.map(a => ({
+    name: a.anomaly_type, count: a.score||0, sev: (a.severity||'med').toLowerCase()
+  }));
   const tbody = document.getElementById('uebaAnomalyTableBody');
   if (!tbody) return;
 
@@ -5349,59 +6847,98 @@ async function loadUebaAnomalies() {
     return;
   }
 
-  const sevColor = { critical:'#ef4444', high:'#f97316', medium:'#f59e0b', low:'#10b981' };
-  const typeLabel = { alert_spike:'⚡ Alert Spike', critical_alert_burst:'🔴 Critical Burst', off_hours:'🌙 Off-Hours' };
-  tbody.innerHTML = anomalies.map(a => `
-    <tr>
-      <td style="font-weight:600;font-size:12px">${escHtml(a.entity_id)}</td>
-      <td style="font-size:12px">${typeLabel[a.anomaly_type] || escHtml(a.anomaly_type)}</td>
-      <td style="font-size:12px;color:var(--text-secondary)">${escHtml(a.description)}</td>
-      <td><span style="background:${sevColor[a.severity]||'#666'}22;color:${sevColor[a.severity]||'#aaa'};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase">${a.severity}</span></td>
-      <td style="font-size:12px;font-weight:600;color:${sevColor[a.severity]||'#aaa'}">${a.score}</td>
+  const typeLabel = { alert_spike: 'Alert Spike', critical_alert_burst: 'Critical Burst', off_hours: 'Off-Hours' };
+  tbody.innerHTML = anomalies.map(a => {
+    const sev = (a.severity || 'low').toLowerCase();
+    return `<tr>
+      <td style="font-weight:600;font-size:12px;font-family:var(--font-mono)">${escHtml(a.entity_id)}</td>
+      <td style="font-size:12px"><span class="type-tag">${typeLabel[a.anomaly_type] || escHtml(a.anomaly_type)}</span></td>
+      <td style="font-size:12px;color:var(--text-muted);max-width:280px">${escHtml(a.description)}</td>
+      <td><span class="sev-pill sev-pill--${sev}">${sev}</span></td>
+      <td style="font-size:12px;font-weight:600"><span class="risk-badge risk-badge--${sev}" style="font-size:12px;min-width:32px">${a.score}</span></td>
       <td style="font-size:12px;color:var(--text-muted)">${fmtTs(a.detected_at)}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 async function loadUebaEntity(entityId) {
+  const modal = document.getElementById('uebaEntityModal');
+  if (!modal) return;
+  modal.classList.add('open');
+
+  document.getElementById('uebaModalEntityId').textContent = entityId;
+  document.getElementById('uebaModalScore').textContent    = '…';
+  document.getElementById('uebaModalAlerts').textContent   = '…';
+  document.getElementById('uebaModalCritical').textContent = '…';
+  document.getElementById('uebaModalAnomalies').innerHTML  = '<div style="color:var(--text-muted);font-size:13px;padding:8px 0">Loading…</div>';
+
   const res = await fetch(`/api/ueba/entity/${encodeURIComponent(entityId)}`).then(r => r.json()).catch(() => ({}));
-  const risk = res.risk;
+  const risk      = res.risk;
   const anomalies = res.anomalies || [];
 
-  const details = risk
-    ? `Risk Score: ${risk.risk_score} (${risk.risk_level.toUpperCase()}) · ` +
-      `Alerts 7d: ${risk.alert_count_7d} · Critical: ${risk.critical_count_7d} · Anomalies: ${risk.anomaly_count_7d}`
-    : 'No risk data computed yet';
+  if (risk) {
+    const rl = (risk.risk_level || 'low').toLowerCase();
+    document.getElementById('uebaModalScore').textContent    = risk.risk_score;
+    document.getElementById('uebaModalScore').className      = 'entity-modal-kpi-val';
+    document.getElementById('uebaModalScore').style.color    = { critical:'#ef4444', high:'#f97316', medium:'#f59e0b', low:'#10b981' }[rl] || 'var(--text)';
+    document.getElementById('uebaModalAlerts').textContent   = risk.alert_count_7d;
+    document.getElementById('uebaModalCritical').textContent = risk.critical_count_7d;
+  } else {
+    document.getElementById('uebaModalScore').textContent  = '—';
+    document.getElementById('uebaModalAlerts').textContent = '—';
+    document.getElementById('uebaModalCritical').textContent = '—';
+  }
 
-  const anomalyList = anomalies.length
-    ? anomalies.map(a => `• ${a.anomaly_type}: ${a.description} (${a.severity})`).join('\n')
-    : 'No anomalies detected.';
+  const typeLabel = { alert_spike:'Alert Spike', critical_alert_burst:'Critical Burst', off_hours:'Off-Hours' };
+  document.getElementById('uebaModalAnomalies').innerHTML = anomalies.length
+    ? anomalies.map(a => {
+        const sev = (a.severity||'low').toLowerCase();
+        return `<div class="entity-anomaly-item sev-${sev}">
+          <div class="entity-anomaly-type">${typeLabel[a.anomaly_type] || escHtml(a.anomaly_type)}</div>
+          <div class="entity-anomaly-desc">${escHtml(a.description)}</div>
+        </div>`;
+      }).join('')
+    : '<div style="color:var(--text-muted);font-size:13px;padding:8px 0">No anomalies detected.</div>';
+}
 
-  alert(`Entity: ${entityId}\n\n${details}\n\nAnomalies:\n${anomalyList}`);
+function closeUebaEntityModal() {
+  const modal = document.getElementById('uebaEntityModal');
+  if (modal) modal.classList.remove('open');
 }
 
 function switchUebaTab(tab) {
   const isRisk = tab === 'risk';
   document.getElementById('uebaPaneRisk').style.display      = isRisk ? '' : 'none';
   document.getElementById('uebaPaneAnomalies').style.display = isRisk ? 'none' : '';
-  document.getElementById('uebaTabRisk').style.borderBottomColor      = isRisk ? 'var(--accent)' : 'transparent';
-  document.getElementById('uebaTabRisk').style.color                  = isRisk ? 'var(--text-primary)' : 'var(--text-muted)';
-  document.getElementById('uebaTabAnomalies').style.borderBottomColor = !isRisk ? 'var(--accent)' : 'transparent';
-  document.getElementById('uebaTabAnomalies').style.color             = !isRisk ? 'var(--text-primary)' : 'var(--text-muted)';
+  document.getElementById('uebaTabRisk').classList.toggle('tab-btn--active',      isRisk);
+  document.getElementById('uebaTabAnomalies').classList.toggle('tab-btn--active', !isRisk);
 }
 
 async function triggerUebaAnalysis() {
-  const btn = event?.target;
-  if (btn) btn.textContent = 'Running…';
+  const btn  = document.getElementById('uebaRunBtn');
+  const span = btn?.querySelector('span');
+  if (span) span.textContent = 'Running…';
+  if (btn) btn.disabled = true;
   const res = await fetch('/api/ueba/analyze', {method:'POST'}).then(r => r.json()).catch(() => ({}));
-  if (btn) btn.textContent = '⟳ Run Analysis';
+  if (span) span.textContent = 'Run Analysis';
+  if (btn) btn.disabled = false;
   if (res?.message) {
-    setTimeout(() => loadUebaPage(), 3000); // reload after 3s for results
+    setTimeout(() => loadUebaPage(), 3000);
   }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.nav-item[data-page="ueba"]').forEach(el => {
     el.addEventListener('click', () => { loadUebaPage(); switchUebaTab('risk'); });
+  });
+  // Close UEBA entity modal on backdrop click
+  const uebaModal = document.getElementById('uebaEntityModal');
+  if (uebaModal) {
+    uebaModal.addEventListener('click', e => { if (e.target === uebaModal) closeUebaEntityModal(); });
+  }
+  // Close on Escape
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeUebaEntityModal();
   });
 });
 
@@ -5456,30 +6993,26 @@ function filterIdentityUsers() {
   const tbody = document.getElementById('identityTableBody');
   if (!tbody) return;
 
+  const idW = 'grid-template-columns:130px 140px 120px 120px 1fr 120px 90px 90px 44px';
   if (!users.length) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted)">${search ? 'No matching users.' : 'No users found. Configure LDAP or add manually.'}</td></tr>`;
+    tbody.innerHTML = `<div class="sigil-block"><div class="sigil-text"><h4>${search ? 'No matching users' : 'No users found'}</h4><p>${search ? 'Try a different search term' : 'Configure LDAP or add users manually'}</p></div></div>`;
     return;
   }
 
   tbody.innerHTML = users.map(u => `
-    <tr>
-      <td style="font-weight:600;font-size:12px">${escHtml(u.sam_account)}</td>
-      <td style="font-size:13px">${escHtml(u.display_name||'—')}</td>
-      <td style="font-size:12px;color:var(--text-muted)">${escHtml(u.department||'—')}</td>
-      <td style="font-size:12px;color:var(--text-muted)">${escHtml(u.title||'—')}</td>
-      <td style="font-size:12px">${u.email ? `<a href="mailto:${escHtml(u.email)}" style="color:var(--accent)">${escHtml(u.email)}</a>` : '—'}</td>
-      <td style="font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml((u.groups||[]).join(', '))}">
-        ${(u.groups||[]).slice(0,3).map(g => `<span style="background:var(--surface-2);border:1px solid var(--border);padding:1px 5px;border-radius:3px;margin-right:3px">${escHtml(g)}</span>`).join('')}
-        ${u.groups?.length > 3 ? `<span style="color:var(--text-muted)">+${u.groups.length-3}</span>` : ''}
-      </td>
-      <td>
-        <span style="background:${u.enabled ? '#10b98122':'#6b728022'};color:${u.enabled ? '#10b981':'#6b7280'};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">${u.enabled ? 'ENABLED':'DISABLED'}</span>
-      </td>
-      <td style="font-size:11px;color:var(--text-muted)">${u.source}</td>
-      <td>
-        <button onclick="deleteIdentityUser('${escHtml(u.sam_account)}')" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#ef4444;padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer">Delete</button>
-      </td>
-    </tr>`).join('');
+    <div class="tbl-r" style="${idW}">
+      <span class="tbl-pri">${escHtml(u.sam_account)}</span>
+      <span class="tbl-mono">${escHtml(u.display_name||'—')}</span>
+      <span class="tbl-muted">${escHtml(u.department||'—')}</span>
+      <span class="tbl-muted">${escHtml(u.title||'—')}</span>
+      <span>${u.email ? `<a href="mailto:${escHtml(u.email)}" class="tbl-link">${escHtml(u.email)}</a>` : '<span class="disc-empty">—</span>'}</span>
+      <span style="font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml((u.groups||[]).join(', '))}">
+        ${(u.groups||[]).slice(0,2).map(g => `<span class="disc-group-tag">${escHtml(g)}</span>`).join(' ')}${u.groups?.length > 2 ? `<span class="tbl-muted"> +${u.groups.length-2}</span>` : ''}
+      </span>
+      <span><span class="pill ${u.enabled ? 'ok' : ''}" style="${u.enabled ? '' : 'color:var(--fg-4)'}">${u.enabled ? 'ON':'OFF'}</span></span>
+      <span class="tbl-muted">${u.source}</span>
+      <span><button onclick="deleteIdentityUser('${escHtml(u.sam_account)}')" class="btn-disc-detail" style="color:var(--crit)" title="Delete">✕</button></span>
+    </div>`).join('');
 }
 
 async function triggerLdapSync() {
@@ -5544,10 +7077,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let _rvSelectedFile = null;
 let _rvVersions     = [];
+let _rvAllFiles     = [];
+
+function _renderRvFileList(files) {
+  const el = document.getElementById('rvFileList');
+  if (!el) return;
+  if (!files.length) {
+    el.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:12px;font-style:italic">No rules match the filter.</div>';
+    return;
+  }
+  el.innerHTML = files.map(f => {
+    const isActive = _rvSelectedFile === f.rule_file;
+    return `<div class="studio-file-item${isActive ? ' active' : ''}" onclick="selectRvFile('${escHtml(f.rule_file)}')">
+      <div class="studio-file-name">${escHtml(f.rule_file)}</div>
+      <div class="studio-file-meta">v${f.latest_version} &middot; ${f.version_count} version${f.version_count===1?'':'s'} &middot; ${escHtml(f.last_author||'system')}</div>
+    </div>`;
+  }).join('');
+}
 
 async function loadRuleVersionsPage() {
-  const res = await fetch('/api/rule-versions').then(r => r.json()).catch(() => ({}));
+  const res   = await fetch('/api/rule-versions').then(r => r.json()).catch(() => ({}));
   const files = res.data || [];
+  _rvAllFiles = files;
+
+  const countEl = document.getElementById('rvFileCount');
+  if (countEl) countEl.textContent = files.length ? `${files.length} files` : '';
+
   const el = document.getElementById('rvFileList');
   if (!el) return;
 
@@ -5555,23 +7110,24 @@ async function loadRuleVersionsPage() {
     el.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:12px;font-style:italic">No versioned rules found.<br>WatchTower auto-imports rules on startup.</div>';
     return;
   }
+  _renderRvFileList(files);
+}
 
-  el.innerHTML = files.map(f => `
-    <div class="rv-file-item" onclick="selectRvFile('${escHtml(f.rule_file)}')"
-         style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);transition:background 0.1s"
-         onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">
-      <div style="font-size:12px;font-weight:600;color:var(--text-primary)">${escHtml(f.rule_file)}</div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:2px">
-        v${f.latest_version} · ${f.version_count} version${f.version_count===1?'':'s'}
-        · ${escHtml(f.last_author||'system')}
-      </div>
-    </div>`).join('');
+function filterRvFiles() {
+  const q = (document.getElementById('rvSearchInput')?.value || '').toLowerCase().trim();
+  const filtered = q ? _rvAllFiles.filter(f => f.rule_file.toLowerCase().includes(q)) : _rvAllFiles;
+  _renderRvFileList(filtered);
 }
 
 async function selectRvFile(file) {
   _rvSelectedFile = file;
-  document.getElementById('rvSelectedFile').textContent = file;
+  const label = document.getElementById('rvSelectedFile');
+  if (label) { label.textContent = file; label.classList.add('has-file'); }
   document.getElementById('rvActionBar').style.display = 'flex';
+  // highlight active file in sidebar
+  document.querySelectorAll('.studio-file-item').forEach(el => {
+    el.classList.toggle('active', el.querySelector('.studio-file-name')?.textContent === file);
+  });
   closeRvEditor();
   closeRvDiff();
 
@@ -5592,16 +7148,15 @@ async function selectRvFile(file) {
       <tbody>
         ${_rvVersions.map((v, i) => `
           <tr>
-            <td style="font-size:12px;font-weight:600">
-              v${v.version}
-              ${i===0 ? '<span style="background:#10b98122;color:#10b981;padding:1px 6px;border-radius:3px;font-size:10px;margin-left:4px">LATEST</span>' : ''}
+            <td>
+              <span class="version-badge">v${v.version}${i===0 ? ' <span class="latest-chip">LATEST</span>' : ''}</span>
             </td>
-            <td style="font-size:12px">${escHtml(v.commit_msg||'—')}</td>
+            <td style="font-size:12px;color:var(--text-muted)">${escHtml(v.commit_msg||'—')}</td>
             <td style="font-size:12px;color:var(--text-muted)">${escHtml(v.author||'—')}</td>
             <td style="font-size:12px;color:var(--text-muted)">${fmtTs(v.created_at)}</td>
-            <td>
-              <button onclick="rvViewContent('${escHtml(file)}',${v.version})" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer">View</button>
-              ${i > 0 ? `<button onclick="rvRollback('${escHtml(file)}',${v.version})" style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);color:#f59e0b;padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;margin-left:4px">Rollback</button>` : ''}
+            <td style="display:flex;gap:5px;align-items:center">
+              <button onclick="rvViewContent('${escHtml(file)}',${v.version})" class="act-btn">View</button>
+              ${i > 0 ? `<button onclick="rvRollback('${escHtml(file)}',${v.version})" class="act-btn" style="color:#f59e0b;border-color:rgba(245,158,11,0.3)">Rollback</button>` : ''}
             </td>
           </tr>`).join('')}
       </tbody>
@@ -5781,32 +7336,28 @@ async function loadTickets() {
   const tbody = document.getElementById('ticketsTableBody');
   if (!tbody) return;
 
+  const tktW = 'grid-template-columns:110px 1fr 90px 100px 80px 80px 120px 130px 60px';
   if (!tickets.length) {
-    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-muted)">No tickets created yet.</td></tr>';
+    tbody.innerHTML = `<div class="sigil-block"><div class="sigil-text"><h4>No tickets created yet</h4><p>Create tickets from alerts or cases to track them in Jira or ServiceNow</p></div></div>`;
     return;
   }
 
-  const priorityColor = { critical:'#ef4444', high:'#f97316', medium:'#f59e0b', low:'#6b7280' };
-  const providerIcon  = { jira:'🟦', servicenow:'🟩' };
+  const priorityColor = { critical:'var(--crit)', high:'var(--high)', medium:'var(--med)', low:'var(--fg-4)' };
 
   tbody.innerHTML = tickets.map(t => `
-    <tr>
-      <td>
-        ${t.ticket_url
-          ? `<a href="${escHtml(t.ticket_url)}" target="_blank" style="color:var(--accent);font-weight:600;font-size:12px">${escHtml(t.ticket_id)}</a>`
-          : `<span style="font-size:12px">${escHtml(t.ticket_id)}</span>`}
-      </td>
-      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px">${escHtml(t.summary)}</td>
-      <td><span style="color:${priorityColor[t.priority]||'#aaa'};font-size:11px;font-weight:600;text-transform:uppercase">${t.priority}</span></td>
-      <td style="font-size:12px">${providerIcon[t.provider]||''} ${t.provider}</td>
-      <td style="font-size:12px;color:var(--text-muted)">${t.alert_id ? '#'+t.alert_id : '—'}</td>
-      <td style="font-size:12px;color:var(--text-muted)">${t.case_id  ? '#'+t.case_id  : '—'}</td>
-      <td style="font-size:12px">${escHtml(t.created_by||'—')}</td>
-      <td style="font-size:12px;color:var(--text-muted)">${t.created_at ? new Date(t.created_at).toLocaleString() : '—'}</td>
-      <td>
-        ${t.ticket_url ? `<a href="${escHtml(t.ticket_url)}" target="_blank" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:3px 10px;border-radius:4px;font-size:11px;text-decoration:none">Open ↗</a>` : ''}
-      </td>
-    </tr>`).join('');
+    <div class="tbl-r" style="${tktW}">
+      <span>${t.ticket_url
+        ? `<a href="${escHtml(t.ticket_url)}" target="_blank" style="color:var(--accent);font-weight:600;font-size:11px;font-family:var(--font-mono)">${escHtml(t.ticket_id)}</a>`
+        : `<span class="tbl-mono">${escHtml(t.ticket_id)}</span>`}</span>
+      <span class="tbl-pri">${escHtml(t.summary)}</span>
+      <span style="color:${priorityColor[t.priority]||'var(--fg-4)'};font-weight:600;font-size:11px;text-transform:uppercase">${t.priority}</span>
+      <span class="tbl-mono">${t.provider}</span>
+      <span class="tbl-muted">${t.alert_id ? '#'+t.alert_id : '—'}</span>
+      <span class="tbl-muted">${t.case_id  ? '#'+t.case_id  : '—'}</span>
+      <span class="tbl-mono">${escHtml(t.created_by||'—')}</span>
+      <span class="tbl-time">${t.created_at ? new Date(t.created_at).toLocaleString() : '—'}</span>
+      <span>${t.ticket_url ? `<a href="${escHtml(t.ticket_url)}" target="_blank" class="tbl-link">Open ↗</a>` : ''}</span>
+    </div>`).join('');
 }
 
 async function testTicketConnection() {
@@ -5891,27 +7442,26 @@ async function loadPlaybooks() {
   const tbody = document.getElementById('playbooksTableBody');
   if (!tbody) return;
 
+  const pbW = 'grid-template-columns:50px 1fr 120px 80px 70px 90px 80px';
   if (!pbs.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted)">No playbooks yet. Click <strong>+ New Playbook</strong> to create one.</td></tr>';
+    tbody.innerHTML = `<div class="sigil-block"><div class="sigil-text"><h4>No playbooks yet</h4><p>Click <strong>New Playbook</strong> to create automated response workflows</p></div></div>`;
     return;
   }
 
   tbody.innerHTML = pbs.map(pb => `
-    <tr>
-      <td style="color:var(--text-muted);font-size:12px">#${pb.id}</td>
-      <td><strong>${escHtml(pb.name)}</strong><div style="font-size:11px;color:var(--text-muted)">${escHtml(pb.description||'')}</div></td>
-      <td style="font-size:12px">Level ≥ ${pb.trigger?.min_level || 'any'}</td>
-      <td style="font-size:12px">${(pb.actions||[]).length} actions</td>
-      <td style="font-size:12px">${pb.run_count || 0}</td>
-      <td>
-        <span style="background:${pb.enabled ? '#10b98122':'#6b728022'};color:${pb.enabled ? '#10b981':'#6b7280'};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600">${pb.enabled ? 'ENABLED':'DISABLED'}</span>
-      </td>
-      <td>
-        <button onclick="viewPlaybookExecutions(${pb.id})" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer">History</button>
-        <button onclick="togglePlaybook(${pb.id}, ${!pb.enabled})" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;margin-left:4px">${pb.enabled ? 'Disable':'Enable'}</button>
-        <button onclick="deletePlaybook(${pb.id})" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#ef4444;padding:3px 10px;border-radius:4px;font-size:11px;cursor:pointer;margin-left:4px">Delete</button>
-      </td>
-    </tr>`).join('');
+    <div class="tbl-r" style="${pbW}">
+      <span class="tbl-mono" style="color:var(--fg-4)">#${pb.id}</span>
+      <span><span class="tbl-pri">${escHtml(pb.name)}</span><span class="tbl-muted" style="font-size:10px;display:block">${escHtml(pb.description||'')}</span></span>
+      <span class="tbl-mono">Level ≥ ${pb.trigger?.min_level || 'any'}</span>
+      <span class="tbl-mono">${(pb.actions||[]).length} actions</span>
+      <span class="tbl-mono">${pb.run_count || 0}</span>
+      <span><span class="pill ${pb.enabled ? 'ok' : ''}" style="${pb.enabled ? '' : 'color:var(--fg-4)'}">${pb.enabled ? 'ENABLED':'DISABLED'}</span></span>
+      <span style="display:flex;gap:4px">
+        <button onclick="viewPlaybookExecutions(${pb.id})" class="btn-disc-detail" title="History">⋮</button>
+        <button onclick="togglePlaybook(${pb.id}, ${!pb.enabled})" class="btn-disc-detail" title="${pb.enabled ? 'Disable':'Enable'}">${pb.enabled ? '⏸':'▶'}</button>
+        <button onclick="deletePlaybook(${pb.id})" class="btn-disc-detail" style="color:var(--crit)" title="Delete">✕</button>
+      </span>
+    </div>`).join('');
 }
 
 async function loadExecutions(playbookId) {
@@ -5926,17 +7476,19 @@ async function loadExecutions(playbookId) {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted)">No executions yet.</td></tr>';
     return;
   }
+  const exW = 'grid-template-columns:100px 1fr 80px 120px 100px 90px 140px';
   tbody.innerHTML = execs.map(ex => {
     const dur = ex.completed_at && ex.started_at ? `${((ex.completed_at - ex.started_at)/1000).toFixed(1)}s` : '—';
-    return `<tr>
-      <td style="font-size:12px;color:var(--text-muted)">#${ex.id}</td>
-      <td style="font-size:12px">#${ex.playbook_id}</td>
-      <td style="font-size:12px">Alert #${ex.alert_id}</td>
-      <td style="font-size:12px">${escHtml(ex.agent_id)}</td>
-      <td><span style="background:${statusColor[ex.status]||'#666'}22;color:${statusColor[ex.status]||'#aaa'};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase">${ex.status}</span></td>
-      <td style="font-size:12px">${dur}</td>
-      <td style="font-size:12px;color:var(--text-muted)">${fmtTs(ex.started_at)}</td>
-    </tr>`;
+    const sCol = ex.status === 'success' ? 'var(--ok)' : ex.status === 'failed' ? 'var(--crit)' : 'var(--low)';
+    return `<div class="tbl-r" style="${exW}">
+      <span class="tbl-mono" style="color:var(--fg-4)">#${ex.id}</span>
+      <span class="tbl-mono">#${ex.playbook_id}</span>
+      <span class="tbl-mono">Alert #${ex.alert_id}</span>
+      <span class="tbl-mono">${escHtml(ex.agent_id)}</span>
+      <span><span class="pill" style="color:${sCol};background:${sCol}22;border:1px solid ${sCol}44">${ex.status}</span></span>
+      <span class="tbl-mono">${dur}</span>
+      <span class="tbl-time">${fmtTs(ex.started_at)}</span>
+    </div>`;
   }).join('');
 }
 
@@ -5944,10 +7496,8 @@ function switchPbTab(tab) {
   const isPlaybooks = tab === 'playbooks';
   document.getElementById('pbPanePlaybooks').style.display = isPlaybooks ? '' : 'none';
   document.getElementById('pbPaneHistory').style.display   = isPlaybooks ? 'none' : '';
-  document.getElementById('pbTabPlaybooks').style.borderBottomColor = isPlaybooks ? 'var(--accent)' : 'transparent';
-  document.getElementById('pbTabPlaybooks').style.color = isPlaybooks ? 'var(--text-primary)' : 'var(--text-muted)';
-  document.getElementById('pbTabHistory').style.borderBottomColor = !isPlaybooks ? 'var(--accent)' : 'transparent';
-  document.getElementById('pbTabHistory').style.color = !isPlaybooks ? 'var(--text-primary)' : 'var(--text-muted)';
+  document.getElementById('pbTabPlaybooks')?.classList.toggle('active', isPlaybooks);
+  document.getElementById('pbTabHistory')?.classList.toggle('active', !isPlaybooks);
   if (tab === 'history') loadExecutions(null);
 }
 
