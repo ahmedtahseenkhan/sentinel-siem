@@ -72,8 +72,8 @@ func (c *Client) Connect(ctx context.Context) error {
 		transport,
 		grpc.WithDefaultCallOptions(grpc.UseCompressor("gzip")),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                10 * time.Second,
-			Timeout:             5 * time.Second,
+			Time:                60 * time.Second,
+			Timeout:             10 * time.Second,
 			PermitWithoutStream: true,
 		}),
 	}

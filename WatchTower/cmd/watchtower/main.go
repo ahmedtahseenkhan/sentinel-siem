@@ -194,8 +194,12 @@ func main() {
 	idMgr := identity.NewManager(cfg.Identity, st, logger)
 	go idMgr.Start(ctx)
 
+	// UEBA event collector (wired into engine for raw event behavioral analysis)
+	uebaCollector := ueba.NewEventCollector()
+	eng.SetUebaHook(uebaCollector)
+
 	// UEBA analyzer (runs hourly)
-	uebaAnalyzer := ueba.NewAnalyzer(st, logger)
+	uebaAnalyzer := ueba.NewAnalyzer(st, logger, uebaCollector)
 	go uebaAnalyzer.Start(ctx)
 
 	// API server

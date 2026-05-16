@@ -3,9 +3,12 @@
 // CDB lists so that existing detection rules can match malicious indicators.
 //
 // Supported sources (configured via config.SourceConfig.Type):
-//   - "abuseipdb"  — top abusive IPs (free API with key)
-//   - "otx"        — OTX AlienVault IP and domain indicators
-//   - "plaintext"  — custom HTTP text feed, one IOC per line
+//   - "abuseipdb"     — top abusive IPs (free API with key)
+//   - "otx"           — OTX AlienVault IP and domain indicators
+//   - "plaintext"     — custom HTTP text feed, one IOC per line
+//   - "feodotracker"  — abuse.ch botnet C2 IP blocklist (free, no key)
+//   - "abusech_hash"  — abuse.ch MalwareBazaar SHA256 hashes (free, no key)
+//   - "urlhaus"       — abuse.ch URLhaus malicious domains (free, no key)
 //
 // A configurable interval (default 6h) triggers each enabled source; failures
 // are logged but never fatal.
@@ -106,6 +109,12 @@ func (m *Manager) ingest(ctx context.Context, src config.SourceConfig) error {
 		entries, err = m.fetchOTX(ctx, src)
 	case "plaintext":
 		entries, err = m.fetchPlaintext(ctx, src)
+	case "feodotracker":
+		entries, err = m.fetchFeodoTracker(ctx, src)
+	case "abusech_hash":
+		entries, err = m.fetchAbusechHash(ctx, src)
+	case "urlhaus":
+		entries, err = m.fetchURLhaus(ctx, src)
 	default:
 		return fmt.Errorf("unknown source type: %s", src.Type)
 	}
@@ -298,4 +307,152 @@ func (m *Manager) fetchPlaintext(ctx context.Context, src config.SourceConfig) (
 		}
 	}
 	return entries, scanner.Err()
+}
+
+// ── Feodo Tracker ─────────────────────────────────────────────────────────────
+// abuse.ch botnet C2 IP blocklist — free, no API key required.
+// https://feodotracker.abuse.ch/downloads/ipblocklist.txt
+
+func (m *Manager) fetchFeodoTracker(ctx context.Context, src config.SourceConfig) (map[string]string, error) {
+	url := src.URL
+	if url == "" {
+		url = "https://feodotracker.abuse.ch/downloads/ipblocklist.txt"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("feodotracker request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("feodotracker returned %d", resp.StatusCode)
+	}
+
+	value := src.Value
+	if value == "" {
+		value = "c2"
+	}
+
+	entries := map[string]string{}
+	scanner := bufio.NewScanner(io.LimitReader(resp.Body, 8*1024*1024))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if net.ParseIP(line) != nil {
+			entries[line] = value
+		}
+	}
+	return entries, scanner.Err()
+}
+
+// ── abuse.ch MalwareBazaar SHA256 hashes ──────────────────────────────────────
+// Recent SHA256 hashes of malware samples — free, no API key required.
+// https://bazaar.abuse.ch/export/txt/sha256/recent/
+
+func (m *Manager) fetchAbusechHash(ctx context.Context, src config.SourceConfig) (map[string]string, error) {
+	url := src.URL
+	if url == "" {
+		url = "https://bazaar.abuse.ch/export/txt/sha256/recent/"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("abusech_hash request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("abusech_hash returned %d", resp.StatusCode)
+	}
+
+	value := src.Value
+	if value == "" {
+		value = "malware"
+	}
+
+	entries := map[string]string{}
+	scanner := bufio.NewScanner(io.LimitReader(resp.Body, 32*1024*1024))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// SHA256 hashes are exactly 64 hex characters
+		if len(line) == 64 {
+			entries[strings.ToLower(line)] = value
+		}
+	}
+	return entries, scanner.Err()
+}
+
+// ── URLhaus malicious domains ─────────────────────────────────────────────────
+// abuse.ch URLhaus — malicious URLs; we extract unique hostnames.
+// https://urlhaus.abuse.ch/downloads/text/
+
+func (m *Manager) fetchURLhaus(ctx context.Context, src config.SourceConfig) (map[string]string, error) {
+	url := src.URL
+	if url == "" {
+		url = "https://urlhaus.abuse.ch/downloads/text/"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("urlhaus request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("urlhaus returned %d", resp.StatusCode)
+	}
+
+	value := src.Value
+	if value == "" {
+		value = "malicious"
+	}
+
+	entries := map[string]string{}
+	scanner := bufio.NewScanner(io.LimitReader(resp.Body, 32*1024*1024))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Extract hostname from URL (http://hostname/path or https://hostname/path)
+		host := extractHostname(line)
+		if host != "" {
+			entries[host] = value
+		}
+	}
+	return entries, scanner.Err()
+}
+
+func extractHostname(rawURL string) string {
+	if !strings.Contains(rawURL, "://") {
+		return ""
+	}
+	parts := strings.SplitN(rawURL, "://", 2)
+	if len(parts) < 2 {
+		return ""
+	}
+	host := parts[1]
+	if idx := strings.IndexByte(host, '/'); idx != -1 {
+		host = host[:idx]
+	}
+	if idx := strings.IndexByte(host, ':'); idx != -1 {
+		host = host[:idx]
+	}
+	host = strings.TrimSpace(host)
+	if host == "" || strings.ContainsAny(host, " \t") {
+		return ""
+	}
+	return strings.ToLower(host)
 }

@@ -86,6 +86,43 @@ type CollectorsConfig struct {
 	Syscollector   SyscollectorConfig            `yaml:"syscollector"`
 	Registry       RegistryCollectorConfig       `yaml:"registry"`
 	Osquery        OsqueryCollectorConfig        `yaml:"osquery"`
+	Cloud          CloudCollectorConfig          `yaml:"cloud"`
+}
+
+// CloudCollectorConfig for cloud provider log ingestion.
+type CloudCollectorConfig struct {
+	Enabled  bool              `yaml:"enabled"`
+	Interval string            `yaml:"interval"`
+	AWS      AWSCloudConfig    `yaml:"aws"`
+	Azure    AzureCloudConfig  `yaml:"azure"`
+	GCP      GCPCloudConfig    `yaml:"gcp"`
+}
+
+// AWSCloudConfig for AWS CloudTrail and GuardDuty ingestion.
+type AWSCloudConfig struct {
+	Enabled         bool   `yaml:"enabled"`
+	Region          string `yaml:"region"`
+	AccessKeyID     string `yaml:"access_key_id"`
+	SecretAccessKey string `yaml:"secret_access_key"`
+	CloudTrailBucket string `yaml:"cloudtrail_bucket"` // S3 bucket for CloudTrail logs
+	GuardDutyRegion  string `yaml:"guardduty_region"`
+}
+
+// AzureCloudConfig for Azure Activity Log ingestion.
+type AzureCloudConfig struct {
+	Enabled        bool   `yaml:"enabled"`
+	TenantID       string `yaml:"tenant_id"`
+	ClientID       string `yaml:"client_id"`
+	ClientSecret   string `yaml:"client_secret"`
+	SubscriptionID string `yaml:"subscription_id"`
+}
+
+// GCPCloudConfig for GCP Cloud Audit Log ingestion.
+type GCPCloudConfig struct {
+	Enabled         bool   `yaml:"enabled"`
+	ProjectID       string `yaml:"project_id"`
+	CredentialsFile string `yaml:"credentials_file"`
+	PubSubTopic     string `yaml:"pubsub_topic"`
 }
 
 // SystemCollectorConfig for system metrics.
@@ -206,6 +243,8 @@ type SyscollectorConfig struct {
 	Ports     bool   `yaml:"ports"`
 	NetIfaces bool   `yaml:"network_interfaces"`
 	Users     bool   `yaml:"users"`
+	Services  bool   `yaml:"services"`
+	Hotfixes  bool   `yaml:"hotfixes"`
 }
 
 // RegistryCollectorConfig for Windows Registry monitoring.

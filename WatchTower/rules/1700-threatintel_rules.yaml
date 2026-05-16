@@ -1,0 +1,145 @@
+# WatchTower - Threat Intelligence IOC Matching Rules
+# Rule IDs: 9100-9109
+# Matches events against CDB lists populated by the threat intel feed manager.
+# Lists used: ioc_ips, ioc_hashes, ioc_domains
+
+rules:
+  - id: 9100
+    level: 12
+    description: "Outbound connection to a known malicious IP address"
+    groups:
+      - "threat_intel"
+      - "ioc"
+      - "network"
+      - "high_severity"
+    match:
+      type: "network.connection"
+      fields:
+        status:
+          value: "ESTABLISHED"
+    cdb_lookup:
+      list: "ioc_ips"
+      field: "raddr"
+    mitre:
+      - tactic_id: "TA0011"
+        tactic_name: "Command and Control"
+        technique_id: "T1071"
+        technique_name: "Application Layer Protocol"
+    alert:
+      title: "Threat Intel: Connection to known malicious IP"
+    enabled: true
+
+  - id: 9101
+    level: 13
+    description: "Connection to known botnet C2 IP address"
+    groups:
+      - "threat_intel"
+      - "ioc"
+      - "network"
+      - "c2"
+      - "high_severity"
+    match:
+      type: "network.connection"
+      fields: {}
+    cdb_lookup:
+      list: "ioc_ips"
+      field: "raddr"
+    mitre:
+      - tactic_id: "TA0011"
+        tactic_name: "Command and Control"
+        technique_id: "T1071.001"
+        technique_name: "Application Layer Protocol: Web Protocols"
+    alert:
+      title: "Threat Intel: Botnet C2 IP contact detected"
+    enabled: true
+
+  - id: 9102
+    level: 15
+    description: "Known malware binary executed — SHA256 hash matched IOC list"
+    groups:
+      - "threat_intel"
+      - "ioc"
+      - "malware"
+      - "critical"
+    match:
+      type: "process.new"
+      fields: {}
+    cdb_lookup:
+      list: "ioc_hashes"
+      field: "sha256"
+    mitre:
+      - tactic_id: "TA0002"
+        tactic_name: "Execution"
+        technique_id: "T1204"
+        technique_name: "User Execution"
+    alert:
+      title: "Threat Intel: Known malware binary executed"
+    enabled: true
+
+  - id: 9103
+    level: 12
+    description: "Process binary path matches known malicious hash IOC"
+    groups:
+      - "threat_intel"
+      - "ioc"
+      - "malware"
+      - "high_severity"
+    match:
+      type: "process.new"
+      fields: {}
+    cdb_lookup:
+      list: "ioc_hashes"
+      field: "exe"
+    mitre:
+      - tactic_id: "TA0002"
+        tactic_name: "Execution"
+        technique_id: "T1059"
+        technique_name: "Command and Scripting Interpreter"
+    alert:
+      title: "Threat Intel: Process matches known malicious hash"
+    enabled: true
+
+  - id: 9104
+    level: 11
+    description: "Process spawned with command line referencing a known malicious domain"
+    groups:
+      - "threat_intel"
+      - "ioc"
+      - "network"
+      - "high_severity"
+    match:
+      type: "process.new"
+      fields: {}
+    cdb_lookup:
+      list: "ioc_domains"
+      field: "cmdline"
+    mitre:
+      - tactic_id: "TA0011"
+        tactic_name: "Command and Control"
+        technique_id: "T1071.001"
+        technique_name: "Application Layer Protocol: Web Protocols"
+    alert:
+      title: "Threat Intel: Process references known malicious domain"
+    enabled: true
+
+  - id: 9105
+    level: 10
+    description: "Network connection destination hostname matches known malicious domain"
+    groups:
+      - "threat_intel"
+      - "ioc"
+      - "network"
+    match:
+      type: "network.connection"
+      fields: {}
+    cdb_lookup:
+      list: "ioc_domains"
+      field: "raddr"
+    mitre:
+      - tactic_id: "TA0011"
+        tactic_name: "Command and Control"
+        technique_id: "T1071"
+        technique_name: "Application Layer Protocol"
+    alert:
+      title: "Threat Intel: Connection to known malicious domain"
+    enabled: true

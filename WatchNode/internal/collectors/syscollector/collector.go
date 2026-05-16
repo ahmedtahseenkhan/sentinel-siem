@@ -87,6 +87,12 @@ func (c *Collector) collect() {
 	if c.cfg.Users {
 		c.collectUsers(ts)
 	}
+	if c.cfg.Services {
+		c.collectServices(ts)
+	}
+	if c.cfg.Hotfixes {
+		c.collectHotfixes(ts)
+	}
 }
 
 func (c *Collector) collectHardware(ts time.Time) {

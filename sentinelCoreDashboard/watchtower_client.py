@@ -1843,3 +1843,212 @@ def get_inventory_users_list(size=15, offset=0, user_name=None, group=None, shel
         return {"hits": rows, "total": total_val}
     except Exception as e:
         return {"hits": [], "total": 0, "error": str(e)}
+
+
+# ── Services Inventory ────────────────────────────────────────────────────────
+
+def get_inventory_services_summary(cluster_name=None):
+    body = {
+        "size": 0,
+        "query": {"term": {"event_type": "syscollector.services"}},
+        "aggs": {
+            "by_state":      {"terms": {"field": "state.keyword",      "size": 10}},
+            "by_start_type": {"terms": {"field": "start_type.keyword", "size": 10}},
+            "top_services":  {"terms": {"field": "name.keyword",       "size": 10}},
+        },
+    }
+    try:
+        res = indexer_search(SYSTEM_INDEX, body)
+        aggs = res.get("aggregations") or {}
+        total = (res.get("hits") or {}).get("total", {})
+        total_val = total.get("value", 0) if isinstance(total, dict) else (total or 0)
+        return {
+            "total": total_val,
+            "by_state":      [{"key": b["key"], "count": b["doc_count"]} for b in aggs.get("by_state", {}).get("buckets", [])],
+            "by_start_type": [{"key": b["key"], "count": b["doc_count"]} for b in aggs.get("by_start_type", {}).get("buckets", [])],
+            "top_services":  [{"key": b["key"], "count": b["doc_count"]} for b in aggs.get("top_services", {}).get("buckets", [])],
+        }
+    except Exception as e:
+        return {"total": 0, "by_state": [], "by_start_type": [], "top_services": [], "error": str(e)}
+
+
+def get_inventory_services_list(size=15, offset=0, service_name=None, state=None, agent_name=None, cluster_name=None):
+    must = [{"term": {"event_type": "syscollector.services"}}]
+    if service_name:
+        must.append({"match": {"name": service_name}})
+    if state:
+        must.append({"term": {"state.keyword": state}})
+    if agent_name:
+        must.append({"term": {"agent_id": agent_name}})
+    body = {
+        "size": size, "from": offset,
+        "query": {"bool": {"must": must}},
+        "sort": [{"timestamp": {"order": "desc", "unmapped_type": "date"}}],
+    }
+    try:
+        res = indexer_search(SYSTEM_INDEX, body)
+        hits = (res.get("hits") or {}).get("hits", [])
+        total = (res.get("hits") or {}).get("total", {})
+        total_val = total.get("value", 0) if isinstance(total, dict) else (total or 0)
+        rows = [{"agent_name": h["_source"].get("agent_name") or h["_source"].get("agent_id", ""),
+                 "agent_id": h["_source"].get("agent_id"), "name": h["_source"].get("name", ""),
+                 "display_name": h["_source"].get("display_name", ""), "state": h["_source"].get("state", ""),
+                 "start_type": h["_source"].get("start_type", ""), "pid": h["_source"].get("pid"),
+                 "binary_path": h["_source"].get("binary_path", ""),
+                 "description": h["_source"].get("description", "")} for h in hits]
+        return {"hits": rows, "total": total_val}
+    except Exception as e:
+        return {"hits": [], "total": 0, "error": str(e)}
+
+
+# ── Hotfixes / Patch Status ────────────────────────────────────────────────────
+
+def get_inventory_hotfixes_summary(cluster_name=None):
+    body = {
+        "size": 0,
+        "query": {"term": {"event_type": "syscollector.hotfixes"}},
+        "aggs": {"by_description": {"terms": {"field": "description.keyword", "size": 10}}},
+    }
+    try:
+        res = indexer_search(SYSTEM_INDEX, body)
+        aggs = res.get("aggregations") or {}
+        total = (res.get("hits") or {}).get("total", {})
+        total_val = total.get("value", 0) if isinstance(total, dict) else (total or 0)
+        return {"total": total_val,
+                "by_description": [{"key": b["key"], "count": b["doc_count"]} for b in aggs.get("by_description", {}).get("buckets", [])]}
+    except Exception as e:
+        return {"total": 0, "by_description": [], "error": str(e)}
+
+
+def get_inventory_hotfixes_list(size=15, offset=0, hotfix_id=None, agent_name=None, cluster_name=None):
+    must = [{"term": {"event_type": "syscollector.hotfixes"}}]
+    if hotfix_id:
+        must.append({"match": {"hotfix_id": hotfix_id}})
+    if agent_name:
+        must.append({"term": {"agent_id": agent_name}})
+    body = {
+        "size": size, "from": offset,
+        "query": {"bool": {"must": must}},
+        "sort": [{"installed_on": {"order": "desc", "unmapped_type": "date"}}],
+    }
+    try:
+        res = indexer_search(SYSTEM_INDEX, body)
+        hits = (res.get("hits") or {}).get("hits", [])
+        total = (res.get("hits") or {}).get("total", {})
+        total_val = total.get("value", 0) if isinstance(total, dict) else (total or 0)
+        rows = [{"agent_name": h["_source"].get("agent_name") or h["_source"].get("agent_id", ""),
+                 "agent_id": h["_source"].get("agent_id"), "hotfix_id": h["_source"].get("hotfix_id", ""),
+                 "installed_on": h["_source"].get("installed_on", ""),
+                 "description": h["_source"].get("description", ""),
+                 "installed_by": h["_source"].get("installed_by", "")} for h in hits]
+        return {"hits": rows, "total": total_val}
+    except Exception as e:
+        return {"hits": [], "total": 0, "error": str(e)}
+
+
+# ── Ports / Network Services Inventory ────────────────────────────────────────
+
+def get_inventory_ports_summary(cluster_name=None):
+    body = {
+        "size": 0,
+        "query": {"term": {"event_type": "syscollector.ports"}},
+        "aggs": {
+            "by_protocol": {"terms": {"field": "protocol.keyword", "size": 5}},
+            "by_state":    {"terms": {"field": "state.keyword",    "size": 10}},
+            "top_ports":   {"terms": {"field": "local_port",       "size": 15}},
+        },
+    }
+    try:
+        res = indexer_search(SYSTEM_INDEX, body)
+        aggs = res.get("aggregations") or {}
+        total = (res.get("hits") or {}).get("total", {})
+        total_val = total.get("value", 0) if isinstance(total, dict) else (total or 0)
+        return {
+            "total": total_val,
+            "by_protocol": [{"key": b["key"], "count": b["doc_count"]} for b in aggs.get("by_protocol", {}).get("buckets", [])],
+            "by_state":    [{"key": b["key"], "count": b["doc_count"]} for b in aggs.get("by_state", {}).get("buckets", [])],
+            "top_ports":   [{"key": b["key"], "count": b["doc_count"]} for b in aggs.get("top_ports", {}).get("buckets", [])],
+        }
+    except Exception as e:
+        return {"total": 0, "by_protocol": [], "by_state": [], "top_ports": [], "error": str(e)}
+
+
+def get_inventory_ports_list(size=15, offset=0, protocol=None, state=None, agent_name=None, cluster_name=None):
+    must = [{"term": {"event_type": "syscollector.ports"}}]
+    if protocol:
+        must.append({"term": {"protocol.keyword": protocol}})
+    if state:
+        must.append({"term": {"state.keyword": state}})
+    if agent_name:
+        must.append({"term": {"agent_id": agent_name}})
+    body = {
+        "size": size, "from": offset,
+        "query": {"bool": {"must": must}},
+        "sort": [{"timestamp": {"order": "desc", "unmapped_type": "date"}}],
+    }
+    try:
+        res = indexer_search(SYSTEM_INDEX, body)
+        hits = (res.get("hits") or {}).get("hits", [])
+        total = (res.get("hits") or {}).get("total", {})
+        total_val = total.get("value", 0) if isinstance(total, dict) else (total or 0)
+        rows = [{"agent_name": h["_source"].get("agent_name") or h["_source"].get("agent_id", ""),
+                 "agent_id": h["_source"].get("agent_id"), "protocol": h["_source"].get("protocol", ""),
+                 "local_ip": h["_source"].get("local_ip", ""), "local_port": h["_source"].get("local_port"),
+                 "state": h["_source"].get("state", ""), "pid": h["_source"].get("pid")} for h in hits]
+        return {"hits": rows, "total": total_val}
+    except Exception as e:
+        return {"hits": [], "total": 0, "error": str(e)}
+
+
+# ── Threat Intelligence / IOC ─────────────────────────────────────────────────
+
+def get_threatintel_summary():
+    body = {
+        "size": 0,
+        "query": {"bool": {"must": [{"terms": {"rule_groups": ["threat_intel", "ioc"]}}]}},
+        "aggs": {
+            "by_ioc_type": {"terms": {"field": "rule_groups.keyword", "size": 10}},
+            "by_agent":    {"terms": {"field": "agent_id.keyword",    "size": 10}},
+            "over_time":   {"date_histogram": {"field": "timestamp", "fixed_interval": "1h", "min_doc_count": 0}},
+        },
+    }
+    try:
+        res = indexer_search(ALERTS_INDEX, body)
+        aggs = res.get("aggregations") or {}
+        total = (res.get("hits") or {}).get("total", {})
+        total_val = total.get("value", 0) if isinstance(total, dict) else (total or 0)
+        return {
+            "total_ioc_hits": total_val,
+            "by_ioc_type":   [{"key": b["key"], "count": b["doc_count"]} for b in aggs.get("by_ioc_type", {}).get("buckets", [])],
+            "by_agent":      [{"key": b["key"], "count": b["doc_count"]} for b in aggs.get("by_agent", {}).get("buckets", [])],
+            "over_time":     [{"key": b["key"], "count": b["doc_count"]} for b in aggs.get("over_time", {}).get("buckets", [])],
+        }
+    except Exception as e:
+        return {"total_ioc_hits": 0, "by_ioc_type": [], "by_agent": [], "over_time": [], "error": str(e)}
+
+
+def get_threatintel_hits(size=20, offset=0, ioc_type=None, agent_name=None):
+    must = [{"terms": {"rule_groups": ["threat_intel", "ioc"]}}]
+    if ioc_type:
+        must.append({"term": {"rule_groups.keyword": ioc_type}})
+    if agent_name:
+        must.append({"term": {"agent_id": agent_name}})
+    body = {
+        "size": size, "from": offset,
+        "query": {"bool": {"must": must}},
+        "sort": [{"timestamp": {"order": "desc", "unmapped_type": "date"}}],
+    }
+    try:
+        res = indexer_search(ALERTS_INDEX, body)
+        hits = (res.get("hits") or {}).get("hits", [])
+        total = (res.get("hits") or {}).get("total", {})
+        total_val = total.get("value", 0) if isinstance(total, dict) else (total or 0)
+        rows = [{"agent_name": h["_source"].get("agent_name") or h["_source"].get("agent_id", ""),
+                 "agent_id": h["_source"].get("agent_id"), "title": h["_source"].get("title", ""),
+                 "rule_id": h["_source"].get("rule_id"), "level": h["_source"].get("level"),
+                 "rule_groups": h["_source"].get("rule_groups", []),
+                 "timestamp": h["_source"].get("timestamp"),
+                 "description": h["_source"].get("description", "")} for h in hits]
+        return {"hits": rows, "total": total_val}
+    except Exception as e:
+        return {"hits": [], "total": 0, "error": str(e)}

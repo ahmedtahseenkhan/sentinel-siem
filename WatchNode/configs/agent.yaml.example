@@ -72,12 +72,31 @@ collectors:
     policy_dirs:
       - "/etc/watchnode/sca/policies"
       - "configs/sca"
+    # Available policies in configs/sca/:
+    #   cis_windows_server_2022.yaml  — CIS Windows Server 2022 benchmark
+    #   cis_ubuntu_linux_22_04.yaml   — CIS Ubuntu 22.04 benchmark
+    #   pci_dss_v4_windows.yaml       — PCI DSS v4.0
+    #   hipaa_windows.yaml            — HIPAA Security Rule
+    #   nist_800_53_windows.yaml      — NIST SP 800-53 Rev 5
+    #   gdpr_windows.yaml             — GDPR Article 32
 
   vulnerability:
     enabled: false
     interval: "24h"
     db_path: "/var/lib/watchnode/vulndb"
     db_update_url: "https://vulndb.watchnode.io/latest"
+
+  syscollector:
+    enabled: true
+    interval: "1h"
+    hardware: true
+    os: true
+    packages: true
+    ports: true
+    network_interfaces: true
+    users: true
+    services: true    # Windows/Linux service inventory
+    hotfixes: true    # Windows patch/hotfix status
 
 performance:
   max_cpu_percent: 20

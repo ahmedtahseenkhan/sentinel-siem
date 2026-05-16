@@ -78,6 +78,14 @@ from watchtower_client import (
     get_inventory_processes_list,
     get_inventory_users_summary,
     get_inventory_users_list,
+    get_inventory_services_summary,
+    get_inventory_services_list,
+    get_inventory_hotfixes_summary,
+    get_inventory_hotfixes_list,
+    get_inventory_ports_summary,
+    get_inventory_ports_list,
+    get_threatintel_summary,
+    get_threatintel_hits,
     get_rules_list,
     get_rules_files,
     get_rules_file_content,
@@ -1741,6 +1749,113 @@ def api_inventory_users_list():
         sort_order = request.args.get("sort_order", "asc", type=str)
         data = get_inventory_users_list(size=size, offset=offset, user_name=user_name, group=group, shell=shell, cluster_name=cluster_name, sort_field=sort_field, sort_order=sort_order)
         return jsonify(data)
+    except Exception as e:
+        return _api_error(e)
+
+
+# ---------------------------------------------------------------------------
+# Services Inventory
+# ---------------------------------------------------------------------------
+
+@app.route("/api/inventory/services/summary")
+def api_inventory_services_summary():
+    try:
+        cluster_name = request.args.get("cluster_name", type=str) or None
+        return jsonify(get_inventory_services_summary(cluster_name=cluster_name))
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/inventory/services/list")
+def api_inventory_services_list():
+    try:
+        size         = request.args.get("size", 15, type=int)
+        offset       = request.args.get("offset", 0, type=int)
+        service_name = request.args.get("service_name", type=str) or None
+        state        = request.args.get("state", type=str) or None
+        agent_name   = request.args.get("agent_name", type=str) or None
+        cluster_name = request.args.get("cluster_name", type=str) or None
+        return jsonify(get_inventory_services_list(size=size, offset=offset, service_name=service_name,
+                                                    state=state, agent_name=agent_name, cluster_name=cluster_name))
+    except Exception as e:
+        return _api_error(e)
+
+
+# ---------------------------------------------------------------------------
+# Hotfixes / Patch Status
+# ---------------------------------------------------------------------------
+
+@app.route("/api/inventory/hotfixes/summary")
+def api_inventory_hotfixes_summary():
+    try:
+        cluster_name = request.args.get("cluster_name", type=str) or None
+        return jsonify(get_inventory_hotfixes_summary(cluster_name=cluster_name))
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/inventory/hotfixes/list")
+def api_inventory_hotfixes_list():
+    try:
+        size         = request.args.get("size", 15, type=int)
+        offset       = request.args.get("offset", 0, type=int)
+        hotfix_id    = request.args.get("hotfix_id", type=str) or None
+        agent_name   = request.args.get("agent_name", type=str) or None
+        cluster_name = request.args.get("cluster_name", type=str) or None
+        return jsonify(get_inventory_hotfixes_list(size=size, offset=offset, hotfix_id=hotfix_id,
+                                                    agent_name=agent_name, cluster_name=cluster_name))
+    except Exception as e:
+        return _api_error(e)
+
+
+# ---------------------------------------------------------------------------
+# Ports / Network Services Inventory
+# ---------------------------------------------------------------------------
+
+@app.route("/api/inventory/ports/summary")
+def api_inventory_ports_summary():
+    try:
+        cluster_name = request.args.get("cluster_name", type=str) or None
+        return jsonify(get_inventory_ports_summary(cluster_name=cluster_name))
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/inventory/ports/list")
+def api_inventory_ports_list():
+    try:
+        size         = request.args.get("size", 15, type=int)
+        offset       = request.args.get("offset", 0, type=int)
+        protocol     = request.args.get("protocol", type=str) or None
+        state        = request.args.get("state", type=str) or None
+        agent_name   = request.args.get("agent_name", type=str) or None
+        cluster_name = request.args.get("cluster_name", type=str) or None
+        return jsonify(get_inventory_ports_list(size=size, offset=offset, protocol=protocol,
+                                                 state=state, agent_name=agent_name, cluster_name=cluster_name))
+    except Exception as e:
+        return _api_error(e)
+
+
+# ---------------------------------------------------------------------------
+# Threat Intelligence / IOC
+# ---------------------------------------------------------------------------
+
+@app.route("/api/threatintel/summary")
+def api_threatintel_summary():
+    try:
+        return jsonify(get_threatintel_summary())
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/threatintel/hits")
+def api_threatintel_hits():
+    try:
+        size       = request.args.get("size", 20, type=int)
+        offset     = request.args.get("offset", 0, type=int)
+        ioc_type   = request.args.get("ioc_type", type=str) or None
+        agent_name = request.args.get("agent_name", type=str) or None
+        return jsonify(get_threatintel_hits(size=size, offset=offset, ioc_type=ioc_type, agent_name=agent_name))
     except Exception as e:
         return _api_error(e)
 

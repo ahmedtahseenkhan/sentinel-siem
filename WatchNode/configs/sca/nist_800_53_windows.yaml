@@ -1,0 +1,177 @@
+policy:
+  id: "nist_800_53_windows"
+  name: "NIST SP 800-53 Rev 5 - Windows Endpoint"
+  description: >
+    NIST Special Publication 800-53 Revision 5 security control checks
+    for Windows endpoints. Covers Access Control (AC), Audit and Accountability (AU),
+    Configuration Management (CM), Identification and Authentication (IA),
+    System and Communications Protection (SC), and System Integrity (SI) families.
+  references:
+    - "https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final"
+
+  checks:
+    # ── AC: Access Control ────────────────────────────────────────────────
+
+    - id: 40001
+      title: "NIST AC-2 - Guest account disabled"
+      description: "Built-in Guest account must be disabled."
+      rationale: "AC-2 requires management of system accounts; guest accounts must be disabled when not needed."
+      remediation: "Disable the Guest account in Local Users and Groups."
+      compliance: "NIST SP 800-53 Rev 5 AC-2"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:net user guest -> r:Account active\\s+No"
+
+    - id: 40002
+      title: "NIST AC-7 - Unsuccessful logon attempts lockout"
+      description: "Account lockout must be configured to limit failed login attempts."
+      rationale: "AC-7 requires automatic lock after failed login attempts to limit brute-force."
+      remediation: "Set account lockout threshold to 5 in Account Lockout Policy."
+      compliance: "NIST SP 800-53 Rev 5 AC-7"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:net accounts -> r:Lockout threshold:\\s+[1-5]$"
+
+    - id: 40003
+      title: "NIST AC-11 - Session lock after inactivity"
+      description: "Screen saver timeout with password should be configured."
+      rationale: "AC-11 requires session lock after a period of inactivity."
+      remediation: "Enable screen saver with password lock via Group Policy."
+      compliance: "NIST SP 800-53 Rev 5 AC-11"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:reg query HKCU\\Control Panel\\Desktop /v ScreenSaveTimeOut -> r:0x[0-9a-fA-F]+"
+
+    - id: 40004
+      title: "NIST AC-17 - RDP Network Level Authentication"
+      description: "Remote Desktop must use NLA."
+      rationale: "AC-17 requires security for remote sessions; NLA enforces authentication before session."
+      remediation: "Enable NLA for RDP in System Properties > Remote."
+      compliance: "NIST SP 800-53 Rev 5 AC-17"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:reg query HKLM\\SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp /v UserAuthentication -> r:0x1"
+
+    # ── AU: Audit and Accountability ──────────────────────────────────────
+
+    - id: 40005
+      title: "NIST AU-2 - Audit logon events"
+      description: "Logon event auditing must be enabled."
+      rationale: "AU-2 requires auditing of events relevant to security such as logon/logoff."
+      remediation: "Enable Audit Logon Events via Local Security Policy."
+      compliance: "NIST SP 800-53 Rev 5 AU-2"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:auditpol /get /subcategory:Logon -> r:Success and Failure"
+
+    - id: 40006
+      title: "NIST AU-2 - Audit privilege use"
+      description: "Privilege use auditing must be enabled."
+      rationale: "AU-2 requires auditing of privileged function use."
+      remediation: "Enable Audit Privilege Use via auditpol."
+      compliance: "NIST SP 800-53 Rev 5 AU-2"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:auditpol /get /subcategory:\"Sensitive Privilege Use\" -> r:Success and Failure|Success"
+
+    - id: 40007
+      title: "NIST AU-9 - Protect audit logs"
+      description: "Security event log must not be disabled."
+      rationale: "AU-9 requires protection of audit information from unauthorized modification."
+      remediation: "Ensure Security log is enabled and protected."
+      compliance: "NIST SP 800-53 Rev 5 AU-9"
+      type: "command"
+      condition: "none"
+      rules:
+        - "c:wevtutil gl Security -> r:enabled: false"
+
+    # ── CM: Configuration Management ──────────────────────────────────────
+
+    - id: 40008
+      title: "NIST CM-6 - Windows Firewall enabled"
+      description: "Windows Defender Firewall must be enabled for all profiles."
+      rationale: "CM-6 requires secure configuration settings including host firewall."
+      remediation: "Enable Windows Defender Firewall for Domain, Private, and Public profiles."
+      compliance: "NIST SP 800-53 Rev 5 CM-6"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:netsh advfirewall show allprofiles -> r:State\\s+ON"
+
+    - id: 40009
+      title: "NIST CM-7 - Disable unnecessary services (Telnet)"
+      description: "Telnet service must be disabled."
+      rationale: "CM-7 requires disabling unnecessary services and functions."
+      remediation: "Disable the Telnet Client feature in Windows Features."
+      compliance: "NIST SP 800-53 Rev 5 CM-7"
+      type: "command"
+      condition: "none"
+      rules:
+        - "c:sc query tlntsvr -> r:RUNNING"
+
+    # ── IA: Identification and Authentication ─────────────────────────────
+
+    - id: 40010
+      title: "NIST IA-5 - Password complexity enabled"
+      description: "Password complexity requirements must be enabled."
+      rationale: "IA-5 requires authenticator management including password strength."
+      remediation: "Enable password complexity in Local Security Policy."
+      compliance: "NIST SP 800-53 Rev 5 IA-5"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:net accounts -> r:Password requirements:\\s+Yes"
+
+    - id: 40011
+      title: "NIST IA-5 - Password minimum length 14 characters"
+      description: "Minimum password length must be at least 14 characters."
+      rationale: "IA-5 requires minimum password length for adequate strength."
+      remediation: "Set minimum password length to 14 in Password Policy."
+      compliance: "NIST SP 800-53 Rev 5 IA-5"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:net accounts -> r:Minimum password length:\\s+1[4-9]|[2-9][0-9]"
+
+    # ── SC: System and Communications Protection ──────────────────────────
+
+    - id: 40012
+      title: "NIST SC-8 - SMBv1 disabled (transmission confidentiality)"
+      description: "SMBv1 protocol must be disabled."
+      rationale: "SC-8 requires transmission confidentiality; SMBv1 transmits data insecurely."
+      remediation: "Disable SMBv1 via PowerShell: Set-SmbServerConfiguration -EnableSMB1Protocol $false"
+      compliance: "NIST SP 800-53 Rev 5 SC-8"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:powershell -NoProfile -Command \"(Get-SmbServerConfiguration).EnableSMB1Protocol\" -> r:False"
+
+    # ── SI: System and Information Integrity ──────────────────────────────
+
+    - id: 40013
+      title: "NIST SI-2 - Windows Update service running"
+      description: "Windows Update service must be running."
+      rationale: "SI-2 requires flaw remediation; Windows Update delivers security patches."
+      remediation: "Set Windows Update service to Automatic startup."
+      compliance: "NIST SP 800-53 Rev 5 SI-2"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:sc query wuauserv -> r:RUNNING"
+
+    - id: 40014
+      title: "NIST SI-3 - Windows Defender real-time protection enabled"
+      description: "Windows Defender real-time protection must be active."
+      rationale: "SI-3 requires malicious code protection on endpoints."
+      remediation: "Enable Windows Defender Real-time Protection in Windows Security."
+      compliance: "NIST SP 800-53 Rev 5 SI-3"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:powershell -NoProfile -Command \"Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled\" -> r:True"

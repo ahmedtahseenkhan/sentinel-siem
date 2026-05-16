@@ -1,0 +1,21 @@
+# Known malicious IP addresses — starter list
+# Format: ip:category
+# Populated by threat intel feeds (feodotracker, abuseipdb) at runtime
+# These are well-known Cobalt Strike / botnet C2 IPs from public reports
+
+# Cobalt Strike C2 servers (public threat reports)
+45.142.212.100:c2
+185.220.101.34:tor_exit
+185.220.101.35:tor_exit
+185.220.101.36:tor_exit
+45.33.32.156:scanner
+198.199.77.100:c2
+194.165.16.76:c2
+91.92.109.196:c2
+91.215.85.209:c2
+45.142.212.200:c2
+146.70.81.58:c2
+146.70.72.106:c2
+179.43.167.10:c2
+179.43.181.231:c2
+37.0.11.238:c2

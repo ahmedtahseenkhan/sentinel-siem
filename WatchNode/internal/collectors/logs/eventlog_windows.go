@@ -25,7 +25,7 @@ const (
 	evtSystemChannel        = 8
 	evtSystemComputer       = 12
 
-	readFlagsSequential = windows.EVT_READ_FLAGS(0x1)
+	readFlagsSequential = 0x1
 	readFlagsTimeout    = 1000 // milliseconds
 )
 

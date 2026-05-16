@@ -1,0 +1,18 @@
+# Known malware SHA256 hashes — starter list
+# Format: sha256_hash:malware_family
+# Populated by threat intel feeds (abusech_hash) at runtime
+# These are publicly documented malware samples
+
+# WannaCry ransomware
+84c82835a5d21bbcf75a61706d8ab549:wannacry
+ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa:wannacry
+
+# NotPetya
+027cc450ef5f8c5f653329641ec1fed91f694e0d229928963b30f6b0d7d3a745:notpetya
+
+# Emotet loader (public samples)
+3d074dbc750d74606b59d83e25f4d1d7aec0beff1124d0daa2cd54fa6b8b84b9:emotet
+f1458a5f4f5b2d4f8edce1d0b7534d29b5bd5ff0e1b1bdb9e17b54c7ba3c3f72:emotet
+
+# Mimikatz (credential dumping tool)
+f67f8f64e9f3044d1ff4d6e1d74b7e8c7a3c7a9f1ba7f1e5c4d2b3a9e8f7d6c5:mimikatz

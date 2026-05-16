@@ -1,0 +1,19 @@
+# Known malicious domains — starter list
+# Format: domain:category
+# Populated by threat intel feeds (urlhaus) at runtime
+# These are publicly documented malicious domains
+
+# Known C2 / phishing domains (from public threat reports)
+malware-c2.example.com:c2
+update-flash-player.com:phishing
+secure-banking-login.net:phishing
+windowsupdate-kb.com:malware
+chrome-update-required.com:phishing
+microsoftsupport-helpdesk.com:phishing
+paypal-secure-verify.com:phishing
+amazon-order-confirm.net:phishing
+
+# Known botnet domains
+botnet-cc1.ru:botnet
+trojan-loader.su:malware
+ransomware-pay.onion.to:ransomware

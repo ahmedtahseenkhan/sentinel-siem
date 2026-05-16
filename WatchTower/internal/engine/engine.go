@@ -45,6 +45,12 @@ type RBAHook interface {
 	OnAlert(alert *models.Alert, event *models.Event)
 }
 
+// UebaHook is called for every raw event before rule matching,
+// allowing UEBA to build behavioral baselines from all event types.
+type UebaHook interface {
+	OnEvent(event *models.Event)
+}
+
 type Engine struct {
 	cfg       config.EngineConfig
 	logger    *zap.Logger
@@ -58,6 +64,7 @@ type Engine struct {
 	vulnChecker  VulnChecker
 	playbookHook PlaybookHook
 	rbaHook      RBAHook
+	uebaHook     UebaHook
 	deduper      *dedup.Manager
 	correlation  *correlation.Manager
 	eventCh      chan *models.Event
@@ -146,6 +153,10 @@ func (e *Engine) worker() {
 func (e *Engine) process(event *models.Event) {
 	decoded := e.decoders.Decode(event)
 	event.Decoded = decoded
+
+	if e.uebaHook != nil {
+		e.uebaHook.OnEvent(event)
+	}
 
 	if e.forwarder != nil {
 		e.forwarder.ForwardEvent(event)
@@ -244,6 +255,10 @@ func (e *Engine) SetPlaybookHook(h PlaybookHook) {
 
 func (e *Engine) SetRBAHook(h RBAHook) {
 	e.rbaHook = h
+}
+
+func (e *Engine) SetUebaHook(h UebaHook) {
+	e.uebaHook = h
 }
 
 func (e *Engine) Rules() *rules.Matcher     { return e.rules }

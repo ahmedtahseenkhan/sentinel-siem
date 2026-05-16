@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -265,5 +266,17 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("WATCHTOWER_LDAP_BASE_DN"); v != "" {
 		cfg.Identity.BaseDN = v
+	}
+	if v := os.Getenv("WATCHTOWER_THREATINTEL_ENABLED"); v != "" {
+		cfg.ThreatIntel.Enabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv("WATCHTOWER_THREATINTEL_INTERVAL"); v != "" {
+		cfg.ThreatIntel.Interval = v
+	}
+	if v := os.Getenv("WATCHTOWER_THREATINTEL_SOURCES"); v != "" {
+		var sources []SourceConfig
+		if err := json.Unmarshal([]byte(v), &sources); err == nil {
+			cfg.ThreatIntel.Sources = sources
+		}
 	}
 }

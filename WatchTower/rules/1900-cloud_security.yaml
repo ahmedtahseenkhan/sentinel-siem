@@ -1,0 +1,225 @@
+# WatchTower - Cloud Security Detection Rules
+# Rule IDs: 9300-9399
+# Detects suspicious activity in AWS, Azure, and GCP cloud environments.
+
+rules:
+  # ── AWS GuardDuty ─────────────────────────────────────────────────────────
+
+  - id: 9300
+    level: 13
+    description: "AWS GuardDuty high-severity finding detected"
+    groups: [cloud, aws, guardduty, high_severity]
+    match:
+      type: "cloud.aws.guardduty"
+      fields:
+        severity:
+          regex: "^([7-9]|10)(\\.\\d+)?$"
+    mitre:
+      - tactic_id: "TA0001"
+        tactic_name: "Initial Access"
+        technique_id: "T1078"
+        technique_name: "Valid Accounts"
+    alert:
+      title: "Cloud AWS: GuardDuty high-severity finding"
+    enabled: true
+
+  - id: 9301
+    level: 15
+    description: "AWS GuardDuty critical finding (severity 9+)"
+    groups: [cloud, aws, guardduty, critical]
+    match:
+      type: "cloud.aws.guardduty"
+      fields:
+        severity:
+          regex: "^(9|10)(\\.\\d+)?$"
+    mitre:
+      - tactic_id: "TA0001"
+        tactic_name: "Initial Access"
+        technique_id: "T1190"
+        technique_name: "Exploit Public-Facing Application"
+    alert:
+      title: "Cloud AWS: GuardDuty CRITICAL finding — immediate action required"
+    enabled: true
+
+  - id: 9302
+    level: 12
+    description: "AWS: Reconnaissance activity detected by GuardDuty"
+    groups: [cloud, aws, reconnaissance]
+    match:
+      type: "cloud.aws.guardduty"
+      fields:
+        type:
+          regex: "(?i)recon"
+    mitre:
+      - tactic_id: "TA0043"
+        tactic_name: "Reconnaissance"
+        technique_id: "T1595"
+        technique_name: "Active Scanning"
+    alert:
+      title: "Cloud AWS: Reconnaissance activity in AWS environment"
+    enabled: true
+
+  - id: 9303
+    level: 13
+    description: "AWS: Trojan or malware activity in GuardDuty finding"
+    groups: [cloud, aws, malware]
+    match:
+      type: "cloud.aws.guardduty"
+      fields:
+        type:
+          regex: "(?i)(trojan|malware|backdoor|coinminer)"
+    mitre:
+      - tactic_id: "TA0002"
+        tactic_name: "Execution"
+        technique_id: "T1204"
+        technique_name: "User Execution"
+    alert:
+      title: "Cloud AWS: Malware/Trojan activity detected by GuardDuty"
+    enabled: true
+
+  # ── Azure Activity Log ────────────────────────────────────────────────────
+
+  - id: 9310
+    level: 11
+    description: "Azure: Failed management operation detected"
+    groups: [cloud, azure, high_severity]
+    match:
+      type: "cloud.azure.activity"
+      fields:
+        status:
+          regex: "(?i)(failed|error)"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1110"
+        technique_name: "Brute Force"
+    alert:
+      title: "Cloud Azure: Failed management operation in Activity Log"
+    enabled: true
+
+  - id: 9311
+    level: 12
+    description: "Azure: Policy or role assignment change detected"
+    groups: [cloud, azure, privilege_escalation]
+    match:
+      type: "cloud.azure.activity"
+      fields:
+        operation_name:
+          regex: "(?i)(roleassignment|policyassignment|authorization)"
+    mitre:
+      - tactic_id: "TA0004"
+        tactic_name: "Privilege Escalation"
+        technique_id: "T1484"
+        technique_name: "Domain Policy Modification"
+    alert:
+      title: "Cloud Azure: IAM role or policy assignment changed"
+    enabled: true
+
+  - id: 9312
+    level: 11
+    description: "Azure: Security group or firewall rule modified"
+    groups: [cloud, azure, defense_evasion]
+    match:
+      type: "cloud.azure.activity"
+      fields:
+        operation_name:
+          regex: "(?i)(networksecuritygroup|firewall|securityrule)"
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1562.007"
+        technique_name: "Impair Defenses: Disable or Modify Cloud Firewall"
+    alert:
+      title: "Cloud Azure: Network security group or firewall rule modified"
+    enabled: true
+
+  # ── GCP Audit Logs ────────────────────────────────────────────────────────
+
+  - id: 9320
+    level: 11
+    description: "GCP: Warning-severity audit log event"
+    groups: [cloud, gcp]
+    match:
+      type: "cloud.gcp.audit"
+      fields:
+        severity:
+          regex: "(?i)(warning|error|critical|alert|emergency)"
+    mitre:
+      - tactic_id: "TA0007"
+        tactic_name: "Discovery"
+        technique_id: "T1619"
+        technique_name: "Cloud Storage Object Discovery"
+    alert:
+      title: "Cloud GCP: Elevated severity audit log event"
+    enabled: true
+
+  - id: 9321
+    level: 12
+    description: "GCP: IAM policy change detected"
+    groups: [cloud, gcp, privilege_escalation]
+    match:
+      type: "cloud.gcp.audit"
+      fields:
+        method_name:
+          regex: "(?i)(setIamPolicy|bindingDelta|addBinding)"
+    mitre:
+      - tactic_id: "TA0004"
+        tactic_name: "Privilege Escalation"
+        technique_id: "T1484"
+        technique_name: "Domain Policy Modification"
+    alert:
+      title: "Cloud GCP: IAM policy modified"
+    enabled: true
+
+  - id: 9322
+    level: 12
+    description: "GCP: Storage bucket permissions changed"
+    groups: [cloud, gcp, data_exfiltration]
+    match:
+      type: "cloud.gcp.audit"
+      fields:
+        method_name:
+          regex: "(?i)(storage\\.buckets\\.setIamPolicy|storage\\.objects\\.setIamPolicy)"
+    mitre:
+      - tactic_id: "TA0010"
+        tactic_name: "Exfiltration"
+        technique_id: "T1537"
+        technique_name: "Transfer Data to Cloud Account"
+    alert:
+      title: "Cloud GCP: Storage bucket permissions changed (possible data exfiltration risk)"
+    enabled: true
+
+  # ── General Cloud Errors ───────────────────────────────────────────────────
+
+  - id: 9330
+    level: 3
+    description: "Cloud provider API error during log collection"
+    groups: [cloud, operational]
+    match:
+      type: "cloud.aws.error"
+      fields: {}
+    alert:
+      title: "Cloud: AWS log collection error"
+    enabled: true
+
+  - id: 9331
+    level: 3
+    description: "Azure log collection error"
+    groups: [cloud, operational]
+    match:
+      type: "cloud.azure.error"
+      fields: {}
+    alert:
+      title: "Cloud: Azure log collection error"
+    enabled: true
+
+  - id: 9332
+    level: 3
+    description: "GCP log collection error"
+    groups: [cloud, operational]
+    match:
+      type: "cloud.gcp.error"
+      fields: {}
+    alert:
+      title: "Cloud: GCP log collection error"
+    enabled: true

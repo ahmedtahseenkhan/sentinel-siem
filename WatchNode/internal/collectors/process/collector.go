@@ -2,11 +2,13 @@ package process
 
 import (
 	"context"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/watchnode/watchnode/internal/agent"
 	"github.com/watchnode/watchnode/internal/models"
+	"github.com/watchnode/watchnode/internal/utils"
 	"github.com/shirou/gopsutil/v3/process"
 )
 
@@ -82,13 +84,30 @@ func (c *Collector) collect() {
 		cmdline, _ := p.Cmdline()
 		ppid, _ := p.Ppid()
 		createTime, _ := p.CreateTime()
-		c.emit(ts, "process.new", map[string]interface{}{
+		exe, _ := p.Exe()
+		fields := map[string]interface{}{
 			"pid":         p.Pid,
 			"ppid":        ppid,
 			"name":        name,
 			"cmdline":     cmdline,
 			"create_time": createTime,
-		}, nil)
+			"exe":         exe,
+		}
+		if exe != "" {
+			if info, err := os.Stat(exe); err == nil && info.Size() < 10*1024*1024 {
+				if hash, err := utils.SHA256File(exe); err == nil {
+					fields["sha256"] = hash
+				}
+			}
+		}
+		c.emit(ts, "process.new", fields, nil)
+	}
+	for pid := range c.seenPIDs {
+		if _, stillRunning := newPIDs[pid]; !stillRunning {
+			c.emit(ts, "process.terminated", map[string]interface{}{
+				"pid": pid,
+			}, nil)
+		}
 	}
 	c.seenPIDs = newPIDs
 	c.mu.Unlock()

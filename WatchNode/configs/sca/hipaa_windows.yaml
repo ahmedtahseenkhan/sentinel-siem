@@ -1,0 +1,141 @@
+policy:
+  id: "hipaa_windows"
+  name: "HIPAA Security Rule - Windows Endpoint"
+  description: >
+    Health Insurance Portability and Accountability Act (HIPAA) Security Rule
+    checks for Windows endpoints. Covers access controls, audit controls,
+    integrity, authentication, and transmission security for ePHI environments.
+  references:
+    - "https://www.hhs.gov/hipaa/for-professionals/security/index.html"
+
+  checks:
+    # ── 164.312(a)(1) Access Control ──────────────────────────────────────
+
+    - id: 30001
+      title: "HIPAA 164.312(a)(2)(i) - Unique user identification enforced"
+      description: "Guest account must be disabled to enforce unique identification."
+      rationale: "HIPAA requires that each user be uniquely identified for PHI access audit trails."
+      remediation: "Disable the Guest account via Local Users and Groups."
+      compliance: "HIPAA 164.312(a)(2)(i)"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:net user guest -> r:Account active\\s+No"
+
+    - id: 30002
+      title: "HIPAA 164.312(a)(2)(iii) - Automatic logoff enabled"
+      description: "Screen saver with password lock should be enabled."
+      rationale: "Automatic logoff limits exposure when workstations are left unattended."
+      remediation: "Enable screen saver timeout with password via Group Policy."
+      compliance: "HIPAA 164.312(a)(2)(iii)"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:reg query HKCU\\Control Panel\\Desktop /v ScreenSaveTimeOut -> r:0x[0-9a-fA-F]+"
+
+    - id: 30003
+      title: "HIPAA 164.312(a)(2)(iv) - Encryption/decryption activity: BitLocker"
+      description: "BitLocker drive encryption should be enabled on system drive."
+      rationale: "Encryption protects ePHI stored on the endpoint from physical theft."
+      remediation: "Enable BitLocker on the system drive via Control Panel or manage-bde."
+      compliance: "HIPAA 164.312(a)(2)(iv)"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:manage-bde -status C: -> r:Protection Status:\\s+Protection On"
+
+    # ── 164.312(b) Audit Controls ─────────────────────────────────────────
+
+    - id: 30004
+      title: "HIPAA 164.312(b) - Audit logon events enabled"
+      description: "Audit logon events policy must log success and failure."
+      rationale: "HIPAA requires audit controls to record access to systems with ePHI."
+      remediation: "Enable Audit Logon Events via Local Security Policy."
+      compliance: "HIPAA 164.312(b)"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:auditpol /get /subcategory:Logon -> r:Success and Failure"
+
+    - id: 30005
+      title: "HIPAA 164.312(b) - Audit object access enabled"
+      description: "Object access auditing must be enabled for file system auditing."
+      rationale: "Object access auditing allows tracking who accessed PHI files."
+      remediation: "Enable Audit Object Access (Success and Failure) via auditpol."
+      compliance: "HIPAA 164.312(b)"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:auditpol /get /subcategory:\"File System\" -> r:Success and Failure|Success"
+
+    - id: 30006
+      title: "HIPAA 164.312(b) - Event logs retained"
+      description: "Security log must be enabled and not set to overwrite."
+      rationale: "HIPAA requires retaining audit logs for at least 6 years."
+      remediation: "Configure Security log to retain logs or archive them."
+      compliance: "HIPAA 164.312(b)"
+      type: "command"
+      condition: "none"
+      rules:
+        - "c:wevtutil gl Security -> r:enabled: false"
+
+    # ── 164.312(c) Integrity ──────────────────────────────────────────────
+
+    - id: 30007
+      title: "HIPAA 164.312(c)(1) - Windows Defender enabled"
+      description: "Windows Defender real-time protection should be active."
+      rationale: "Malware can corrupt or exfiltrate ePHI; antivirus is a basic integrity control."
+      remediation: "Enable Windows Defender Real-time Protection via Windows Security."
+      compliance: "HIPAA 164.312(c)(1)"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:powershell -NoProfile -Command \"Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled\" -> r:True"
+
+    # ── 164.312(d) Person Authentication ─────────────────────────────────
+
+    - id: 30008
+      title: "HIPAA 164.312(d) - Password complexity enabled"
+      description: "Password must meet complexity requirements."
+      rationale: "Strong authentication protects access to systems with ePHI."
+      remediation: "Enable password complexity in Local Security Policy."
+      compliance: "HIPAA 164.312(d)"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:net accounts -> r:Password requirements:\\s+Yes"
+
+    - id: 30009
+      title: "HIPAA 164.312(d) - Account lockout configured"
+      description: "Account lockout threshold must be set to 10 or fewer attempts."
+      rationale: "Lockout prevents brute-force attacks on ePHI systems."
+      remediation: "Configure account lockout threshold in Account Lockout Policy."
+      compliance: "HIPAA 164.312(d)"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:net accounts -> r:Lockout threshold:\\s+[1-9]$|10$"
+
+    # ── 164.312(e) Transmission Security ─────────────────────────────────
+
+    - id: 30010
+      title: "HIPAA 164.312(e)(2)(ii) - SMBv1 disabled"
+      description: "SMBv1 protocol must be disabled."
+      rationale: "SMBv1 is vulnerable (EternalBlue/WannaCry) and transmits data insecurely."
+      remediation: "Disable SMBv1 via: Set-SmbServerConfiguration -EnableSMB1Protocol $false"
+      compliance: "HIPAA 164.312(e)(2)(ii)"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:powershell -NoProfile -Command \"(Get-SmbServerConfiguration).EnableSMB1Protocol\" -> r:False"
+
+    - id: 30011
+      title: "HIPAA 164.312(e)(2)(ii) - TLS 1.0 disabled"
+      description: "TLS 1.0 must be disabled on the endpoint."
+      rationale: "TLS 1.0 has known vulnerabilities; ePHI must use TLS 1.2 or higher."
+      remediation: "Disable TLS 1.0 via registry or IIS Crypto tool."
+      compliance: "HIPAA 164.312(e)(2)(ii)"
+      type: "command"
+      condition: "none"
+      rules:
+        - "c:reg query \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.0\\Server\" /v Enabled -> r:0x1"

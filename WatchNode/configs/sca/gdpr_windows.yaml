@@ -1,0 +1,141 @@
+policy:
+  id: "gdpr_windows"
+  name: "GDPR Technical Controls - Windows Endpoint"
+  description: >
+    General Data Protection Regulation (GDPR) Article 32 technical security
+    measures for Windows endpoints. Covers encryption, access controls, audit
+    logging, and integrity measures required for processing personal data.
+  references:
+    - "https://gdpr-info.eu/art-32-gdpr/"
+
+  checks:
+    # ── Article 32(1)(a) - Pseudonymisation and Encryption ────────────────
+
+    - id: 50001
+      title: "GDPR Art.32 - BitLocker disk encryption enabled"
+      description: "Full disk encryption via BitLocker must be enabled on the system drive."
+      rationale: "Article 32(1)(a) requires encryption of personal data at rest."
+      remediation: "Enable BitLocker via Control Panel > System and Security > BitLocker Drive Encryption."
+      compliance: "GDPR Article 32(1)(a)"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:manage-bde -status C: -> r:Protection Status:\\s+Protection On"
+
+    - id: 50002
+      title: "GDPR Art.32 - TLS 1.0 disabled (data in transit)"
+      description: "Deprecated TLS 1.0 must be disabled."
+      rationale: "Article 32(1)(a) requires appropriate encryption for data in transit."
+      remediation: "Disable TLS 1.0 in Windows registry or via IIS Crypto tool."
+      compliance: "GDPR Article 32(1)(a)"
+      type: "command"
+      condition: "none"
+      rules:
+        - "c:reg query \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.0\\Server\" /v Enabled -> r:0x1"
+
+    - id: 50003
+      title: "GDPR Art.32 - SMBv1 disabled (data in transit)"
+      description: "SMBv1 protocol must be disabled."
+      rationale: "SMBv1 lacks encryption and can expose personal data on the network."
+      remediation: "Run: Set-SmbServerConfiguration -EnableSMB1Protocol $false"
+      compliance: "GDPR Article 32(1)(a)"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:powershell -NoProfile -Command \"(Get-SmbServerConfiguration).EnableSMB1Protocol\" -> r:False"
+
+    # ── Article 32(1)(b) - Confidentiality, Integrity, Availability ───────
+
+    - id: 50004
+      title: "GDPR Art.32 - Windows Defender real-time protection"
+      description: "Antivirus real-time protection must be enabled."
+      rationale: "Article 32(1)(b) requires ongoing confidentiality and integrity of systems."
+      remediation: "Enable Windows Defender Real-time Protection."
+      compliance: "GDPR Article 32(1)(b)"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:powershell -NoProfile -Command \"Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled\" -> r:True"
+
+    - id: 50005
+      title: "GDPR Art.32 - Windows Firewall enabled"
+      description: "Windows Defender Firewall must be active for all profiles."
+      rationale: "Article 32(1)(b) requires measures to ensure availability and confidentiality."
+      remediation: "Enable Windows Defender Firewall for all network profiles."
+      compliance: "GDPR Article 32(1)(b)"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:netsh advfirewall show allprofiles -> r:State\\s+ON"
+
+    # ── Article 32(1)(d) - Testing and Evaluation ─────────────────────────
+
+    - id: 50006
+      title: "GDPR Art.32 - Windows Update service active"
+      description: "Windows Update service must be running to receive security patches."
+      rationale: "Article 32(1)(d) requires regular testing and evaluation; patching is fundamental."
+      remediation: "Set Windows Update service to Automatic and ensure it is running."
+      compliance: "GDPR Article 32(1)(d)"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:sc query wuauserv -> r:RUNNING"
+
+    # ── Article 5(1)(f) - Data Integrity and Confidentiality ──────────────
+
+    - id: 50007
+      title: "GDPR Art.5(1)(f) - Account lockout configured"
+      description: "Account lockout must limit failed login attempts."
+      rationale: "Article 5(1)(f) requires appropriate security including access controls."
+      remediation: "Configure account lockout threshold <= 10 in Account Lockout Policy."
+      compliance: "GDPR Article 5(1)(f)"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:net accounts -> r:Lockout threshold:\\s+[1-9]$|10$"
+
+    - id: 50008
+      title: "GDPR Art.5(1)(f) - Password complexity required"
+      description: "Password complexity requirements must be enforced."
+      rationale: "Weak passwords risk unauthorized access to personal data."
+      remediation: "Enable password complexity in Local Security Policy."
+      compliance: "GDPR Article 5(1)(f)"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:net accounts -> r:Password requirements:\\s+Yes"
+
+    - id: 50009
+      title: "GDPR Art.5(1)(f) - Guest account disabled"
+      description: "Guest account must be disabled to prevent anonymous access."
+      rationale: "Anonymous access to systems processing personal data violates GDPR."
+      remediation: "Disable Guest account via Local Users and Groups."
+      compliance: "GDPR Article 5(1)(f)"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:net user guest -> r:Account active\\s+No"
+
+    # ── Article 32 - Audit and Accountability ─────────────────────────────
+
+    - id: 50010
+      title: "GDPR Art.32 - Audit logon events enabled"
+      description: "Windows audit logon events must be enabled."
+      rationale: "GDPR requires demonstrating compliance; audit logs are evidence of access controls."
+      remediation: "Enable Audit Logon Events (Success and Failure) via Local Security Policy."
+      compliance: "GDPR Article 32 / Recital 83"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:auditpol /get /subcategory:Logon -> r:Success and Failure"
+
+    - id: 50011
+      title: "GDPR Art.32 - Session timeout configured"
+      description: "Screen saver with password lock must be enabled."
+      rationale: "Unattended sessions with access to personal data violate GDPR confidentiality."
+      remediation: "Configure screen saver timeout and password lock via Group Policy."
+      compliance: "GDPR Article 32"
+      type: "command"
+      condition: "all"
+      rules:
+        - "c:reg query HKCU\\Control Panel\\Desktop /v ScreenSaveTimeOut -> r:0x[0-9a-fA-F]+"

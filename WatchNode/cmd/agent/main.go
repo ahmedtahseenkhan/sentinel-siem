@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/watchnode/watchnode/internal/agent"
+	"github.com/watchnode/watchnode/internal/collectors/cloud"
 	"github.com/watchnode/watchnode/internal/collectors/docker"
 	"github.com/watchnode/watchnode/internal/collectors/fim"
 	"github.com/watchnode/watchnode/internal/collectors/logs"
@@ -163,6 +164,9 @@ func buildCollectors(cfg *agent.Config) []models.Collector {
 	}
 	if cfg.Collectors.Vulnerability.Enabled {
 		collectors = append(collectors, vulnerability.New(cfg.Collectors.Vulnerability))
+	}
+	if cfg.Collectors.Cloud.Enabled {
+		collectors = append(collectors, cloud.New(cfg.Collectors.Cloud))
 	}
 	return collectors
 }

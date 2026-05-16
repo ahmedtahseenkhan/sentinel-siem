@@ -26,18 +26,22 @@ type Collector struct {
 	wg       sync.WaitGroup
 	baseline map[string]string // path -> sha256
 	permMap  map[string]uint32 // path -> permissions mask
+	ownerMap map[string]uint32 // path -> uid
+	groupMap map[string]uint32 // path -> gid
 }
 
 // New creates a file integrity monitoring collector.
 func New(cfg agent.FileIntegrityCollectorConfig) *Collector {
 	interval := agent.ParseDuration(cfg.Interval, 5*time.Minute)
 	return &Collector{
-		cfg:     cfg,
+		cfg:      cfg,
 		interval: interval,
-		dataCh:  make(chan models.DataPoint, 256),
-		stopCh:  make(chan struct{}),
+		dataCh:   make(chan models.DataPoint, 256),
+		stopCh:   make(chan struct{}),
 		baseline: make(map[string]string),
 		permMap:  make(map[string]uint32),
+		ownerMap: make(map[string]uint32),
+		groupMap: make(map[string]uint32),
 	}
 }
 
@@ -108,9 +112,12 @@ func (c *Collector) runBaselineScan() {
 			if err != nil {
 				return nil
 			}
+			uid, gid := fileOwner(info)
 			c.mu.Lock()
 			c.baseline[path] = hash
 			c.permMap[path] = uint32(info.Mode().Perm())
+			c.ownerMap[path] = uid
+			c.groupMap[path] = gid
 			c.mu.Unlock()
 			return nil
 		})
@@ -147,6 +154,8 @@ func (c *Collector) handleEvent(ev fsnotify.Event) {
 	c.mu.Lock()
 	oldHash := c.baseline[path]
 	oldPerm := c.permMap[path]
+	oldOwner := c.ownerMap[path]
+	oldGroup := c.groupMap[path]
 	c.mu.Unlock()
 
 	switch {
@@ -155,6 +164,8 @@ func (c *Collector) handleEvent(ev fsnotify.Event) {
 		c.mu.Lock()
 		delete(c.baseline, path)
 		delete(c.permMap, path)
+		delete(c.ownerMap, path)
+		delete(c.groupMap, path)
 		c.mu.Unlock()
 	case ev.Op&fsnotify.Chmod != 0:
 		st, err := os.Stat(path)
@@ -163,15 +174,25 @@ func (c *Collector) handleEvent(ev fsnotify.Event) {
 			return
 		}
 		newPerm := uint32(st.Mode().Perm())
-		if newPerm != oldPerm {
-			c.emit(ts, "fim.permission_changed", map[string]interface{}{
-				"path":                 path,
-				"previous_permissions": oldPerm,
-				"permissions":          newPerm,
-			}, map[string]string{"path": path})
+		newOwner, newGroup := fileOwner(st)
+		fields := map[string]interface{}{
+			"path":                 path,
+			"previous_permissions": oldPerm,
+			"permissions":          newPerm,
+		}
+		if newOwner != oldOwner || newGroup != oldGroup {
+			fields["previous_owner"] = oldOwner
+			fields["owner"] = newOwner
+			fields["previous_group"] = oldGroup
+			fields["group"] = newGroup
+		}
+		if newPerm != oldPerm || newOwner != oldOwner || newGroup != oldGroup {
+			c.emit(ts, "fim.permission_changed", fields, map[string]string{"path": path})
 		}
 		c.mu.Lock()
 		c.permMap[path] = newPerm
+		c.ownerMap[path] = newOwner
+		c.groupMap[path] = newGroup
 		c.mu.Unlock()
 	case ev.Op&(fsnotify.Create|fsnotify.Write) != 0:
 		hash, err := utils.SHA256File(path)
@@ -186,13 +207,18 @@ func (c *Collector) handleEvent(ev fsnotify.Event) {
 		fields := map[string]interface{}{"path": path, "sha256": hash, "previous_hash": oldHash}
 		if st, err := os.Stat(path); err == nil {
 			fields["permissions"] = uint32(st.Mode().Perm())
+			uid, gid := fileOwner(st)
+			fields["owner"] = uid
+			fields["group"] = gid
+			c.mu.Lock()
+			c.permMap[path] = uint32(st.Mode().Perm())
+			c.ownerMap[path] = uid
+			c.groupMap[path] = gid
+			c.mu.Unlock()
 		}
 		c.emit(ts, "fim."+op, fields, map[string]string{"path": path})
 		c.mu.Lock()
 		c.baseline[path] = hash
-		if st, err := os.Stat(path); err == nil {
-			c.permMap[path] = uint32(st.Mode().Perm())
-		}
 		c.mu.Unlock()
 	}
 }

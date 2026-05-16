@@ -15,8 +15,13 @@ x-watchtower-common: &watchtower-common
     - WATCHTOWER_GRPC_TLS_KEY=/etc/sentinel/certs/watchtower.key
     - WATCHTOWER_GRPC_TLS_CA=/etc/sentinel/certs/ca.crt
     - WATCHTOWER_SYSLOG_ADDR=:5140
+    - WATCHTOWER_THREATINTEL_ENABLED=true
+    - WATCHTOWER_THREATINTEL_INTERVAL=6h
+    - WATCHTOWER_THREATINTEL_SOURCES=[{"type":"feodotracker","list_name":"ioc_ips","enabled":true},{"type":"abusech_hash","list_name":"ioc_hashes","enabled":true},{"type":"urlhaus","list_name":"ioc_domains","enabled":true}]
   volumes:
     - ./certs:/etc/sentinel/certs:ro
+    - ./WatchTower/cdb:/etc/watchtower/cdb:ro
+    - ./WatchTower/rules:/etc/watchtower/rules:ro
   depends_on:
     postgres:
       condition: service_healthy
@@ -194,60 +199,6 @@ services:
   watchtower-2:
     <<: *watchtower-common
 
-  watchnode:
-    build:
-      context: ./WatchNode
-      target: agent
-    image: go-watchnode
-    pid: host
-    network_mode: host
-    depends_on:
-      - haproxy
-    restart: unless-stopped
-
-  watchnode-2:
-    image: go-watchnode
-    hostname: node-web-01
-    command: ["--config", "/etc/watchnode/agent/config.yaml"]
-    volumes:
-      - ./WatchNode/configs/node-bridge.yaml:/etc/watchnode/agent/config.yaml:ro
-      - ./certs:/etc/sentinel/certs:ro
-    depends_on:
-      - haproxy
-    restart: unless-stopped
-
-  watchnode-3:
-    image: go-watchnode
-    hostname: node-db-01
-    command: ["--config", "/etc/watchnode/agent/config.yaml"]
-    volumes:
-      - ./WatchNode/configs/node-bridge.yaml:/etc/watchnode/agent/config.yaml:ro
-      - ./certs:/etc/sentinel/certs:ro
-    depends_on:
-      - haproxy
-    restart: unless-stopped
-
-  watchnode-4:
-    image: go-watchnode
-    hostname: node-app-01
-    command: ["--config", "/etc/watchnode/agent/config.yaml"]
-    volumes:
-      - ./WatchNode/configs/node-bridge.yaml:/etc/watchnode/agent/config.yaml:ro
-      - ./certs:/etc/sentinel/certs:ro
-    depends_on:
-      - haproxy
-    restart: unless-stopped
-
-  watchnode-5:
-    image: go-watchnode
-    hostname: node-infra-01
-    command: ["--config", "/etc/watchnode/agent/config.yaml"]
-    volumes:
-      - ./WatchNode/configs/node-bridge.yaml:/etc/watchnode/agent/config.yaml:ro
-      - ./certs:/etc/sentinel/certs:ro
-    depends_on:
-      - haproxy
-    restart: unless-stopped
 
   dashboard:
     build: ./sentinelCoreDashboard
