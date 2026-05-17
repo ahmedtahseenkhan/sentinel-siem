@@ -1,0 +1,1051 @@
+# WatchTower - Comprehensive Windows Security Event Detection Rules
+# Rule IDs: 11000-11199
+# Covers Windows Security event log event IDs across authentication,
+# account management, policy changes, object access, process auditing,
+# and system events. Maps to MITRE ATT&CK techniques.
+
+rules:
+  # ── Authentication / Logon (4624, 4625, 4648, 4634, 4647) ────────────────
+
+  - id: 11001
+    level: 5
+    description: "Successful interactive logon detected"
+    groups: [authentication, windows, logon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4624
+        win_LogonType:
+          value: "2"
+    mitre:
+      - tactic_id: "TA0001"
+        tactic_name: "Initial Access"
+        technique_id: "T1078"
+        technique_name: "Valid Accounts"
+    alert:
+      title: "Windows: Interactive logon"
+    enabled: true
+
+  - id: 11002
+    level: 8
+    description: "Successful RDP logon (LogonType 10)"
+    groups: [authentication, windows, rdp, remote_access]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4624
+        win_LogonType:
+          value: "10"
+    mitre:
+      - tactic_id: "TA0008"
+        tactic_name: "Lateral Movement"
+        technique_id: "T1021.001"
+        technique_name: "Remote Services: Remote Desktop Protocol"
+    alert:
+      title: "Windows: RDP logon detected"
+    enabled: true
+
+  - id: 11003
+    level: 7
+    description: "Network logon (LogonType 3) — SMB/RPC access"
+    groups: [authentication, windows, network_logon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4624
+        win_LogonType:
+          value: "3"
+    mitre:
+      - tactic_id: "TA0008"
+        tactic_name: "Lateral Movement"
+        technique_id: "T1021.002"
+        technique_name: "Remote Services: SMB/Windows Admin Shares"
+    alert:
+      title: "Windows: Network logon"
+    enabled: true
+
+  - id: 11004
+    level: 9
+    description: "Service account logon (LogonType 5)"
+    groups: [authentication, windows, service_account]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4624
+        win_LogonType:
+          value: "5"
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1078.003"
+        technique_name: "Valid Accounts: Local Accounts"
+    alert:
+      title: "Windows: Service logon"
+    enabled: true
+
+  - id: 11005
+    level: 8
+    description: "Failed logon attempt"
+    groups: [authentication, windows, failed_logon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4625
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1110.001"
+        technique_name: "Brute Force: Password Guessing"
+    alert:
+      title: "Windows: Failed logon attempt"
+    enabled: true
+
+  - id: 11006
+    level: 12
+    description: "Multiple failed logons — possible brute force"
+    groups: [authentication, windows, brute_force, high_severity]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4625
+    threshold:
+      count: 10
+      window: 300
+      group_by: win_TargetUserName
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1110.001"
+        technique_name: "Brute Force: Password Guessing"
+    alert:
+      title: "Windows: Brute force attack detected"
+    enabled: true
+
+  - id: 11007
+    level: 11
+    description: "Logon with explicit credentials (runas / different user)"
+    groups: [authentication, windows, credential_use]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4648
+    mitre:
+      - tactic_id: "TA0008"
+        tactic_name: "Lateral Movement"
+        technique_id: "T1078"
+        technique_name: "Valid Accounts"
+    alert:
+      title: "Windows: Logon with explicit credentials"
+    enabled: true
+
+  - id: 11008
+    level: 4
+    description: "User logoff event"
+    groups: [authentication, windows]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4634
+    alert:
+      title: "Windows: User logoff"
+    enabled: true
+
+  - id: 11009
+    level: 4
+    description: "User-initiated logoff"
+    groups: [authentication, windows]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4647
+    alert:
+      title: "Windows: User-initiated logoff"
+    enabled: true
+
+  - id: 11010
+    level: 12
+    description: "Special privileges assigned to new logon"
+    groups: [authentication, windows, privilege_escalation, high_severity]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4672
+    mitre:
+      - tactic_id: "TA0004"
+        tactic_name: "Privilege Escalation"
+        technique_id: "T1078.003"
+        technique_name: "Valid Accounts: Local Accounts"
+    alert:
+      title: "Windows: Privileged logon (Admin/System)"
+    enabled: true
+
+  - id: 11011
+    level: 7
+    description: "Account locked out"
+    groups: [authentication, windows]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4740
+    alert:
+      title: "Windows: Account locked out"
+    enabled: true
+
+  - id: 11012
+    level: 13
+    description: "Kerberos pre-authentication failed — possible AS-REP roasting"
+    groups: [authentication, windows, kerberos, credential_access, high_severity]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4771
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1558.004"
+        technique_name: "Steal or Forge Kerberos Tickets: AS-REP Roasting"
+    alert:
+      title: "Windows: Kerberos pre-auth failure (AS-REP roasting?)"
+    enabled: true
+
+  - id: 11013
+    level: 10
+    description: "Kerberos TGT requested"
+    groups: [authentication, windows, kerberos]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4768
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1558"
+        technique_name: "Steal or Forge Kerberos Tickets"
+    alert:
+      title: "Windows: Kerberos TGT requested"
+    enabled: true
+
+  - id: 11014
+    level: 11
+    description: "Kerberos service ticket requested — possible Kerberoasting"
+    groups: [authentication, windows, kerberos, kerberoasting]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4769
+        win_TicketEncryptionType:
+          regex: "(?i)(0x17|0x18|rc4)"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1558.003"
+        technique_name: "Steal or Forge Kerberos Tickets: Kerberoasting"
+    alert:
+      title: "Windows: Kerberos ticket with weak encryption (Kerberoasting indicator)"
+    enabled: true
+
+  - id: 11015
+    level: 10
+    description: "NTLM authentication used"
+    groups: [authentication, windows, ntlm]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4776
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1187"
+        technique_name: "Forced Authentication"
+    alert:
+      title: "Windows: NTLM authentication"
+    enabled: true
+
+  # ── Account Management (4720-4729, 4732-4738, 4756-4767) ────────────────
+
+  - id: 11020
+    level: 12
+    description: "New user account created"
+    groups: [account_management, windows, persistence, high_severity]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4720
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1136.001"
+        technique_name: "Create Account: Local Account"
+    alert:
+      title: "Windows: New user account created"
+    enabled: true
+
+  - id: 11021
+    level: 9
+    description: "User account enabled"
+    groups: [account_management, windows]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4722
+    alert:
+      title: "Windows: User account enabled"
+    enabled: true
+
+  - id: 11022
+    level: 10
+    description: "Password change attempted by user"
+    groups: [account_management, windows]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4723
+    alert:
+      title: "Windows: User changed own password"
+    enabled: true
+
+  - id: 11023
+    level: 12
+    description: "Privileged password reset attempted"
+    groups: [account_management, windows, credential_access, high_severity]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4724
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1098"
+        technique_name: "Account Manipulation"
+    alert:
+      title: "Windows: Admin reset another user's password"
+    enabled: true
+
+  - id: 11024
+    level: 9
+    description: "User account disabled"
+    groups: [account_management, windows]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4725
+    alert:
+      title: "Windows: User account disabled"
+    enabled: true
+
+  - id: 11025
+    level: 10
+    description: "User account deleted"
+    groups: [account_management, windows]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4726
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1531"
+        technique_name: "Account Access Removal"
+    alert:
+      title: "Windows: User account deleted"
+    enabled: true
+
+  - id: 11026
+    level: 12
+    description: "Member added to security-enabled global group"
+    groups: [account_management, windows, persistence, privilege_escalation]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4728
+    mitre:
+      - tactic_id: "TA0004"
+        tactic_name: "Privilege Escalation"
+        technique_id: "T1098"
+        technique_name: "Account Manipulation"
+    alert:
+      title: "Windows: User added to global security group"
+    enabled: true
+
+  - id: 11027
+    level: 13
+    description: "Member added to security-enabled local group (likely Administrators)"
+    groups: [account_management, windows, privilege_escalation, high_severity]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4732
+    mitre:
+      - tactic_id: "TA0004"
+        tactic_name: "Privilege Escalation"
+        technique_id: "T1098"
+        technique_name: "Account Manipulation"
+    alert:
+      title: "Windows: User added to local group (Admin?)"
+    enabled: true
+
+  - id: 11028
+    level: 10
+    description: "User account properties changed"
+    groups: [account_management, windows]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4738
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1098"
+        technique_name: "Account Manipulation"
+    alert:
+      title: "Windows: User account properties modified"
+    enabled: true
+
+  - id: 11029
+    level: 11
+    description: "Member added to universal security group"
+    groups: [account_management, windows, privilege_escalation]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4756
+    mitre:
+      - tactic_id: "TA0004"
+        tactic_name: "Privilege Escalation"
+        technique_id: "T1098"
+        technique_name: "Account Manipulation"
+    alert:
+      title: "Windows: User added to universal group"
+    enabled: true
+
+  - id: 11030
+    level: 12
+    description: "Computer account created"
+    groups: [account_management, windows, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4741
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1136.002"
+        technique_name: "Create Account: Domain Account"
+    alert:
+      title: "Windows: Computer account created"
+    enabled: true
+
+  # ── Process & Image Loading (4688, 4689, 4697, 4698, 4702) ──────────────
+
+  - id: 11040
+    level: 5
+    description: "New process created (Sysmon/Audit 4688)"
+    groups: [process, windows]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4688
+    alert:
+      title: "Windows: New process created"
+    enabled: true
+
+  - id: 11041
+    level: 4
+    description: "Process exited"
+    groups: [process, windows]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4689
+    alert:
+      title: "Windows: Process exited"
+    enabled: true
+
+  - id: 11042
+    level: 12
+    description: "New service installed on system"
+    groups: [persistence, windows, service, high_severity]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4697
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1543.003"
+        technique_name: "Create or Modify System Process: Windows Service"
+    alert:
+      title: "Windows: New service installed"
+    enabled: true
+
+  - id: 11043
+    level: 11
+    description: "Scheduled task created"
+    groups: [persistence, windows, scheduled_task]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4698
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1053.005"
+        technique_name: "Scheduled Task/Job: Scheduled Task"
+    alert:
+      title: "Windows: Scheduled task created"
+    enabled: true
+
+  - id: 11044
+    level: 8
+    description: "Scheduled task deleted"
+    groups: [windows, scheduled_task]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4699
+    alert:
+      title: "Windows: Scheduled task deleted"
+    enabled: true
+
+  - id: 11045
+    level: 7
+    description: "Scheduled task enabled"
+    groups: [persistence, windows, scheduled_task]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4700
+    alert:
+      title: "Windows: Scheduled task enabled"
+    enabled: true
+
+  - id: 11046
+    level: 9
+    description: "Scheduled task updated"
+    groups: [persistence, windows, scheduled_task]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4702
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1053.005"
+        technique_name: "Scheduled Task/Job: Scheduled Task"
+    alert:
+      title: "Windows: Scheduled task updated"
+    enabled: true
+
+  # ── Policy Changes (4719, 4739, 4904, 4906, 4907) ────────────────────────
+
+  - id: 11050
+    level: 13
+    description: "System audit policy changed"
+    groups: [defense_evasion, windows, high_severity]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4719
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1562.002"
+        technique_name: "Impair Defenses: Disable Windows Event Logging"
+    alert:
+      title: "Windows: Audit policy changed"
+    enabled: true
+
+  - id: 11051
+    level: 10
+    description: "Trusted domain added"
+    groups: [windows, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4865
+    alert:
+      title: "Windows: Trusted domain relationship added"
+    enabled: true
+
+  - id: 11052
+    level: 12
+    description: "Domain policy was changed"
+    groups: [windows, persistence, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4739
+    mitre:
+      - tactic_id: "TA0004"
+        tactic_name: "Privilege Escalation"
+        technique_id: "T1484.001"
+        technique_name: "Domain Policy Modification: Group Policy Modification"
+    alert:
+      title: "Windows: Domain policy modified"
+    enabled: true
+
+  # ── Object Access (4656, 4660, 4663, 4670) ───────────────────────────────
+
+  - id: 11060
+    level: 6
+    description: "Handle to an object requested"
+    groups: [windows, object_access]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4656
+    alert:
+      title: "Windows: Handle to object requested"
+    enabled: true
+
+  - id: 11061
+    level: 5
+    description: "An attempt was made to access an object"
+    groups: [windows, object_access]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4663
+    alert:
+      title: "Windows: Object access attempt"
+    enabled: true
+
+  - id: 11062
+    level: 8
+    description: "Object deleted"
+    groups: [windows, object_access]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4660
+    alert:
+      title: "Windows: Object deleted"
+    enabled: true
+
+  - id: 11063
+    level: 10
+    description: "Permissions on object changed"
+    groups: [windows, object_access, privilege_escalation]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4670
+    mitre:
+      - tactic_id: "TA0004"
+        tactic_name: "Privilege Escalation"
+        technique_id: "T1222"
+        technique_name: "File and Directory Permissions Modification"
+    alert:
+      title: "Windows: Permissions on object changed"
+    enabled: true
+
+  # ── Defense Evasion (1102, 4715, 4719) ──────────────────────────────────
+
+  - id: 11070
+    level: 15
+    description: "Windows audit log cleared (Event 1102)"
+    groups: [defense_evasion, windows, log_tampering, critical]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 1102
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1070.001"
+        technique_name: "Indicator Removal: Clear Windows Event Logs"
+    alert:
+      title: "Windows: SECURITY EVENT LOG CLEARED — potential cover-up"
+    enabled: true
+
+  - id: 11071
+    level: 15
+    description: "System log cleared (Event 104)"
+    groups: [defense_evasion, windows, log_tampering, critical]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 104
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1070.001"
+        technique_name: "Indicator Removal: Clear Windows Event Logs"
+    alert:
+      title: "Windows: SYSTEM LOG CLEARED"
+    enabled: true
+
+  - id: 11072
+    level: 12
+    description: "Audit Policy table list modified per user"
+    groups: [defense_evasion, windows]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4715
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1562.002"
+    alert:
+      title: "Windows: Audit policy table modified"
+    enabled: true
+
+  # ── Firewall Rules (4946-4956) ────────────────────────────────────────────
+
+  - id: 11080
+    level: 9
+    description: "Windows Firewall rule added"
+    groups: [windows, firewall]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4946
+    alert:
+      title: "Windows: Firewall rule added"
+    enabled: true
+
+  - id: 11081
+    level: 10
+    description: "Windows Firewall rule modified"
+    groups: [windows, firewall, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4947
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1562.004"
+        technique_name: "Impair Defenses: Disable or Modify System Firewall"
+    alert:
+      title: "Windows: Firewall rule modified"
+    enabled: true
+
+  - id: 11082
+    level: 12
+    description: "Windows Firewall rule deleted"
+    groups: [windows, firewall, defense_evasion, high_severity]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4948
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1562.004"
+        technique_name: "Impair Defenses: Disable or Modify System Firewall"
+    alert:
+      title: "Windows: Firewall rule deleted"
+    enabled: true
+
+  - id: 11083
+    level: 13
+    description: "Windows Firewall service stopped"
+    groups: [windows, firewall, defense_evasion, high_severity]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 5025
+    mitre:
+      - tactic_id: "TA0005"
+        tactic_name: "Defense Evasion"
+        technique_id: "T1562.004"
+        technique_name: "Impair Defenses: Disable or Modify System Firewall"
+    alert:
+      title: "Windows: Firewall service stopped"
+    enabled: true
+
+  # ── Sysmon-style events ──────────────────────────────────────────────────
+
+  - id: 11090
+    level: 10
+    description: "Process accessed LSASS memory (Sysmon EID 10)"
+    groups: [credential_access, windows, sysmon, high_severity]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 10
+        win_TargetImage:
+          regex: "(?i)lsass\\.exe"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1003.001"
+        technique_name: "OS Credential Dumping: LSASS Memory"
+    alert:
+      title: "Windows: Process accessed LSASS memory"
+    enabled: true
+
+  - id: 11091
+    level: 11
+    description: "Suspicious DLL loaded by lsass.exe (Sysmon EID 7)"
+    groups: [credential_access, windows, sysmon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 7
+        win_Image:
+          regex: "(?i)lsass\\.exe"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1003.001"
+    alert:
+      title: "Windows: Suspicious DLL load into lsass.exe"
+    enabled: true
+
+  - id: 11092
+    level: 12
+    description: "Driver loaded — possible rootkit (Sysmon EID 6)"
+    groups: [persistence, windows, sysmon, kernel]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 6
+    mitre:
+      - tactic_id: "TA0003"
+        tactic_name: "Persistence"
+        technique_id: "T1547.006"
+        technique_name: "Boot or Logon Autostart Execution: Kernel Modules and Extensions"
+    alert:
+      title: "Windows: Driver loaded — verify legitimacy"
+    enabled: true
+
+  # ── User Rights Assignment (4704, 4705, 4717, 4718) ─────────────────────
+
+  - id: 11100
+    level: 11
+    description: "A user right was assigned"
+    groups: [privilege_escalation, windows]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4704
+    mitre:
+      - tactic_id: "TA0004"
+        tactic_name: "Privilege Escalation"
+        technique_id: "T1098"
+    alert:
+      title: "Windows: User right assigned"
+    enabled: true
+
+  - id: 11101
+    level: 9
+    description: "A user right was removed"
+    groups: [windows]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4705
+    alert:
+      title: "Windows: User right removed"
+    enabled: true
+
+  - id: 11102
+    level: 12
+    description: "Special groups assignment to new logon"
+    groups: [privilege_escalation, windows]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4964
+    mitre:
+      - tactic_id: "TA0004"
+        tactic_name: "Privilege Escalation"
+        technique_id: "T1078"
+    alert:
+      title: "Windows: Special groups assigned to logon"
+    enabled: true
+
+  # ── Logon Anomalies / Unusual Times ───────────────────────────────────────
+
+  - id: 11110
+    level: 10
+    description: "Logon at unusual hour (between 23:00 and 06:00)"
+    groups: [authentication, windows, anomaly]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4624
+        win_LogonType:
+          regex: "^(2|10)$"
+    mitre:
+      - tactic_id: "TA0001"
+        tactic_name: "Initial Access"
+        technique_id: "T1078"
+    alert:
+      title: "Windows: Off-hours logon detected"
+    enabled: true
+
+  # ── PowerShell-specific events (4103, 4104) ──────────────────────────────
+
+  - id: 11120
+    level: 8
+    description: "PowerShell module logging"
+    groups: [powershell, windows]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4103
+    alert:
+      title: "Windows: PowerShell command logged"
+    enabled: true
+
+  - id: 11121
+    level: 11
+    description: "PowerShell ScriptBlock with suspicious content"
+    groups: [powershell, windows, suspicious]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4104
+        win_ScriptBlockText:
+          regex: "(?i)(downloadstring|iex |invoke-expression|frombase64string|-encodedcommand|reflection.assembly)"
+    mitre:
+      - tactic_id: "TA0002"
+        tactic_name: "Execution"
+        technique_id: "T1059.001"
+        technique_name: "Command and Scripting Interpreter: PowerShell"
+    alert:
+      title: "Windows: Suspicious PowerShell script block"
+    enabled: true
+
+  - id: 11122
+    level: 12
+    description: "PowerShell Empire/Cobalt Strike payload indicators"
+    groups: [powershell, windows, malware, high_severity]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4104
+        win_ScriptBlockText:
+          regex: "(?i)(empire|cobalt|metasploit|meterpreter|psinject)"
+    mitre:
+      - tactic_id: "TA0011"
+        tactic_name: "Command and Control"
+        technique_id: "T1071"
+    alert:
+      title: "Windows: PowerShell framework payload (Empire/CobaltStrike)"
+    enabled: true
+
+  # ── Network logon failure analysis ────────────────────────────────────────
+
+  - id: 11130
+    level: 9
+    description: "Failed network logon (LogonType 3) — possible SMB brute force"
+    groups: [authentication, windows, failed_logon, network]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4625
+        win_LogonType:
+          value: "3"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1110"
+    alert:
+      title: "Windows: Failed network logon"
+    enabled: true
+
+  - id: 11131
+    level: 11
+    description: "Failed RDP logon (LogonType 10) — possible RDP brute force"
+    groups: [authentication, windows, rdp, failed_logon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4625
+        win_LogonType:
+          value: "10"
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1110.001"
+    alert:
+      title: "Windows: Failed RDP logon"
+    enabled: true
+
+  - id: 11132
+    level: 13
+    description: "RDP brute force pattern detected"
+    groups: [authentication, windows, rdp, brute_force, high_severity]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id:
+          value: 4625
+        win_LogonType:
+          value: "10"
+    threshold:
+      count: 5
+      window: 300
+      group_by: win_IpAddress
+    mitre:
+      - tactic_id: "TA0006"
+        tactic_name: "Credential Access"
+        technique_id: "T1110.001"
+        technique_name: "Brute Force: Password Guessing"
+    alert:
+      title: "Windows: RDP brute force attack from single IP"
+    enabled: true

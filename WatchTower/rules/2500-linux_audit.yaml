@@ -1,0 +1,481 @@
+# WatchTower - Linux Audit & SSH Detection Rules
+# Rule IDs: 13000-13199
+# Covers SSH brute force, sudo abuse, audit log monitoring, container escape,
+# kernel module loading, cron tampering, and Linux-specific MITRE techniques.
+
+rules:
+  # ── SSH Authentication ────────────────────────────────────────────────────
+
+  - id: 13001
+    level: 5
+    description: "SSH successful login"
+    groups: [linux, ssh, authentication]
+    match:
+      type: "log.journal"
+      fields:
+        message:
+          regex: "(?i)Accepted (password|publickey|keyboard-interactive) for"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078", technique_name: "Valid Accounts"}]
+    alert: {title: "Linux: SSH successful login"}
+    enabled: true
+
+  - id: 13002
+    level: 8
+    description: "SSH login failure"
+    groups: [linux, ssh, authentication, failed_logon]
+    match:
+      type: "log.journal"
+      fields:
+        message:
+          regex: "(?i)Failed password for"
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001", technique_name: "Brute Force"}]
+    alert: {title: "Linux: SSH login failure"}
+    enabled: true
+
+  - id: 13003
+    level: 12
+    description: "SSH brute force pattern detected"
+    groups: [linux, ssh, brute_force, high_severity]
+    match:
+      type: "log.journal"
+      fields:
+        message:
+          regex: "(?i)Failed password for"
+    threshold:
+      count: 8
+      window: 120
+      group_by: hostname
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001", technique_name: "Brute Force"}]
+    alert: {title: "Linux: SSH brute force attack"}
+    enabled: true
+
+  - id: 13004
+    level: 10
+    description: "SSH login from invalid user"
+    groups: [linux, ssh, suspicious]
+    match:
+      type: "log.journal"
+      fields:
+        message:
+          regex: "(?i)Failed password for invalid user"
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001", technique_name: "Brute Force"}]
+    alert: {title: "Linux: Failed SSH login for non-existent user"}
+    enabled: true
+
+  - id: 13005
+    level: 11
+    description: "SSH root login attempt"
+    groups: [linux, ssh, privilege_escalation]
+    match:
+      type: "log.journal"
+      fields:
+        message:
+          regex: "(?i)(Accepted|Failed) (password|publickey) for root"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078.003", technique_name: "Valid Accounts: Local Accounts"}]
+    alert: {title: "Linux: SSH root login attempt"}
+    enabled: true
+
+  - id: 13006
+    level: 9
+    description: "SSH key-based authentication"
+    groups: [linux, ssh, authentication]
+    match:
+      type: "log.journal"
+      fields:
+        message:
+          regex: "(?i)Accepted publickey for"
+    alert: {title: "Linux: SSH key-based login"}
+    enabled: true
+
+  - id: 13007
+    level: 13
+    description: "SSH authorized_keys modified — possible backdoor"
+    groups: [linux, ssh, persistence, high_severity]
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "(?i)\\.ssh/authorized_keys$"
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098.004", technique_name: "Account Manipulation: SSH Authorized Keys"}]
+    alert: {title: "Linux: SSH authorized_keys modified"}
+    enabled: true
+
+  # ── Sudo / Privilege Escalation ──────────────────────────────────────────
+
+  - id: 13020
+    level: 8
+    description: "Sudo command executed"
+    groups: [linux, sudo, privilege]
+    match:
+      type: "log.journal"
+      fields:
+        message:
+          regex: "(?i)sudo:.*COMMAND="
+    mitre: [{tactic_id: "TA0004", technique_id: "T1548.003", technique_name: "Abuse Elevation Control Mechanism: Sudo"}]
+    alert: {title: "Linux: sudo command"}
+    enabled: true
+
+  - id: 13021
+    level: 10
+    description: "Sudo authentication failure"
+    groups: [linux, sudo, failed_auth]
+    match:
+      type: "log.journal"
+      fields:
+        message:
+          regex: "(?i)sudo:.*authentication failure"
+    alert: {title: "Linux: sudo authentication failure"}
+    enabled: true
+
+  - id: 13022
+    level: 12
+    description: "Sudo with NOPASSWD entry abused"
+    groups: [linux, sudo, privilege_escalation]
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "(?i)^/etc/sudoers(\\.d/.*)?$"
+    mitre: [{tactic_id: "TA0004", technique_id: "T1548.003", technique_name: "Abuse Elevation Control Mechanism: Sudo and Sudo Caching"}]
+    alert: {title: "Linux: sudoers file modified"}
+    enabled: true
+
+  - id: 13023
+    level: 12
+    description: "User added to sudo group"
+    groups: [linux, sudo, persistence]
+    match:
+      type: "log.journal"
+      fields:
+        message:
+          regex: "(?i)added user.*to group.*(sudo|wheel|admin)"
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098", technique_name: "Account Manipulation"}]
+    alert: {title: "Linux: User added to sudo/wheel group"}
+    enabled: true
+
+  # ── Account Management ───────────────────────────────────────────────────
+
+  - id: 13040
+    level: 11
+    description: "New user account created"
+    groups: [linux, account, persistence]
+    match:
+      type: "log.journal"
+      fields:
+        message:
+          regex: "(?i)new user:.*name="
+    mitre: [{tactic_id: "TA0003", technique_id: "T1136.001", technique_name: "Create Account: Local Account"}]
+    alert: {title: "Linux: New user account created"}
+    enabled: true
+
+  - id: 13041
+    level: 10
+    description: "User password changed"
+    groups: [linux, account]
+    match:
+      type: "log.journal"
+      fields:
+        message:
+          regex: "(?i)passwd.*password (changed|reset)"
+    alert: {title: "Linux: User password changed"}
+    enabled: true
+
+  - id: 13042
+    level: 13
+    description: "/etc/passwd or /etc/shadow modified"
+    groups: [linux, account, credential_access, high_severity]
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "(?i)^/etc/(passwd|shadow|gshadow|group)$"
+    mitre: [{tactic_id: "TA0006", technique_id: "T1003.008", technique_name: "OS Credential Dumping: /etc/passwd and /etc/shadow"}]
+    alert: {title: "Linux: critical auth file modified"}
+    enabled: true
+
+  - id: 13043
+    level: 12
+    description: "User account deletion"
+    groups: [linux, account]
+    match:
+      type: "log.journal"
+      fields:
+        message:
+          regex: "(?i)delete user"
+    mitre: [{tactic_id: "TA0005", technique_id: "T1531", technique_name: "Account Access Removal"}]
+    alert: {title: "Linux: User account deleted"}
+    enabled: true
+
+  # ── Cron / Scheduled Jobs ────────────────────────────────────────────────
+
+  - id: 13060
+    level: 11
+    description: "Cron file modified"
+    groups: [linux, persistence, cron]
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "(?i)(crontab|/etc/cron\\.|/var/spool/cron/)"
+    mitre: [{tactic_id: "TA0003", technique_id: "T1053.003", technique_name: "Scheduled Task/Job: Cron"}]
+    alert: {title: "Linux: Cron file modified"}
+    enabled: true
+
+  - id: 13061
+    level: 11
+    description: "Systemd timer or service created"
+    groups: [linux, persistence, systemd]
+    match:
+      type: "fim.added"
+      fields:
+        path:
+          regex: "(?i)/etc/systemd/system/.*\\.(service|timer)$"
+    mitre: [{tactic_id: "TA0003", technique_id: "T1053.006", technique_name: "Scheduled Task/Job: Systemd Timers"}]
+    alert: {title: "Linux: Systemd unit added"}
+    enabled: true
+
+  # ── Suspicious Command Execution ─────────────────────────────────────────
+
+  - id: 13080
+    level: 12
+    description: "Reverse shell pattern detected"
+    groups: [linux, reverse_shell, c2]
+    match:
+      type: "process.new"
+      fields:
+        cmdline:
+          regex: "(?i)(bash\\s+-i.*>&.*tcp|nc\\s+-e\\s+/bin/|python\\s+-c.*socket\\.connect|/dev/tcp/)"
+    mitre: [{tactic_id: "TA0011", technique_id: "T1059.004", technique_name: "Command and Scripting Interpreter: Unix Shell"}]
+    alert: {title: "Linux: Reverse shell command detected"}
+    enabled: true
+
+  - id: 13081
+    level: 11
+    description: "Wget/curl piped to shell"
+    groups: [linux, suspicious, download]
+    match:
+      type: "process.new"
+      fields:
+        cmdline:
+          regex: "(?i)(wget|curl).*(\\||sh\\s*-c|bash\\s*-c|tee.*\\.sh)"
+    mitre: [{tactic_id: "TA0002", technique_id: "T1105", technique_name: "Ingress Tool Transfer"}]
+    alert: {title: "Linux: Remote script pipe to shell"}
+    enabled: true
+
+  - id: 13082
+    level: 13
+    description: "SUID binary execution from unusual path"
+    groups: [linux, privilege_escalation, suspicious]
+    match:
+      type: "process.new"
+      fields:
+        cmdline:
+          regex: "(?i)^/(tmp|var/tmp|dev/shm|home).*\\s"
+    mitre: [{tactic_id: "TA0004", technique_id: "T1548.001", technique_name: "Abuse Elevation Control Mechanism: Setuid and Setgid"}]
+    alert: {title: "Linux: Execution from world-writable path"}
+    enabled: true
+
+  - id: 13083
+    level: 12
+    description: "Linux GTFOBin execution (sudo bypass)"
+    groups: [linux, privilege_escalation]
+    match:
+      type: "process.new"
+      fields:
+        cmdline:
+          regex: "(?i)^(find|vim|nmap|less|more|nano|awk|sed)\\s+.*-exec\\s+(/bin/sh|/bin/bash)"
+    mitre: [{tactic_id: "TA0004", technique_id: "T1548.003", technique_name: "Abuse Elevation Control Mechanism: Sudo"}]
+    alert: {title: "Linux: Possible GTFOBin sudo bypass"}
+    enabled: true
+
+  # ── Kernel / Module Loading ──────────────────────────────────────────────
+
+  - id: 13100
+    level: 13
+    description: "Kernel module loaded — possible rootkit"
+    groups: [linux, kernel, rootkit, persistence]
+    match:
+      type: "process.new"
+      fields:
+        cmdline:
+          regex: "(?i)(insmod|modprobe|kmod\\s+ins)"
+    mitre: [{tactic_id: "TA0003", technique_id: "T1547.006", technique_name: "Boot or Logon Autostart Execution: Kernel Modules and Extensions"}]
+    alert: {title: "Linux: Kernel module loaded"}
+    enabled: true
+
+  - id: 13101
+    level: 13
+    description: "/etc/modules-load.d modified — persistent kernel module"
+    groups: [linux, kernel, persistence, rootkit]
+    match:
+      type: "fim.modified"
+      fields:
+        path:
+          regex: "(?i)/etc/modules-load\\.d/"
+    mitre: [{tactic_id: "TA0003", technique_id: "T1547.006"}]
+    alert: {title: "Linux: Persistent kernel module configured"}
+    enabled: true
+
+  - id: 13102
+    level: 14
+    description: "LD_PRELOAD environment variable used (library hijacking)"
+    groups: [linux, defense_evasion, library_hijack]
+    match:
+      type: "process.new"
+      fields:
+        cmdline:
+          regex: "(?i)LD_PRELOAD\\s*="
+    mitre: [{tactic_id: "TA0005", technique_id: "T1574.006", technique_name: "Hijack Execution Flow: Dynamic Linker Hijacking"}]
+    alert: {title: "Linux: LD_PRELOAD library hijacking"}
+    enabled: true
+
+  # ── Container Escape ─────────────────────────────────────────────────────
+
+  - id: 13120
+    level: 14
+    description: "Container escape attempt — mounting host filesystem"
+    groups: [linux, container, escape, high_severity]
+    match:
+      type: "process.new"
+      fields:
+        cmdline:
+          regex: "(?i)mount.*/proc/self/root|nsenter\\s+--target\\s+1"
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611", technique_name: "Escape to Host"}]
+    alert: {title: "Linux: Container escape attempt"}
+    enabled: true
+
+  - id: 13121
+    level: 13
+    description: "Docker socket access from container"
+    groups: [linux, container, escape]
+    match:
+      type: "process.new"
+      fields:
+        cmdline:
+          regex: "(?i)/var/run/docker\\.sock"
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611", technique_name: "Escape to Host"}]
+    alert: {title: "Linux: Docker socket access (escape risk)"}
+    enabled: true
+
+  - id: 13122
+    level: 12
+    description: "Privileged container or capability flag detected"
+    groups: [linux, container, suspicious]
+    match:
+      type: "process.new"
+      fields:
+        cmdline:
+          regex: "(?i)docker\\s+run.*(--privileged|--cap-add=SYS_ADMIN|--pid=host|--net=host)"
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "Linux: Privileged container creation"}
+    enabled: true
+
+  # ── Audit Log Tampering ──────────────────────────────────────────────────
+
+  - id: 13140
+    level: 15
+    description: "auditd service stopped or killed"
+    groups: [linux, defense_evasion, log_tampering, critical]
+    match:
+      type: "process.new"
+      fields:
+        cmdline:
+          regex: "(?i)(systemctl\\s+stop\\s+auditd|service\\s+auditd\\s+stop|kill.*auditd|pkill\\s+auditd)"
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001", technique_name: "Impair Defenses: Disable or Modify Tools"}]
+    alert: {title: "Linux: auditd disabled — log tampering"}
+    enabled: true
+
+  - id: 13141
+    level: 14
+    description: "Audit logs cleared (auditctl -e 0)"
+    groups: [linux, defense_evasion]
+    match:
+      type: "process.new"
+      fields:
+        cmdline:
+          regex: "(?i)auditctl\\s+-(e\\s+0|D)"
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070.002", technique_name: "Indicator Removal: Clear Linux or Mac System Logs"}]
+    alert: {title: "Linux: Audit subsystem disabled"}
+    enabled: true
+
+  - id: 13142
+    level: 13
+    description: "Bash history cleared or disabled"
+    groups: [linux, defense_evasion]
+    match:
+      type: "process.new"
+      fields:
+        cmdline:
+          regex: "(?i)(history\\s+-c|unset\\s+HISTFILE|HISTFILE=/dev/null|>\\s*\\.bash_history)"
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070.003", technique_name: "Indicator Removal: Clear Command History"}]
+    alert: {title: "Linux: Bash history tampering"}
+    enabled: true
+
+  - id: 13143
+    level: 13
+    description: "/var/log file deletion"
+    groups: [linux, defense_evasion]
+    match:
+      type: "fim.deleted"
+      fields:
+        path:
+          regex: "(?i)^/var/log/"
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070.002"}]
+    alert: {title: "Linux: System log file deleted"}
+    enabled: true
+
+  # ── Firewall / iptables ──────────────────────────────────────────────────
+
+  - id: 13160
+    level: 11
+    description: "iptables/firewalld rules flushed"
+    groups: [linux, firewall, defense_evasion]
+    match:
+      type: "process.new"
+      fields:
+        cmdline:
+          regex: "(?i)(iptables\\s+-F|firewall-cmd\\s+--reload|ufw\\s+disable)"
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.004", technique_name: "Impair Defenses: Disable or Modify System Firewall"}]
+    alert: {title: "Linux: Firewall rules flushed"}
+    enabled: true
+
+  - id: 13161
+    level: 11
+    description: "New iptables rule allowing inbound traffic"
+    groups: [linux, firewall, persistence]
+    match:
+      type: "process.new"
+      fields:
+        cmdline:
+          regex: "(?i)iptables\\s+-A\\s+INPUT.*ACCEPT"
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.004"}]
+    alert: {title: "Linux: New iptables INPUT ACCEPT rule"}
+    enabled: true
+
+  # ── Web Server Specific ──────────────────────────────────────────────────
+
+  - id: 13180
+    level: 12
+    description: "Web shell uploaded to web root"
+    groups: [linux, web_shell, persistence, high_severity]
+    match:
+      type: "fim.added"
+      fields:
+        path:
+          regex: "(?i)(/var/www/|/usr/share/nginx/|/srv/http/).*\\.(php|jsp|asp|aspx|cgi|pl|py|sh)$"
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505.003", technique_name: "Server Software Component: Web Shell"}]
+    alert: {title: "Linux: New web file in web root (web shell?)"}
+    enabled: true
+
+  - id: 13181
+    level: 11
+    description: "Apache/nginx error log indicates injection attempt"
+    groups: [linux, web, sqli]
+    match:
+      type: "log.file"
+      fields:
+        message:
+          regex: "(?i)(union\\s+select|or\\s+1=1|<script|\\.\\./|/etc/passwd)"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190", technique_name: "Exploit Public-Facing Application"}]
+    alert: {title: "Linux: SQL injection/XSS pattern in web log"}
+    enabled: true
