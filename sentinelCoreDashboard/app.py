@@ -795,32 +795,46 @@ def api_indexer_patterns():
 def api_dashboard_overview():
     """Single payload for home page: KPIs, timeline, top sources, at-risk, MITRE, alerts."""
     try:
-        # Parallel fetch
         import concurrent.futures
+
+        def _safe(fn, *args, default=None):
+            """Call fn(*args) and return default on any exception — prevents 502 during startup."""
+            try:
+                return fn(*args) or default
+            except Exception:
+                return default
+
         out = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
-            f_alerts = ex.submit(get_recent_alerts, 50)
-            f_sev = ex.submit(get_alerts_by_severity)
-            f_agents = ex.submit(get_agents_summary)
-            f_agents_list = ex.submit(get_agents_list, 15, 0)
-            f_timeline = ex.submit(get_alerts_timeline_24h)
-            f_sources = ex.submit(get_top_source_ips)
-            f_users = ex.submit(get_alerts_by_user, 10)
-            f_agent_risk = ex.submit(get_alerts_by_agent, 10)
-            f_critical = ex.submit(get_alerts_high_level_count)
-            f_mitre = ex.submit(get_mitre_techniques)
-            f_sev_24h = ex.submit(get_alerts_severity_24h)
-        alerts_res = f_alerts.result()
-        sev_res = f_sev.result()
-        sev_24h_res = f_sev_24h.result()
-        agents_res = f_agents.result()
-        agents_list_res = f_agents_list.result()
-        timeline_res = f_timeline.result()
-        sources_res = f_sources.result()
-        users_res = f_users.result()
-        agent_risk_res = f_agent_risk.result()
-        critical_res = f_critical.result()
-        mitre_res = f_mitre.result()
+            f_alerts     = ex.submit(_safe, get_recent_alerts, 50, default={})
+            f_sev        = ex.submit(_safe, get_alerts_by_severity, default={})
+            f_agents     = ex.submit(_safe, get_agents_summary, default={})
+            f_agents_list= ex.submit(_safe, get_agents_list, 15, 0, default={})
+            f_timeline   = ex.submit(_safe, get_alerts_timeline_24h, default={})
+            f_sources    = ex.submit(_safe, get_top_source_ips, default={})
+            f_users      = ex.submit(_safe, get_alerts_by_user, 10, default={})
+            f_agent_risk = ex.submit(_safe, get_alerts_by_agent, 10, default={})
+            f_critical   = ex.submit(_safe, get_alerts_high_level_count, default={})
+            f_mitre      = ex.submit(_safe, get_mitre_techniques, default={})
+            f_sev_24h    = ex.submit(_safe, get_alerts_severity_24h, default={})
+
+        def _get(f, default=None):
+            try:
+                return f.result(timeout=30) or default
+            except Exception:
+                return default
+
+        alerts_res      = _get(f_alerts,     {})
+        sev_res         = _get(f_sev,        {})
+        sev_24h_res     = _get(f_sev_24h,    {})
+        agents_res      = _get(f_agents,     {})
+        agents_list_res = _get(f_agents_list,{})
+        timeline_res    = _get(f_timeline,   {})
+        sources_res     = _get(f_sources,    {})
+        users_res       = _get(f_users,      {})
+        agent_risk_res  = _get(f_agent_risk, {})
+        critical_res    = _get(f_critical,   {})
+        mitre_res       = _get(f_mitre,      {})
 
         alerts = _normalize_alerts(alerts_res)
         total_alerts = (alerts_res.get("hits") or {}).get("total") or {}
