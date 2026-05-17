@@ -1,0 +1,161 @@
+# WatchTower - Web Server Log Decoders
+# Apache (combined/common), Nginx (combined), Microsoft IIS, HAProxy
+
+decoders:
+  # ── Apache HTTP Server ──────────────────────────────────────────────────────
+
+  - name: "apache-combined"
+    description: "Apache combined log format — IP - user [date] \"METHOD path HTTP/x\" status size \"referer\" \"UA\""
+    match:
+      type: "log"
+      tags:
+        source: "apache"
+    extract:
+      - field: "src_ip"
+        regex: "^(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})\\s"
+      - field: "remote_user"
+        regex: "^\\S+\\s+\\S+\\s+(\\S+)\\s+\\["
+      - field: "timestamp"
+        regex: "\\[(\\d{2}/\\w{3}/\\d{4}:\\d{2}:\\d{2}:\\d{2}\\s+[+-]\\d{4})\\]"
+      - field: "http_method"
+        regex: "\"(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|TRACE|CONNECT)\\s"
+      - field: "http_path"
+        regex: "\"(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|TRACE|CONNECT)\\s+(\\S+)"
+      - field: "http_version"
+        regex: "HTTP/(\\d\\.\\d)\""
+      - field: "status_code"
+        regex: "\"\\s+(\\d{3})\\s+"
+      - field: "response_size"
+        regex: "\\s+\\d{3}\\s+(\\d+|-)\\s+\""
+      - field: "http_referer"
+        regex: "\\s+\"([^\"]*)\"\\s+\"[^\"]*\"\\s*$"
+      - field: "user_agent"
+        regex: "\"([^\"]*)\"\\s*$"
+
+  - name: "apache-error"
+    description: "Apache error log format"
+    match:
+      type: "log"
+      tags:
+        source: "apache-error"
+    extract:
+      - field: "log_level"
+        regex: "\\[(emerg|alert|crit|error|warn|notice|info|debug)\\]"
+      - field: "pid"
+        regex: "\\[pid (\\d+)"
+      - field: "src_ip"
+        regex: "\\[client (\\d+\\.\\d+\\.\\d+\\.\\d+)"
+      - field: "module"
+        regex: "AH\\d+:"
+      - field: "message"
+        regex: "\\] (.+)$"
+
+  # ── Nginx ───────────────────────────────────────────────────────────────────
+
+  - name: "nginx-access"
+    description: "Nginx combined access log (same as Apache combined)"
+    match:
+      type: "log"
+      tags:
+        source: "nginx"
+    extract:
+      - field: "src_ip"
+        regex: "^(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})\\s"
+      - field: "remote_user"
+        regex: "^\\S+\\s+\\S+\\s+(\\S+)\\s+\\["
+      - field: "timestamp"
+        regex: "\\[(\\d{2}/\\w{3}/\\d{4}:\\d{2}:\\d{2}:\\d{2}\\s+[+-]\\d{4})\\]"
+      - field: "http_method"
+        regex: "\"(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\\s"
+      - field: "http_path"
+        regex: "\"(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\\s+(\\S+)"
+      - field: "status_code"
+        regex: "\"\\s+(\\d{3})\\s+"
+      - field: "response_size"
+        regex: "\\s+\\d{3}\\s+(\\d+)\\s+\""
+      - field: "http_referer"
+        regex: "\\s+\"([^\"]*)\"\\s+\"[^\"]*\"\\s*$"
+      - field: "user_agent"
+        regex: "\"([^\"]*)\"\\s*$"
+
+  - name: "nginx-error"
+    description: "Nginx error log format"
+    match:
+      type: "log"
+      tags:
+        source: "nginx-error"
+    extract:
+      - field: "timestamp"
+        regex: "^(\\d{4}/\\d{2}/\\d{2}\\s+\\d{2}:\\d{2}:\\d{2})"
+      - field: "log_level"
+        regex: "\\[(emerg|alert|crit|error|warn|notice|info|debug)\\]"
+      - field: "pid"
+        regex: "(\\d+)#0:"
+      - field: "src_ip"
+        regex: "client:\\s+(\\d+\\.\\d+\\.\\d+\\.\\d+)"
+      - field: "server"
+        regex: "server:\\s+(\\S+),"
+      - field: "request"
+        regex: "request:\\s+\"([^\"]+)\""
+      - field: "upstream"
+        regex: "upstream:\\s+\"([^\"]+)\""
+
+  # ── Microsoft IIS ───────────────────────────────────────────────────────────
+
+  - name: "iis-w3c"
+    description: "Microsoft IIS W3C extended log format (space-separated)"
+    match:
+      type: "log"
+      tags:
+        source: "iis"
+    extract:
+      - field: "timestamp"
+        regex: "^(\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2})"
+      - field: "s_ip"
+        regex: "^\\S+\\s+\\S+\\s+(\\S+)\\s+"
+      - field: "http_method"
+        regex: "^\\S+\\s+\\S+\\s+\\S+\\s+(\\S+)\\s+"
+      - field: "http_path"
+        regex: "^\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+(\\S+)\\s+"
+      - field: "uri_query"
+        regex: "^\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+(\\S+)\\s+"
+      - field: "s_port"
+        regex: "^\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+(\\S+)\\s+"
+      - field: "remote_user"
+        regex: "^\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+(\\S+)\\s+"
+      - field: "src_ip"
+        regex: "^\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+\\S+\\s+(\\S+)\\s+"
+      - field: "user_agent"
+        regex: "^(?:\\S+\\s+){9}(\\S+)\\s+"
+      - field: "status_code"
+        regex: "\\s(\\d{3})\\s+\\d+\\s+\\d+\\s+\\d+\\s*$"
+      - field: "sub_status"
+        regex: "\\s\\d{3}\\s+(\\d+)\\s+\\d+\\s+\\d+\\s*$"
+
+  # ── HAProxy ─────────────────────────────────────────────────────────────────
+
+  - name: "haproxy-http"
+    description: "HAProxy HTTP frontend log format"
+    match:
+      type: "log"
+      tags:
+        source: "haproxy"
+    extract:
+      - field: "src_ip"
+        regex: "haproxy\\[\\d+\\]:\\s+(\\d+\\.\\d+\\.\\d+\\.\\d+):"
+      - field: "src_port"
+        regex: "haproxy\\[\\d+\\]:\\s+\\d+\\.\\d+\\.\\d+\\.\\d+:(\\d+)"
+      - field: "frontend"
+        regex: "\\s+(\\S+)\\s+\\S+/\\S+"
+      - field: "backend"
+        regex: "\\s+\\S+\\s+(\\S+)/\\S+"
+      - field: "server"
+        regex: "\\s+\\S+\\s+\\S+/(\\S+)"
+      - field: "status_code"
+        regex: "\\s+(\\d{3})\\s+\\d+\\s+"
+      - field: "bytes_read"
+        regex: "\\s+\\d{3}\\s+(\\d+)\\s+"
+      - field: "http_method"
+        regex: "\"(GET|POST|PUT|DELETE|HEAD|OPTIONS)\\s+"
+      - field: "http_path"
+        regex: "\"(?:GET|POST|PUT|DELETE|HEAD|OPTIONS)\\s+(\\S+)"

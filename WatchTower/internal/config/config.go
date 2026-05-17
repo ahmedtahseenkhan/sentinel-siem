@@ -21,6 +21,7 @@ type Config struct {
 	ThreatIntel ThreatIntelConfig `yaml:"threat_intel"`
 	Syslog      SyslogConfig      `yaml:"syslog"`
 	Identity    IdentityConfig    `yaml:"identity"`
+	Notifier    NotifierConfig    `yaml:"notifier"`
 }
 
 // IdentityConfig configures LDAP/AD user synchronisation.
@@ -281,4 +282,34 @@ func applyEnvOverrides(cfg *Config) {
 			cfg.ThreatIntel.Sources = sources
 		}
 	}
+	if v := os.Getenv("WATCHTOWER_NOTIFIER_ENABLED"); v != "" {
+		cfg.Notifier.Enabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv("WATCHTOWER_NOTIFIER_DESTINATIONS"); v != "" {
+		var dests []NotifierDestination
+		if err := json.Unmarshal([]byte(v), &dests); err == nil {
+			cfg.Notifier.Destinations = dests
+		}
+	}
+}
+
+// NotifierConfig controls outbound alert delivery to Slack/Teams/email/webhook.
+type NotifierConfig struct {
+	Enabled               bool                  `yaml:"enabled"`
+	Destinations          []NotifierDestination `yaml:"destinations"`
+	RatePerDestPerMinute  int                   `yaml:"rate_per_destination_per_minute"`
+}
+
+// NotifierDestination describes a single outbound alert channel.
+type NotifierDestination struct {
+	Type     string   `yaml:"type" json:"type"`             // slack | teams | webhook | email
+	URL      string   `yaml:"url" json:"url"`
+	MinLevel int      `yaml:"min_level" json:"min_level"`
+	Enabled  bool     `yaml:"enabled" json:"enabled"`
+	SMTPHost string   `yaml:"smtp_host" json:"smtp_host"`
+	SMTPPort int      `yaml:"smtp_port" json:"smtp_port"`
+	SMTPUser string   `yaml:"smtp_user" json:"smtp_user"`
+	SMTPPass string   `yaml:"smtp_pass" json:"smtp_pass"`
+	From     string   `yaml:"from" json:"from"`
+	To       []string `yaml:"to" json:"to"`
 }

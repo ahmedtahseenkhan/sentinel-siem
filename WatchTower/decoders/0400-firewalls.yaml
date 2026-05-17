@@ -1,0 +1,188 @@
+# WatchTower - Firewall Log Decoders
+# Cisco ASA, Palo Alto Networks, Fortinet FortiGate, pfSense, Check Point
+
+decoders:
+  # ── Cisco ASA ───────────────────────────────────────────────────────────────
+
+  - name: "cisco-asa"
+    description: "Cisco ASA syslog messages — %ASA-<level>-<id>: details"
+    match:
+      type: "log"
+      tags:
+        source: "cisco-asa"
+    extract:
+      - field: "asa_severity"
+        regex: "%ASA-(\\d)-\\d+"
+      - field: "asa_msg_id"
+        regex: "%ASA-\\d-(\\d+):"
+      - field: "src_ip"
+        regex: "from\\s+(?:inside|outside|dmz)?:?(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})"
+      - field: "dst_ip"
+        regex: "(?:to|->|dst)\\s+(?:inside|outside|dmz)?:?(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})"
+      - field: "src_port"
+        regex: "src\\s+\\S+:\\d+\\.\\d+\\.\\d+\\.\\d+/(\\d+)"
+      - field: "dst_port"
+        regex: "dst\\s+\\S+:\\d+\\.\\d+\\.\\d+\\.\\d+/(\\d+)"
+      - field: "protocol"
+        regex: "(TCP|UDP|ICMP|GRE|ESP)"
+      - field: "action"
+        regex: "(Deny|Built|Teardown|inbound|outbound|access-list)"
+      - field: "username"
+        regex: "user '([^']+)'"
+
+  - name: "cisco-asa-vpn"
+    description: "Cisco ASA VPN session events"
+    match:
+      type: "log"
+      tags:
+        source: "cisco-asa-vpn"
+    extract:
+      - field: "vpn_user"
+        regex: "User <([^>]+)>"
+      - field: "vpn_group"
+        regex: "Group\\s+<([^>]+)>"
+      - field: "vpn_session_type"
+        regex: "Session Type:\\s+(\\S+)"
+      - field: "vpn_remote_ip"
+        regex: "IP <(\\d+\\.\\d+\\.\\d+\\.\\d+)>"
+
+  # ── Palo Alto Networks ──────────────────────────────────────────────────────
+
+  - name: "paloalto-traffic"
+    description: "Palo Alto Networks TRAFFIC log (CSV format)"
+    match:
+      type: "log"
+      tags:
+        source: "paloalto"
+        log_type: "TRAFFIC"
+    # PAN-OS CSV: receive_time,serial,type,subtype,...,src,dst,natsrc,natdst,rule,...
+    extract:
+      - field: "pan_serial"
+        regex: "^[^,]+,([^,]+),"
+      - field: "pan_log_type"
+        regex: "^[^,]+,[^,]+,([^,]+),"
+      - field: "src_ip"
+        regex: "^(?:[^,]*,){7}([^,]+)"
+      - field: "dst_ip"
+        regex: "^(?:[^,]*,){8}([^,]+)"
+      - field: "rule_name"
+        regex: "^(?:[^,]*,){11}([^,]+)"
+      - field: "src_user"
+        regex: "^(?:[^,]*,){12}([^,]+)"
+      - field: "dst_user"
+        regex: "^(?:[^,]*,){13}([^,]+)"
+      - field: "application"
+        regex: "^(?:[^,]*,){14}([^,]+)"
+      - field: "action"
+        regex: "^(?:[^,]*,){29}([^,]+)"
+
+  - name: "paloalto-threat"
+    description: "Palo Alto Networks THREAT log"
+    match:
+      type: "log"
+      tags:
+        source: "paloalto"
+        log_type: "THREAT"
+    extract:
+      - field: "src_ip"
+        regex: "^(?:[^,]*,){7}([^,]+)"
+      - field: "dst_ip"
+        regex: "^(?:[^,]*,){8}([^,]+)"
+      - field: "threat_name"
+        regex: "^(?:[^,]*,){30}([^,]+)"
+      - field: "threat_id"
+        regex: "^(?:[^,]*,){36}([^,]+)"
+      - field: "threat_severity"
+        regex: "(critical|high|medium|low|informational)"
+      - field: "category"
+        regex: "^(?:[^,]*,){41}([^,]+)"
+
+  # ── Fortinet FortiGate ──────────────────────────────────────────────────────
+
+  - name: "fortinet-fortigate"
+    description: "Fortinet FortiGate key=value syslog format"
+    match:
+      type: "log"
+      tags:
+        source: "fortigate"
+    extract:
+      - field: "devname"
+        regex: "devname=\"?([^\"\\s]+)"
+      - field: "devid"
+        regex: "devid=\"?([^\"\\s]+)"
+      - field: "log_type"
+        regex: "type=\"?([^\"\\s]+)"
+      - field: "subtype"
+        regex: "subtype=\"?([^\"\\s]+)"
+      - field: "level"
+        regex: "level=\"?([^\"\\s]+)"
+      - field: "src_ip"
+        regex: "srcip=(\\d+\\.\\d+\\.\\d+\\.\\d+)"
+      - field: "src_port"
+        regex: "srcport=(\\d+)"
+      - field: "dst_ip"
+        regex: "dstip=(\\d+\\.\\d+\\.\\d+\\.\\d+)"
+      - field: "dst_port"
+        regex: "dstport=(\\d+)"
+      - field: "protocol"
+        regex: "proto=(\\d+)"
+      - field: "action"
+        regex: "action=\"?([^\"\\s]+)"
+      - field: "user"
+        regex: "user=\"?([^\"\\s]+)"
+      - field: "service"
+        regex: "service=\"?([^\"\\s]+)"
+      - field: "policyid"
+        regex: "policyid=(\\d+)"
+      - field: "attack"
+        regex: "attack=\"?([^\"]+)\""
+      - field: "msg"
+        regex: "msg=\"([^\"]+)\""
+
+  # ── pfSense / OPNsense ──────────────────────────────────────────────────────
+
+  - name: "pfsense-filterlog"
+    description: "pfSense filterlog CSV format"
+    match:
+      type: "log"
+      tags:
+        source: "pfsense"
+    extract:
+      - field: "interface"
+        regex: "filterlog: \\d+,,,(\\d+),(\\w+)"
+      - field: "action"
+        regex: "filterlog: \\d+,,,[^,]+,[^,]+,([^,]+)"
+      - field: "direction"
+        regex: "filterlog:.*?(?:,)(in|out)(?:,)"
+      - field: "protocol"
+        regex: ",(tcp|udp|icmp|igmp),"
+      - field: "src_ip"
+        regex: ",(\\d+\\.\\d+\\.\\d+\\.\\d+),\\d+\\.\\d+\\.\\d+\\.\\d+"
+      - field: "dst_ip"
+        regex: ",\\d+\\.\\d+\\.\\d+\\.\\d+,(\\d+\\.\\d+\\.\\d+\\.\\d+)"
+
+  # ── Check Point ─────────────────────────────────────────────────────────────
+
+  - name: "checkpoint"
+    description: "Check Point firewall LEEF/standard syslog format"
+    match:
+      type: "log"
+      tags:
+        source: "checkpoint"
+    extract:
+      - field: "action"
+        regex: "action=(\\w+)"
+      - field: "src_ip"
+        regex: "src=(\\d+\\.\\d+\\.\\d+\\.\\d+)"
+      - field: "dst_ip"
+        regex: "dst=(\\d+\\.\\d+\\.\\d+\\.\\d+)"
+      - field: "src_port"
+        regex: "s_port=(\\d+)"
+      - field: "dst_port"
+        regex: "service=(\\d+)"
+      - field: "rule"
+        regex: "rule=(\\d+)"
+      - field: "policy"
+        regex: "policy=(\\S+)"
+      - field: "user"
+        regex: "user=(\\S+)"

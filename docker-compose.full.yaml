@@ -18,6 +18,13 @@ x-watchtower-common: &watchtower-common
     - WATCHTOWER_THREATINTEL_ENABLED=true
     - WATCHTOWER_THREATINTEL_INTERVAL=6h
     - WATCHTOWER_THREATINTEL_SOURCES=[{"type":"feodotracker","list_name":"ioc_ips","enabled":true},{"type":"abusech_hash","list_name":"ioc_hashes","enabled":true},{"type":"urlhaus","list_name":"ioc_domains","enabled":true}]
+    # Notifier: set WATCHTOWER_NOTIFIER_ENABLED=true and supply destinations as JSON.
+    # Example: [{"type":"slack","url":"https://hooks.slack.com/services/T00/B00/XXX","min_level":10,"enabled":true}]
+    - WATCHTOWER_NOTIFIER_ENABLED=${WATCHTOWER_NOTIFIER_ENABLED:-false}
+    - WATCHTOWER_NOTIFIER_DESTINATIONS=${WATCHTOWER_NOTIFIER_DESTINATIONS:-[]}
+    # AUDIT signing key: when set, audit records are HMAC-signed and hash-chained.
+    # Empty value falls back to hash chain only.
+    - AUDIT_SIGNING_KEY=${AUDIT_SIGNING_KEY:-}
   volumes:
     - ./certs:/etc/sentinel/certs:ro
     - ./WatchTower/cdb:/etc/watchtower/cdb:ro

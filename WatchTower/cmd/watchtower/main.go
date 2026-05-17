@@ -19,6 +19,7 @@ import (
 	"github.com/watchtower/watchtower/internal/response"
 	"github.com/watchtower/watchtower/internal/server/api"
 	"github.com/watchtower/watchtower/internal/identity"
+	"github.com/watchtower/watchtower/internal/notifier"
 	"github.com/watchtower/watchtower/internal/playbook"
 	"github.com/watchtower/watchtower/internal/rba"
 	"github.com/watchtower/watchtower/internal/ueba"
@@ -107,7 +108,13 @@ func main() {
 	defer fwd.Stop()
 
 	// Audit logger — uses the forwarder to ship records to watchvault-audit index.
-	auditLogger := audit.New(fwd, logger)
+	// Hash-chain + HMAC signing enabled when AUDIT_SIGNING_KEY is set; auditors
+	// can replay the chain to detect tampering.
+	auditKey := []byte(os.Getenv("AUDIT_SIGNING_KEY"))
+	if len(auditKey) == 0 {
+		logger.Warn("AUDIT_SIGNING_KEY not set — audit records will use hash chain only (no HMAC). Set a 32+ byte secret for tamper-resistant audit.")
+	}
+	auditLogger := audit.New(fwd, auditKey, logger)
 
 	// Engine
 	eng := engine.New(cfg.Engine, logger, fwd, st)
@@ -153,6 +160,15 @@ func main() {
 	// Risk-Based Alerting engine
 	rbaEngine := rba.NewEngine(st, logger)
 	eng.SetRBAHook(rbaEngine)
+
+	// Outbound notifier (Slack/Teams/webhook/email)
+	if cfg.Notifier.Enabled {
+		notif := notifier.New(cfg.Notifier, logger)
+		eng.SetNotifierHook(notif)
+		logger.Info("notifier enabled",
+			zap.Int("destinations", len(cfg.Notifier.Destinations)),
+		)
+	}
 
 	eng.Start()
 	defer eng.Stop()

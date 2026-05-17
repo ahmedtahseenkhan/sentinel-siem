@@ -1,0 +1,185 @@
+# WatchTower - Database & Application Log Decoders
+# MySQL/MariaDB, PostgreSQL, MSSQL, MongoDB, Docker, Kubernetes
+
+decoders:
+  # ── MySQL / MariaDB ─────────────────────────────────────────────────────────
+
+  - name: "mysql-error"
+    description: "MySQL/MariaDB error log"
+    match:
+      type: "log"
+      tags:
+        source: "mysql"
+    extract:
+      - field: "timestamp"
+        regex: "^(\\d{4}-\\d{2}-\\d{2}\\s+\\d{1,2}:\\d{2}:\\d{2})"
+      - field: "log_level"
+        regex: "\\[(ERROR|WARNING|NOTE|SYSTEM)\\]"
+      - field: "thread_id"
+        regex: "Thread\\s+(\\d+)"
+      - field: "error_code"
+        regex: "\\[(MY-\\d+)\\]"
+      - field: "message"
+        regex: "\\[ERROR\\]\\s+(.+)$"
+
+  - name: "mysql-audit"
+    description: "MySQL audit log (Percona/MariaDB)"
+    match:
+      type: "log"
+      tags:
+        source: "mysql-audit"
+    extract:
+      - field: "event_class"
+        regex: "<AUDIT_RECORD>.*?<NAME>([^<]+)"
+      - field: "user"
+        regex: "<USER>([^<]+)"
+      - field: "host"
+        regex: "<HOST>([^<]+)"
+      - field: "ip"
+        regex: "<IP>([^<]+)"
+      - field: "db"
+        regex: "<DB>([^<]+)"
+      - field: "sqltext"
+        regex: "<SQLTEXT>([^<]+)"
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+
+  - name: "postgresql"
+    description: "PostgreSQL server log"
+    match:
+      type: "log"
+      tags:
+        source: "postgresql"
+    extract:
+      - field: "timestamp"
+        regex: "^(\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?\\s+\\w+)"
+      - field: "pid"
+        regex: "\\[(\\d+)\\]"
+      - field: "log_level"
+        regex: "(FATAL|PANIC|ERROR|WARNING|NOTICE|INFO|LOG|DEBUG):"
+      - field: "user"
+        regex: "user=(\\S+?)(?:,|\\s)"
+      - field: "database"
+        regex: "db=(\\S+?)(?:,|\\s)"
+      - field: "src_ip"
+        regex: "host=(\\d+\\.\\d+\\.\\d+\\.\\d+)"
+      - field: "statement"
+        regex: "statement:\\s+(.+)$"
+      - field: "duration_ms"
+        regex: "duration:\\s+(\\d+\\.\\d+)\\s+ms"
+
+  # ── Microsoft SQL Server ────────────────────────────────────────────────────
+
+  - name: "mssql-errorlog"
+    description: "Microsoft SQL Server errorlog format"
+    match:
+      type: "log"
+      tags:
+        source: "mssql"
+    extract:
+      - field: "timestamp"
+        regex: "^(\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d+)"
+      - field: "thread_id"
+        regex: "spid(\\d+)"
+      - field: "category"
+        regex: "Logon\\s+(.+?)\\s"
+      - field: "src_ip"
+        regex: "\\[CLIENT:\\s*(\\d+\\.\\d+\\.\\d+\\.\\d+)\\]"
+      - field: "user"
+        regex: "User\\s*=\\s*'([^']+)'"
+      - field: "error_code"
+        regex: "Error:\\s*(\\d+),"
+      - field: "severity"
+        regex: "Severity:\\s*(\\d+)"
+
+  # ── MongoDB ─────────────────────────────────────────────────────────────────
+
+  - name: "mongodb"
+    description: "MongoDB structured JSON log format (4.4+)"
+    match:
+      type: "log"
+      tags:
+        source: "mongodb"
+    extract:
+      - field: "timestamp"
+        regex: "\"t\":\\{\"\\$date\":\"([^\"]+)\""
+      - field: "severity"
+        regex: "\"s\":\"([^\"]+)\""
+      - field: "component"
+        regex: "\"c\":\"([^\"]+)\""
+      - field: "context"
+        regex: "\"ctx\":\"([^\"]+)\""
+      - field: "msg"
+        regex: "\"msg\":\"([^\"]+)\""
+      - field: "remote_ip"
+        regex: "\"remote\":\"(\\d+\\.\\d+\\.\\d+\\.\\d+)"
+      - field: "user"
+        regex: "\"user\":\"([^\"]+)\""
+      - field: "db"
+        regex: "\"db\":\"([^\"]+)\""
+
+  # ── Docker / containerd ─────────────────────────────────────────────────────
+
+  - name: "docker-daemon"
+    description: "Docker daemon log format"
+    match:
+      type: "log"
+      tags:
+        source: "docker"
+    extract:
+      - field: "timestamp"
+        regex: "^time=\"([^\"]+)\""
+      - field: "log_level"
+        regex: "level=(\\w+)"
+      - field: "message"
+        regex: "msg=\"([^\"]+)\""
+      - field: "container_id"
+        regex: "container=([a-f0-9]{12,})"
+
+  - name: "kubernetes-audit"
+    description: "Kubernetes API server audit log (JSON)"
+    match:
+      type: "log"
+      tags:
+        source: "k8s-audit"
+    extract:
+      - field: "k8s_kind"
+        regex: "\"kind\":\"([^\"]+)\""
+      - field: "k8s_verb"
+        regex: "\"verb\":\"([^\"]+)\""
+      - field: "k8s_user"
+        regex: "\"username\":\"([^\"]+)\""
+      - field: "k8s_resource"
+        regex: "\"resource\":\"([^\"]+)\""
+      - field: "k8s_namespace"
+        regex: "\"namespace\":\"([^\"]+)\""
+      - field: "k8s_uri"
+        regex: "\"requestURI\":\"([^\"]+)\""
+      - field: "k8s_response_code"
+        regex: "\"code\":(\\d+)"
+      - field: "src_ip"
+        regex: "\"sourceIPs\":\\[\"(\\d+\\.\\d+\\.\\d+\\.\\d+)"
+
+  # ── Exchange / Office 365 ───────────────────────────────────────────────────
+
+  - name: "office365-audit"
+    description: "Office 365 / Microsoft 365 unified audit log (JSON)"
+    match:
+      type: "log"
+      tags:
+        source: "o365"
+    extract:
+      - field: "operation"
+        regex: "\"Operation\":\"([^\"]+)\""
+      - field: "user"
+        regex: "\"UserId\":\"([^\"]+)\""
+      - field: "user_type"
+        regex: "\"UserType\":(\\d+)"
+      - field: "src_ip"
+        regex: "\"ClientIP\":\"([^\"]+)\""
+      - field: "workload"
+        regex: "\"Workload\":\"([^\"]+)\""
+      - field: "result"
+        regex: "\"ResultStatus\":\"([^\"]+)\""
+      - field: "object_id"
+        regex: "\"ObjectId\":\"([^\"]+)\""

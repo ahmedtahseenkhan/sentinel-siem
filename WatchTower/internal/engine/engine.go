@@ -46,6 +46,13 @@ type RBAHook interface {
 	OnAlert(alert *models.Alert, event *models.Event)
 }
 
+// NotifierHook is called after every stored alert to dispatch outbound
+// notifications (Slack/Teams/email/webhook). Same signature as RBAHook so the
+// hook chain can have any number of independent listeners.
+type NotifierHook interface {
+	OnAlert(alert *models.Alert, event *models.Event)
+}
+
 // UebaHook is called for every raw event before rule matching,
 // allowing UEBA to build behavioral baselines from all event types.
 type UebaHook interface {
@@ -66,6 +73,7 @@ type Engine struct {
 	playbookHook PlaybookHook
 	rbaHook      RBAHook
 	uebaHook     UebaHook
+	notifierHook NotifierHook
 	deduper      *dedup.Manager
 	correlation  *correlation.Manager
 	eventCh      chan *models.Event
@@ -252,6 +260,10 @@ func (e *Engine) generateAlert(event *models.Event, rule *models.Rule) {
 		e.rbaHook.OnAlert(a, event)
 	}
 
+	if e.notifierHook != nil {
+		e.notifierHook.OnAlert(a, event)
+	}
+
 	e.alertOut.Emit(a, event)
 }
 
@@ -280,6 +292,10 @@ func (e *Engine) SetRBAHook(h RBAHook) {
 
 func (e *Engine) SetUebaHook(h UebaHook) {
 	e.uebaHook = h
+}
+
+func (e *Engine) SetNotifierHook(h NotifierHook) {
+	e.notifierHook = h
 }
 
 func (e *Engine) Rules() *rules.Matcher     { return e.rules }
