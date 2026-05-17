@@ -93,3 +93,14 @@ func (m *Manager) ListNames() []string {
 func (m *Manager) Count() int {
 	return len(m.lists)
 }
+
+// AddEntryToList adds key→value to a named in-memory list, creating the list
+// if it does not exist. Used by the SOAR playbook executor for add_to_watchlist.
+func (m *Manager) AddEntryToList(listName, key, value string) {
+	list, ok := m.lists[listName]
+	if !ok {
+		list = NewList(listName)
+		m.lists[listName] = list
+	}
+	list.Add(key, value)
+}

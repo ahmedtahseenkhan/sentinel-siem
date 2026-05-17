@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -24,12 +25,20 @@ type AgentCommander interface {
 	SendCommand(agentID string, cmd *proto.ManagerCommand) bool
 }
 
+// CDBManager allows the executor to add entries to in-memory threat-intel lists.
+type CDBManager interface {
+	Lookup(listName, key string) bool
+	AddEntryToList(listName, key, value string)
+}
+
 // Executor evaluates playbook triggers and runs matched playbooks.
 type Executor struct {
 	store   *store.Store
 	reg     AgentCommander
 	logger  *zap.Logger
 	httpCli *http.Client
+	cdb     CDBManager // optional — wired after construction
+	cdbDir  string     // optional — for persisting watchlist entries to disk
 }
 
 func NewExecutor(st *store.Store, reg AgentCommander, logger *zap.Logger) *Executor {
@@ -40,6 +49,13 @@ func NewExecutor(st *store.Store, reg AgentCommander, logger *zap.Logger) *Execu
 		httpCli: &http.Client{Timeout: 15 * time.Second},
 	}
 }
+
+// SetCDB wires the CDB manager so add_to_watchlist can update in-memory lists.
+func (e *Executor) SetCDB(cdb CDBManager) { e.cdb = cdb }
+
+// SetCDBDir sets the directory where CDB list files live so watchlist entries
+// are also appended to disk (persisted across restarts).
+func (e *Executor) SetCDBDir(dir string) { e.cdbDir = dir }
 
 // OnAlert is called by the engine after every stored alert.
 // It finds matching playbooks and fires them asynchronously.
@@ -110,6 +126,14 @@ func (e *Executor) matches(pb *models.Playbook, alert *models.Alert) bool {
 func (e *Executor) run(pb *models.Playbook, alert *models.Alert, event *models.Event) {
 	ctx := context.Background()
 
+	dryRun := pb.DryRun
+	if dryRun {
+		e.logger.Info("playbook dry-run mode — actions will be logged but not executed",
+			zap.String("playbook", pb.Name),
+			zap.Int64("alert_id", alert.ID),
+		)
+	}
+
 	ex := &models.PlaybookExecution{
 		PlaybookID: pb.ID,
 		AlertID:    alert.ID,
@@ -128,6 +152,7 @@ func (e *Executor) run(pb *models.Playbook, alert *models.Alert, event *models.E
 		zap.String("playbook", pb.Name),
 		zap.Int64("alert_id", alert.ID),
 		zap.String("agent_id", alert.AgentID),
+		zap.Bool("dry_run", dryRun),
 	)
 
 	vars := buildVars(alert, event)
@@ -137,7 +162,16 @@ func (e *Executor) run(pb *models.Playbook, alert *models.Alert, event *models.E
 
 	for _, action := range pb.Actions {
 		start := time.Now()
-		msg, aerr := e.executeAction(ctx, action, alert, vars)
+		var msg string
+		var aerr error
+
+		if dryRun {
+			msg = fmt.Sprintf("[dry-run] would execute action=%s params=%v", action.Type, action.Params)
+			e.logger.Info("playbook dry-run action", zap.String("action", action.Type),
+				zap.Any("params", action.Params))
+		} else {
+			msg, aerr = e.executeAction(ctx, action, alert, vars)
+		}
 		dur := time.Since(start).Milliseconds()
 
 		status := "success"
@@ -169,7 +203,9 @@ func (e *Executor) run(pb *models.Playbook, alert *models.Alert, event *models.E
 		})
 	}
 
-	if failed > 0 && overallStatus != "failed" {
+	if dryRun {
+		overallStatus = "dry_run"
+	} else if failed > 0 && overallStatus != "failed" {
 		overallStatus = "partial"
 	}
 
@@ -200,6 +236,10 @@ func (e *Executor) executeAction(ctx context.Context, action models.PlaybookActi
 		return e.actionKillProcess(alert.AgentID, params)
 	case "isolate_host":
 		return e.actionIsolateHost(alert.AgentID, params)
+	case "disable_account":
+		return e.actionDisableAccount(alert.AgentID, params)
+	case "restart_service":
+		return e.actionRestartService(alert.AgentID, params)
 	case "create_case":
 		return e.actionCreateCase(alert, params)
 	case "create_ticket":
@@ -208,6 +248,8 @@ func (e *Executor) executeAction(ctx context.Context, action models.PlaybookActi
 		return e.actionNotifySlack(ctx, alert, params)
 	case "notify_email":
 		return e.actionNotifyEmail(alert, params)
+	case "webhook":
+		return e.actionWebhook(ctx, alert, params)
 	case "add_to_watchlist":
 		return e.actionAddToWatchlist(params)
 	default:
@@ -261,6 +303,39 @@ func (e *Executor) actionIsolateHost(agentID string, params map[string]string) (
 	return fmt.Sprintf("isolate-host sent to agent %s", agentID), nil
 }
 
+func (e *Executor) actionDisableAccount(agentID string, params map[string]string) (string, error) {
+	username := params["username"]
+	if username == "" {
+		username = params["user"]
+	}
+	if username == "" {
+		return "", fmt.Errorf("disable_account: username param required")
+	}
+	cmd := &proto.ManagerCommand{
+		CommandType: "disable-account",
+		Payload:     []byte(username),
+	}
+	if !e.reg.SendCommand(agentID, cmd) {
+		return "", fmt.Errorf("agent %s not connected", agentID)
+	}
+	return fmt.Sprintf("disable-account sent for user %s to agent %s", username, agentID), nil
+}
+
+func (e *Executor) actionRestartService(agentID string, params map[string]string) (string, error) {
+	svc := params["service"]
+	if svc == "" {
+		return "", fmt.Errorf("restart_service: service param required")
+	}
+	cmd := &proto.ManagerCommand{
+		CommandType: "restart-service",
+		Payload:     []byte(svc),
+	}
+	if !e.reg.SendCommand(agentID, cmd) {
+		return "", fmt.Errorf("agent %s not connected", agentID)
+	}
+	return fmt.Sprintf("restart-service sent for %s to agent %s", svc, agentID), nil
+}
+
 func (e *Executor) actionCreateCase(alert *models.Alert, params map[string]string) (string, error) {
 	title := params["title"]
 	if title == "" {
@@ -307,6 +382,69 @@ func (e *Executor) actionNotifySlack(ctx context.Context, alert *models.Alert, p
 		return "", fmt.Errorf("notify_slack: HTTP %d", resp.StatusCode)
 	}
 	return "slack notification sent", nil
+}
+
+// actionWebhook sends a generic HTTP POST to any URL with alert data as JSON.
+// Supports PagerDuty, ServiceNow, or any custom webhook endpoint.
+// Params: url (required), method (optional, default POST), headers (optional, "Key:Value,Key:Value")
+func (e *Executor) actionWebhook(ctx context.Context, alert *models.Alert, params map[string]string) (string, error) {
+	url := params["url"]
+	if url == "" {
+		return "", fmt.Errorf("webhook: url param required")
+	}
+	method := strings.ToUpper(defaultStr(params["method"], "POST"))
+
+	payload := map[string]interface{}{
+		"alert_id":    alert.ID,
+		"title":       alert.Title,
+		"level":       alert.Level,
+		"agent_id":    alert.AgentID,
+		"rule_id":     alert.RuleID,
+		"description": alert.Description,
+		"timestamp":   alert.Timestamp,
+	}
+	// Allow a custom body template; otherwise use default alert JSON
+	if customBody := params["body"]; customBody != "" {
+		body := []byte(customBody)
+		req, _ := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		e.applyWebhookHeaders(req, params["headers"])
+		resp, err := e.httpCli.Do(req)
+		if err != nil {
+			return "", fmt.Errorf("webhook: %w", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			return "", fmt.Errorf("webhook: HTTP %d from %s", resp.StatusCode, url)
+		}
+		return fmt.Sprintf("webhook %s %s → HTTP %d", method, url, resp.StatusCode), nil
+	}
+
+	body, _ := json.Marshal(payload)
+	req, _ := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	e.applyWebhookHeaders(req, params["headers"])
+	resp, err := e.httpCli.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("webhook: %w", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("webhook: HTTP %d from %s", resp.StatusCode, url)
+	}
+	return fmt.Sprintf("webhook %s %s → HTTP %d", method, url, resp.StatusCode), nil
+}
+
+func (e *Executor) applyWebhookHeaders(req *http.Request, headerStr string) {
+	if headerStr == "" {
+		return
+	}
+	for _, pair := range strings.Split(headerStr, ",") {
+		parts := strings.SplitN(strings.TrimSpace(pair), ":", 2)
+		if len(parts) == 2 {
+			req.Header.Set(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
+		}
+	}
 }
 
 // actionCreateTicket calls the dashboard's /api/tickets endpoint to create a
@@ -359,14 +497,33 @@ func (e *Executor) actionNotifyEmail(alert *models.Alert, params map[string]stri
 	return fmt.Sprintf("email queued to %s", to), nil
 }
 
+// actionAddToWatchlist adds a value to an in-memory CDB list and appends it to
+// the corresponding list file on disk so it persists across restarts.
 func (e *Executor) actionAddToWatchlist(params map[string]string) (string, error) {
 	value := params["value"]
 	list := params["list"]
 	if value == "" || list == "" {
 		return "", fmt.Errorf("add_to_watchlist: value and list params required")
 	}
-	// WatchTower's CDB lists are in-memory; persistence would require a store
-	// write. For now, log it — a follow-up can add CDB persistence.
+
+	// Update in-memory CDB list
+	if e.cdb != nil {
+		e.cdb.AddEntryToList(list, value, "soar-auto")
+	}
+
+	// Append to disk file so entry survives container restart
+	if e.cdbDir != "" {
+		filePath := e.cdbDir + "/" + list
+		f, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			e.logger.Warn("add_to_watchlist: cannot write to CDB file",
+				zap.String("path", filePath), zap.Error(err))
+		} else {
+			_, _ = fmt.Fprintf(f, "%s:soar-auto\n", value)
+			f.Close()
+		}
+	}
+
 	e.logger.Info("add_to_watchlist",
 		zap.String("list", list),
 		zap.String("value", value),

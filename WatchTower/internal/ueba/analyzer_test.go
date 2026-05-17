@@ -92,16 +92,16 @@ func TestMeanStdMultipleValues(t *testing.T) {
 }
 
 func TestIsRareProcess(t *testing.T) {
-	if !isRareProcess("mimikatz.exe") {
+	if !isSuspiciousProcess("mimikatz.exe") {
 		t.Error("mimikatz.exe should be flagged as rare/suspicious")
 	}
-	if !isRareProcess("nc.exe") {
+	if !isSuspiciousProcess("nc.exe") {
 		t.Error("nc.exe should be flagged as rare/suspicious")
 	}
-	if isRareProcess("chrome.exe") {
+	if isSuspiciousProcess("chrome.exe") {
 		t.Error("chrome.exe should NOT be flagged")
 	}
-	if isRareProcess("") {
+	if isSuspiciousProcess("") {
 		t.Error("empty should NOT be flagged")
 	}
 }

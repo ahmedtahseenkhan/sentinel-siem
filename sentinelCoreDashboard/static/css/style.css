@@ -5511,6 +5511,96 @@ select.v2-fld {
 .ag2-tbl-badge.crit { color:var(--crit); background:rgba(242,85,85,.1);  }
 .ag2-tbl-badge.warn { color:var(--low);  background:rgba(251,191,36,.1); }
 
+/* ── Language toggle button ──────────────────────────────────────────────── */
+.tb2-lang-btn {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--fg-2);
+  font-family: 'Cairo', 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 2px 9px;
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+  min-width: 32px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tb2-lang-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(45,212,191,.06); }
+
+/* ── Arabic (RTL) layout overrides ──────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap');
+
+[dir="rtl"] body,
+.lang-ar {
+  font-family: 'Cairo', 'Segoe UI', system-ui, sans-serif;
+}
+
+/* Sidebar — flip to right side */
+[dir="rtl"] .layout { flex-direction: row-reverse; }
+[dir="rtl"] .sb2 {
+  border-right: none;
+  border-left: 1px solid var(--line);
+}
+[dir="rtl"] .sb2-item { flex-direction: row-reverse; text-align: right; }
+[dir="rtl"] .sb2-item .sb2-icon { margin-right: 0; margin-left: 8px; }
+
+/* Topbar */
+[dir="rtl"] .tb2 { flex-direction: row-reverse; }
+[dir="rtl"] .tb2-left { flex-direction: row-reverse; }
+[dir="rtl"] .tb2-right { flex-direction: row-reverse; }
+
+/* Page headers */
+[dir="rtl"] .ag2-header { flex-direction: row-reverse; }
+[dir="rtl"] .ag2-header-right { flex-direction: row-reverse; }
+[dir="rtl"] .ag2-title { flex-direction: row-reverse; }
+
+/* Cards and tables */
+[dir="rtl"] .card-h { flex-direction: row-reverse; }
+[dir="rtl"] .tbl-h span,
+[dir="rtl"] .tbl-r   { direction: rtl; }
+[dir="rtl"] .kpi-h   { flex-direction: row-reverse; }
+[dir="rtl"] .kpi-foot { flex-direction: row-reverse; }
+
+/* Summary bar */
+[dir="rtl"] .ag2-summary { flex-direction: row-reverse; }
+[dir="rtl"] .ag2-sum-health { margin-left: 0; margin-right: auto; }
+
+/* Toolbar rows */
+[dir="rtl"] .toolbar,
+[dir="rtl"] .ag2-toolbar,
+[dir="rtl"] .ag2-header-right { gap: 8px; }
+
+/* Tabs */
+[dir="rtl"] .hy2-tabs,
+[dir="rtl"] .ag2-tabs { flex-direction: row-reverse; }
+
+/* tbl-foot pagination */
+[dir="rtl"] .tbl-foot { flex-direction: row-reverse; }
+[dir="rtl"] .tbl-foot .right { flex-direction: row-reverse; }
+
+/* Detail panels */
+[dir="rtl"] .agent-detail-panel { left: 0; right: auto; border-left: none; border-right: 1px solid var(--line); }
+[dir="rtl"] .agent-detail-header { flex-direction: row-reverse; }
+
+/* Overview grid */
+[dir="rtl"] .ov2-row { flex-direction: row-reverse; text-align: right; }
+[dir="rtl"] .ov2-kpi-h { flex-direction: row-reverse; }
+[dir="rtl"] .ov2-kpi-foot { flex-direction: row-reverse; }
+
+/* Text alignment */
+[dir="rtl"] .tbl-pri,
+[dir="rtl"] .tbl-mono,
+[dir="rtl"] .tbl-time,
+[dir="rtl"] .tbl-muted { text-align: right; }
+
+/* Sigil empty states */
+[dir="rtl"] .sigil-block { flex-direction: row-reverse; text-align: right; }
+[dir="rtl"] .sigil-text { text-align: right; }
+
 /* ── Vulnerabilities v2 ───────────────────────────────────────────────────── */
 .vuln-filter-sep-lbl { font-size:10px; font-weight:600; color:var(--fg-4); letter-spacing:.08em; text-transform:uppercase; white-space:nowrap; flex-shrink:0; }
 .vuln-sev-pills { display:flex; align-items:center; gap:4px; flex-shrink:0; }

@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/watchtower/watchtower/internal/store"
@@ -21,10 +22,12 @@ import (
 )
 
 const (
-	baselineWindowDays  = 7
-	analyzeInterval     = time.Hour
-	spikeThresholdSigma = 2.0
-	minSamplesForSpike  = 3
+	baselineWindowDays      = 7
+	analyzeInterval         = time.Hour
+	spikeThresholdSigma     = 2.0
+	minSamplesForSpike      = 3
+	exfilThresholdBytes     = 100 * 1024 * 1024 // 100 MB/hour triggers exfiltration alert
+	bruteForceFailThreshold = 3                  // N failures from same IP before success = brute force
 )
 
 // Analyzer periodically computes UEBA baselines, detects anomalies, and
@@ -33,10 +36,20 @@ type Analyzer struct {
 	store     *store.Store
 	logger    *zap.Logger
 	collector *EventCollector // may be nil if not wired
+
+	// knownHashes tracks process sha256 hashes seen across analysis cycles
+	// so we can flag genuinely first-seen executables on each agent.
+	hashMu      sync.Mutex
+	knownHashes map[string]map[string]bool // agentID → set of known sha256
 }
 
 func NewAnalyzer(st *store.Store, logger *zap.Logger, collector *EventCollector) *Analyzer {
-	return &Analyzer{store: st, logger: logger, collector: collector}
+	return &Analyzer{
+		store:       st,
+		logger:      logger,
+		collector:   collector,
+		knownHashes: make(map[string]map[string]bool),
+	}
 }
 
 // Start runs the analyze loop until ctx is cancelled.
@@ -197,8 +210,7 @@ func (a *Analyzer) analyzeLoginBehavior(snap CollectorSnapshot) {
 			})
 		}
 
-		// New source IP: only flag when there is exactly one IP and it hasn't been seen before
-		// (baseline comparison — flag any IP seen in the last hour that's brand new)
+		// New source IP: flag any IP seen in the last hour that wasn't seen earlier in the window
 		now := snap.CapturedAt
 		recentCutoff := now.Add(-1 * time.Hour)
 		recentIPs := make(map[string]bool)
@@ -207,7 +219,6 @@ func (a *Analyzer) analyzeLoginBehavior(snap CollectorSnapshot) {
 				recentIPs[e.sourceIP] = true
 			}
 		}
-		// Count IPs seen only in the last hour vs those seen earlier
 		olderIPs := make(map[string]bool)
 		for _, e := range ls.Entries {
 			if e.ts.Before(recentCutoff) && e.sourceIP != "" {
@@ -226,6 +237,65 @@ func (a *Analyzer) analyzeLoginBehavior(snap CollectorSnapshot) {
 				})
 			}
 		}
+
+		// Brute-force success chain: N failures from IP X within 1h, then a success from same IP X
+		// This is a high-fidelity indicator of a successful credential attack.
+		a.detectBruteForceSuccess(ls)
+	}
+}
+
+// detectBruteForceSuccess checks whether any source IP had >= bruteForceFailThreshold
+// failed login attempts within 1 hour followed by a successful login, indicating a
+// credential brute-force that succeeded.
+func (a *Analyzer) detectBruteForceSuccess(ls LoginSnapshot) {
+	type ipStats struct {
+		failures  int
+		firstFail time.Time
+		lastFail  time.Time
+		hadSuccess bool
+	}
+	stats := make(map[string]*ipStats)
+
+	for _, e := range ls.Entries {
+		if e.sourceIP == "" {
+			continue
+		}
+		s := stats[e.sourceIP]
+		if s == nil {
+			s = &ipStats{}
+			stats[e.sourceIP] = s
+		}
+		if e.failed {
+			s.failures++
+			if s.firstFail.IsZero() {
+				s.firstFail = e.ts
+			}
+			s.lastFail = e.ts
+		} else {
+			// Only count as success if it happened after failures
+			if s.failures >= bruteForceFailThreshold && e.ts.After(s.firstFail) {
+				s.hadSuccess = true
+			}
+		}
+	}
+
+	for ip, s := range stats {
+		if s.hadSuccess && s.failures >= bruteForceFailThreshold {
+			// Confirm failures and success are within 1-hour window
+			if s.lastFail.Sub(s.firstFail) <= time.Hour {
+				a.insertAnomaly(&store.UebaAnomaly{
+					EntityID:    ls.AgentID,
+					EntityType:  "agent",
+					AnomalyType: "brute_force_success",
+					Description: fmt.Sprintf(
+						"Brute-force attack succeeded: %d failed logins from %s followed by successful login",
+						s.failures, ip,
+					),
+					Severity: "critical",
+					Score:    50,
+				})
+			}
+		}
 	}
 }
 
@@ -238,7 +308,7 @@ func (a *Analyzer) analyzeNetworkBehavior(snap CollectorSnapshot) {
 			continue
 		}
 
-		// Connection volume spike: flag if unique destinations > 50 (configurable threshold)
+		// Connection volume spike: flag if unique destinations > 50
 		if uniqueCount > 50 {
 			a.insertAnomaly(&store.UebaAnomaly{
 				EntityID:    ns.AgentID,
@@ -249,37 +319,92 @@ func (a *Analyzer) analyzeNetworkBehavior(snap CollectorSnapshot) {
 				Score:       int(math.Min(25, float64(uniqueCount)/5)),
 			})
 		}
+
+		// Data exfiltration signal: outbound bytes > threshold in last hour
+		if ns.BytesOutLastHour >= exfilThresholdBytes {
+			mb := ns.BytesOutLastHour / (1024 * 1024)
+			a.insertAnomaly(&store.UebaAnomaly{
+				EntityID:    ns.AgentID,
+				EntityType:  "agent",
+				AnomalyType: "data_exfiltration",
+				Description: fmt.Sprintf(
+					"Unusually high outbound traffic: %d MB in the last hour (threshold: %d MB)",
+					mb, exfilThresholdBytes/(1024*1024),
+				),
+				Severity: "high",
+				Score:    int(math.Min(45, float64(mb)/10)),
+			})
+		}
 	}
 }
 
 // ── Process behavior ──────────────────────────────────────────────────────────
 
 func (a *Analyzer) analyzeProcessBehavior(snap CollectorSnapshot) {
+	a.hashMu.Lock()
+	defer a.hashMu.Unlock()
+
 	for _, ps := range snap.Procs {
-		// Rare process: executed only once in the 7-day window
+		// Ensure per-agent hash set exists
+		if a.knownHashes[ps.AgentID] == nil {
+			a.knownHashes[ps.AgentID] = make(map[string]bool)
+		}
+		known := a.knownHashes[ps.AgentID]
+
+		// First-seen process hash: new sha256 not seen in any prior analysis cycle
+		for _, entry := range ps.NewEntries {
+			if entry.hash == "" {
+				continue
+			}
+			if !known[entry.hash] {
+				known[entry.hash] = true
+				severity := "low"
+				score := 10
+				// Escalate if the process name is on the suspicious list
+				if isSuspiciousProcess(entry.name) {
+					severity = "high"
+					score = 40
+				}
+				a.insertAnomaly(&store.UebaAnomaly{
+					EntityID:    ps.AgentID,
+					EntityType:  "agent",
+					AnomalyType: "first_seen_process",
+					Description: fmt.Sprintf(
+						"First-seen executable: '%s' (sha256: %.12s...)", entry.name, entry.hash,
+					),
+					Severity: severity,
+					Score:    score,
+				})
+			}
+		}
+
+		// Rare process: known suspicious names executed only once in 7d window
 		for name, count := range ps.NameCounts {
-			if count == 1 && isRareProcess(name) {
+			if count == 1 && isSuspiciousProcess(name) {
 				a.insertAnomaly(&store.UebaAnomaly{
 					EntityID:    ps.AgentID,
 					EntityType:  "agent",
 					AnomalyType: "rare_process",
-					Description: fmt.Sprintf("Rare process execution: '%s' (seen only once in 7d baseline)", name),
-					Severity:    "low",
-					Score:       10,
+					Description: fmt.Sprintf("Suspicious process: '%s' (seen only once in 7d baseline)", name),
+					Severity:    "medium",
+					Score:       20,
 				})
 			}
 		}
 	}
 }
 
-// isRareProcess returns true for process names that are suspicious when rarely seen.
-func isRareProcess(name string) bool {
+// isSuspiciousProcess returns true for process names that are high-risk when seen.
+func isSuspiciousProcess(name string) bool {
 	suspicious := map[string]bool{
 		"mimikatz.exe": true, "meterpreter.exe": true,
 		"nc.exe": true, "ncat.exe": true, "nmap.exe": true,
 		"psexec.exe": true, "psexec64.exe": true,
 		"wce.exe": true, "fgdump.exe": true,
-		"reg.exe": true, "regsvr32.exe": true,
+		"procdump.exe": true, "cobaltstrike.exe": true,
+		"metasploit.exe": true, "wmiexec.py": true,
+		"rubeus.exe": true, "sharpkatz.exe": true,
+		"certutil.exe": true, "bitsadmin.exe": true,
 	}
 	return suspicious[name]
 }

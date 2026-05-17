@@ -22,6 +22,7 @@ type Playbook struct {
 	Name        string           `json:"name"`
 	Description string           `json:"description"`
 	Enabled     bool             `json:"enabled"`
+	DryRun      bool             `json:"dry_run"`      // log actions but skip execution
 	Trigger     PlaybookTrigger  `json:"trigger"`
 	Actions     []PlaybookAction `json:"actions"`
 	CreatedAt   int64            `json:"created_at"`

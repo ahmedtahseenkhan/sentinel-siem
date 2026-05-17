@@ -123,9 +123,10 @@ func (w *loginWindow) prune() {
 // ── Network tracking ──────────────────────────────────────────────────────────
 
 type networkEntry struct {
-	ts   time.Time
-	rip  string
-	port int
+	ts       time.Time
+	rip      string
+	port     int
+	bytesOut int64
 }
 
 type networkWindow struct {
@@ -156,6 +157,10 @@ func (c *EventCollector) trackNetworkEvent(event *models.Event) {
 	if v, ok := event.Fields["rport"].(float64); ok {
 		rport = int(v)
 	}
+	var bytesOut int64
+	if v, ok := event.Fields["bytes_out"].(float64); ok {
+		bytesOut = int64(v)
+	}
 
 	c.mu.Lock()
 	w := c.networkWindow(event.AgentID)
@@ -164,7 +169,7 @@ func (c *EventCollector) trackNetworkEvent(event *models.Event) {
 	w.mu.Lock()
 	isNew := !w.seen[raddr]
 	w.seen[raddr] = true
-	w.entries = append(w.entries, networkEntry{ts: msToTime(event.Timestamp), rip: raddr, port: rport})
+	w.entries = append(w.entries, networkEntry{ts: msToTime(event.Timestamp), rip: raddr, port: rport, bytesOut: bytesOut})
 	w.prune()
 	w.mu.Unlock()
 
@@ -283,9 +288,10 @@ type LoginSnapshot struct {
 
 // NetworkSnapshot is a point-in-time view of network behavior for one agent.
 type NetworkSnapshot struct {
-	AgentID        string
-	UniqueDestIPs  map[string]int // raddr → count
-	TotalConns     int
+	AgentID          string
+	UniqueDestIPs    map[string]int // raddr → count
+	TotalConns       int
+	BytesOutLastHour int64 // total outbound bytes in the last hour
 }
 
 // ProcessSnapshot is a point-in-time view of process behavior for one agent.
@@ -343,6 +349,7 @@ func (c *EventCollector) Snapshot() CollectorSnapshot {
 		snap.Logins = append(snap.Logins, ls)
 	}
 
+	hourAgo := time.Now().Add(-time.Hour)
 	for agentID, w := range c.networks {
 		w.mu.Lock()
 		ns := NetworkSnapshot{
@@ -352,6 +359,9 @@ func (c *EventCollector) Snapshot() CollectorSnapshot {
 		}
 		for _, e := range w.entries {
 			ns.UniqueDestIPs[e.rip]++
+			if e.ts.After(hourAgo) {
+				ns.BytesOutLastHour += e.bytesOut
+			}
 		}
 		w.mu.Unlock()
 		snap.Networks = append(snap.Networks, ns)

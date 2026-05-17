@@ -153,8 +153,10 @@ func main() {
 		}()
 	}
 
-	// SOAR playbook executor
+	// SOAR playbook executor — wire CDB manager so add_to_watchlist persists entries
 	pbExec := playbook.NewExecutor(st, reg, logger)
+	pbExec.SetCDB(eng.CDB())
+	pbExec.SetCDBDir(cfg.Engine.CDBDir)
 	eng.SetPlaybookHook(pbExec)
 
 	// Risk-Based Alerting engine
