@@ -14,6 +14,7 @@ import (
 	"github.com/watchtower/watchtower/internal/engine/decoder"
 	"github.com/watchtower/watchtower/internal/engine/rules"
 	"github.com/watchtower/watchtower/internal/models"
+	"github.com/watchtower/watchtower/internal/sigma"
 	"go.uber.org/zap"
 )
 
@@ -100,6 +101,26 @@ func (e *Engine) LoadConfigs() error {
 		if err := e.rules.LoadFromDir(e.cfg.RulesDir); err != nil {
 			e.logger.Warn("failed to load rules", zap.Error(err))
 		}
+	}
+	if e.cfg.SigmaDir != "" {
+		sigmaRules, errs := sigma.LoadDir(e.cfg.SigmaDir)
+		if len(errs) > 0 {
+			e.logger.Warn("some sigma rules failed to parse",
+				zap.Int("error_count", len(errs)),
+				zap.String("first_error", errs[0].Error()),
+			)
+		}
+		loaded := 0
+		for _, r := range sigmaRules {
+			if err := e.rules.Add(*r); err == nil {
+				loaded++
+			}
+		}
+		e.logger.Info("sigma rules imported",
+			zap.Int("loaded", loaded),
+			zap.Int("attempted", len(sigmaRules)),
+			zap.String("dir", e.cfg.SigmaDir),
+		)
 	}
 	if e.cfg.CDBDir != "" {
 		if err := e.cdb.LoadFromDir(e.cfg.CDBDir); err != nil {

@@ -13,6 +13,7 @@ COPY --chown=nonroot:nonroot --from=builder /var/lib/watchtower /var/lib/watchto
 COPY rules/ /etc/watchtower/rules/
 COPY decoders/ /etc/watchtower/decoders/
 COPY cdb/ /etc/watchtower/cdb/
+COPY sigma/rules/ /etc/watchtower/sigma/
 EXPOSE 50051 9400
 USER nonroot:nonroot
 ENTRYPOINT ["watchtower"]

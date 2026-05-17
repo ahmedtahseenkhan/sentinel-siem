@@ -22,6 +22,7 @@ x-watchtower-common: &watchtower-common
     - ./certs:/etc/sentinel/certs:ro
     - ./WatchTower/cdb:/etc/watchtower/cdb:ro
     - ./WatchTower/rules:/etc/watchtower/rules:ro
+    - ./WatchTower/sigma/rules:/etc/watchtower/sigma:ro
   depends_on:
     postgres:
       condition: service_healthy

@@ -77,6 +77,7 @@ type AuthConfig struct {
 
 type EngineConfig struct {
 	RulesDir        string `yaml:"rules_dir"`
+	SigmaDir        string `yaml:"sigma_dir"`  // Directory of Sigma YAML rules to auto-import
 	DecodersDir     string `yaml:"decoders_dir"`
 	CDBDir          string `yaml:"cdb_dir"`
 	Workers         int    `yaml:"workers"`
@@ -151,6 +152,7 @@ func DefaultConfig() *Config {
 		},
 		Engine: EngineConfig{
 			RulesDir:    "/etc/watchtower/rules",
+			SigmaDir:    "/etc/watchtower/sigma",
 			DecodersDir: "/etc/watchtower/decoders",
 			CDBDir:      "/etc/watchtower/cdb",
 			Workers:     4,

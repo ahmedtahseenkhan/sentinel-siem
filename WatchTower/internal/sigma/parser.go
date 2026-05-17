@@ -108,27 +108,27 @@ func LoadDir(dir string) ([]*models.Rule, []error) {
 	var rules []*models.Rule
 	var errs []error
 
-	files, err := filepath.Glob(filepath.Join(dir, "*.yml"))
-	if err == nil {
-		for _, f := range files {
-			r, err := ParseFile(f)
-			if err != nil {
-				errs = append(errs, fmt.Errorf("%s: %w", f, err))
-				continue
-			}
-			rules = append(rules, r)
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return nil // skip unreadable entries silently
 		}
-	}
-	yamlFiles, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
-	if err == nil {
-		for _, f := range yamlFiles {
-			r, err := ParseFile(f)
-			if err != nil {
-				errs = append(errs, fmt.Errorf("%s: %w", f, err))
-				continue
-			}
-			rules = append(rules, r)
+		if info.IsDir() {
+			return nil
 		}
+		name := info.Name()
+		if !strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml") {
+			return nil
+		}
+		r, parseErr := ParseFile(path)
+		if parseErr != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", path, parseErr))
+			return nil
+		}
+		rules = append(rules, r)
+		return nil
+	})
+	if err != nil {
+		errs = append(errs, err)
 	}
 	return rules, errs
 }
