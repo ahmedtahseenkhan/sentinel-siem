@@ -1,0 +1,53 @@
+# Test node overlay — adds 2 Linux agents and 1 Windows event simulator.
+# Usage:
+#   docker compose -f docker-compose.full.yaml -f docker-compose.test-nodes.yaml up -d
+#
+# Linux agents run the real WatchNode binary (FIM, process, network, syslog).
+# windows-sim generates synthetic Windows Security Event Log traffic so UEBA
+# brute-force detection, Windows detection rules, and dashboards all get exercised.
+
+services:
+
+  # ── Linux test agents ──────────────────────────────────────────────────────
+  watchnode-linux-1:
+    build:
+      context: ./WatchNode
+      target: agent
+    hostname: linux-test-node-1
+    volumes:
+      - ./WatchNode/configs/agent-docker.yaml:/etc/watchnode/agent/config.yaml:ro
+    command: ["-config", "/etc/watchnode/agent/config.yaml"]
+    depends_on:
+      - haproxy
+    restart: unless-stopped
+
+  watchnode-linux-2:
+    build:
+      context: ./WatchNode
+      target: agent
+    hostname: linux-test-node-2
+    volumes:
+      - ./WatchNode/configs/agent-docker.yaml:/etc/watchnode/agent/config.yaml:ro
+    command: ["-config", "/etc/watchnode/agent/config.yaml"]
+    depends_on:
+      - haproxy
+    restart: unless-stopped
+
+  # ── Windows event simulator ────────────────────────────────────────────────
+  # Cannot run real Windows containers on macOS Docker Desktop.
+  # This container sends synthetic Windows Security Event Log events (4624/4625
+  # logins, 4688 process creates, network connections) — enough to exercise all
+  # Windows detection rules and UEBA behavioral analysis including brute-force
+  # success chain detection.
+  windows-sim:
+    build:
+      context: ./WatchNode
+      dockerfile: Dockerfile.winsim
+    hostname: windows-sim-1
+    environment:
+      - WINSIM_MANAGER_URL=haproxy:50051
+      - WINSIM_AGENT_NAME=windows-sim-1
+      - WINSIM_ENROLL_TOKEN=${WATCHTOWER_GRPC_ENROLL_TOKEN:-sentinel-enroll-secret-2024}
+    depends_on:
+      - haproxy
+    restart: unless-stopped

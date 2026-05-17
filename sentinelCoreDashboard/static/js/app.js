@@ -1,3 +1,11 @@
+// Utility functions used by both IIFE and outer module-level code
+function escapeHtml(s) {
+  if (s == null || s === '') return '';
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
 const GEO_CONTINENTS = [
   "M 70 110 L 130 80 L 200 70 L 260 90 L 300 130 L 290 170 L 240 200 L 200 220 L 180 250 L 200 280 L 170 290 L 130 270 L 100 240 L 80 200 L 70 160 Z",
   "M 240 290 L 280 290 L 310 320 L 320 360 L 310 400 L 290 430 L 260 450 L 240 440 L 230 410 L 230 370 L 245 340 L 250 310 Z",
@@ -2989,7 +2997,7 @@ const GEO_CONTINENTS = [
     ctx.textAlign = 'right';
     ctx.fillStyle = 'rgba(51,153,255,0.8)';
     ctx.font = '10px Outfit, sans-serif';
-    ctx.fillText(total.toLocaleString() + ' events', W - padR - 2, padT + 10);
+    ctx.fillText(total.toLocaleString() + ' events', W - P.r - 2, P.t + 10);
   }
 
   function discoverExportCsv() {
@@ -4132,6 +4140,7 @@ const GEO_CONTINENTS = [
       if (typeof startOverviewRefresh === 'function') startOverviewRefresh(ms);
     }
   }
+  window.goToPage = goToPage;
 
   (async function initAuth() {
     try {

@@ -1693,28 +1693,57 @@
 
         <section id="page-it-hygiene" class="page page-v2">
 
-          <!-- Header -->
-          <div class="ag2-header">
-            <div class="ag2-header-left">
-              <h2 class="ag2-title">IT Hygiene <span class="ag2-fleet-badge">Inventory</span></h2>
-              <p class="ag2-subtitle">Asset inventory across the fleet — OS, software, processes, and identity</p>
+          <div class="page-h">
+            <div class="page-h-title">
+              <h1>IT Hygiene <span class="accent">· Inventory</span></h1>
+              <p>Asset inventory across the fleet — OS, software, processes, and identity</p>
             </div>
-            <div class="ag2-header-right">
-              <span class="ag2-updated" id="hygieneSystemsCount">0 systems indexed</span>
-              <input type="text" id="hygieneClusterFilter" class="fld" style="width:180px;height:28px;font-size:11px" placeholder="Cluster name (optional)">
-              <button type="button" class="act-btn" id="hygieneRefreshBtn">
+            <div class="page-h-actions">
+              <span class="page-h-meta" id="hygieneSystemsCount">0 systems indexed</span>
+              <input type="text" id="hygieneClusterFilter" class="fld" style="width:160px" placeholder="Cluster filter…">
+              <button type="button" class="act-btn primary" id="hygieneRefreshBtn">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5"/></svg>
                 Refresh
               </button>
             </div>
           </div>
 
+          <!-- KPI strip -->
+          <div class="grid grid-4" style="margin-bottom:16px">
+            <div class="kpi">
+              <span class="kpi-band" style="background:var(--accent)"></span>
+              <div class="kpi-h"><span class="kpi-label" style="color:var(--accent)">Systems</span><span class="kpi-tag ok">INDEXED</span></div>
+              <div class="kpi-value" id="hygieneKpiSystems">0</div>
+              <div class="kpi-foot"><span class="kpi-sub">hosts reporting</span></div>
+            </div>
+            <div class="kpi">
+              <span class="kpi-band" style="background:var(--low)"></span>
+              <div class="kpi-h"><span class="kpi-label" style="color:var(--low)">Packages</span><span class="kpi-tag ok">SCANNED</span></div>
+              <div class="kpi-value" id="hygieneKpiPackages">0</div>
+              <div class="kpi-foot"><span class="kpi-sub">unique packages</span></div>
+            </div>
+            <div class="kpi">
+              <span class="kpi-band" style="background:var(--med)"></span>
+              <div class="kpi-h"><span class="kpi-label" style="color:var(--med)">Processes</span><span class="kpi-tag ok">LIVE</span></div>
+              <div class="kpi-value" id="hygieneKpiProcesses">0</div>
+              <div class="kpi-foot"><span class="kpi-sub">running across fleet</span></div>
+            </div>
+            <div class="kpi">
+              <span class="kpi-band" style="background:var(--ok)"></span>
+              <div class="kpi-h"><span class="kpi-label" style="color:var(--ok)">Identities</span><span class="kpi-tag ok">MAPPED</span></div>
+              <div class="kpi-value" id="hygieneKpiUsers">0</div>
+              <div class="kpi-foot"><span class="kpi-sub">user accounts tracked</span></div>
+            </div>
+          </div>
+
           <!-- Tabs -->
-          <div class="hy2-tabs">
-            <button type="button" class="hygiene-subtab hy2-tab active" data-hygiene="system">System <span class="hy2-tab-count" id="hygieneTabSystemCount">0</span></button>
-            <button type="button" class="hygiene-subtab hy2-tab" data-hygiene="software">Software</button>
-            <button type="button" class="hygiene-subtab hy2-tab" data-hygiene="processes">Processes</button>
-            <button type="button" class="hygiene-subtab hy2-tab" data-hygiene="identity">Identity</button>
+          <div class="card" style="margin-bottom:0">
+            <div class="tabs">
+              <button type="button" class="tab active hygiene-subtab" data-hygiene="system">System <span class="count" id="hygieneTabSystemCount">0</span></button>
+              <button type="button" class="tab hygiene-subtab" data-hygiene="software">Software</button>
+              <button type="button" class="tab hygiene-subtab" data-hygiene="processes">Processes</button>
+              <button type="button" class="tab hygiene-subtab" data-hygiene="identity">Identity</button>
+            </div>
           </div>
 
           <!-- SYSTEM VIEW -->
@@ -1867,22 +1896,26 @@
 
         <!-- COMPLIANCE HUB PAGE -->
         <section id="page-compliance-hub" class="page page-v2">
-          <div class="ag2-header">
-            <div class="ag2-header-left">
-              <h2 class="ag2-title">Compliance Hub <span class="ag2-fleet-badge">ISO · NIST · SOC 2</span></h2>
-              <p class="ag2-subtitle">ISO 27001 · NIST CSF · SOC 2 · HIPAA · PCI-DSS — unified compliance posture</p>
+          <div class="page-h">
+            <div class="page-h-title">
+              <h1>Compliance Hub <span class="accent">· Posture</span></h1>
+              <p>ISO 27001 · NIST CSF · SOC 2 · HIPAA · PCI-DSS — unified compliance posture</p>
             </div>
-            <div class="ag2-header-right">
-              <select id="complianceDays" onchange="loadComplianceHub()" class="fld" style="height:28px;font-size:11px">
+            <div class="page-h-actions">
+              <select id="complianceDays" onchange="loadComplianceHub()" class="fld">
                 <option value="7">Last 7 days</option>
                 <option value="30" selected>Last 30 days</option>
                 <option value="90">Last 90 days</option>
               </select>
             </div>
           </div>
-          <div id="complianceScoreCards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px">
-            <div style="color:var(--fg-4);font-size:12px;padding:20px">Loading compliance scores…</div>
+
+          <!-- Framework score cards (populated by JS) -->
+          <div id="complianceScoreCards" class="grid grid-4" style="margin-bottom:16px">
+            <div class="kpi"><span class="kpi-band"></span><div class="kpi-h"><span class="kpi-label">Loading…</span></div><div class="kpi-value">—</div></div>
           </div>
+
+          <!-- Controls detail (shown on framework click) -->
           <div id="complianceDetailPanel" style="display:none">
             <div class="card">
               <div class="card-h">
@@ -1900,99 +1933,139 @@
         </section>
 
         <section id="page-compliance" class="page page-v2">
-          <div class="ag2-header">
-            <div class="ag2-header-left">
-              <h2 class="ag2-title">HIPAA <span class="ag2-fleet-badge">Compliance</span></h2>
-              <p class="ag2-subtitle">HIPAA compliance framework — requirements and events</p>
+          <div class="page-h">
+            <div class="page-h-title">
+              <h1>HIPAA <span class="accent">· Compliance</span></h1>
+              <p>Health Insurance Portability and Accountability Act — requirements coverage and events</p>
             </div>
-            <div class="ag2-header-right">
-              <select id="hipaaTimeRange" class="fld" style="height:28px;font-size:11px">
+            <div class="page-h-actions">
+              <select id="hipaaTimeRange" class="fld">
                 <option value="24h" selected>Last 24h</option>
                 <option value="7d">Last 7d</option>
               </select>
-              <button type="button" id="hipaaRefresh" class="act-btn">
+              <button type="button" id="hipaaRefresh" class="act-btn primary">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5"/></svg>
                 Refresh
               </button>
             </div>
           </div>
-          <div class="hy2-tabs" style="margin-bottom:16px">
-            <button type="button" class="hipaa-tab hy2-tab active" data-hipaa-view="dashboard">Dashboard</button>
-            <button type="button" class="hipaa-tab hy2-tab" data-hipaa-view="controls">Controls</button>
-            <button type="button" class="hipaa-tab hy2-tab" data-hipaa-view="events">Events</button>
+
+          <!-- KPI strip -->
+          <div class="grid grid-4" style="margin-bottom:16px">
+            <div class="kpi">
+              <span class="kpi-band" style="background:var(--crit)"></span>
+              <div class="kpi-h"><span class="kpi-label" style="color:var(--crit)">Total Alerts</span><span class="kpi-tag" id="hipaaSevTag">—</span></div>
+              <div class="kpi-value" id="hipaaTotalAlerts">—</div>
+              <div class="kpi-foot"><span class="kpi-sub">in selected period</span></div>
+            </div>
+            <div class="kpi">
+              <span class="kpi-band" style="background:var(--high)"></span>
+              <div class="kpi-h"><span class="kpi-label" style="color:var(--high)">Max Rule Level</span><span class="kpi-tag ok">SEVERITY</span></div>
+              <div class="kpi-value" id="hipaaMaxLevel">—</div>
+              <div class="kpi-foot"><span class="kpi-sub">highest triggered rule</span></div>
+            </div>
+            <div class="kpi">
+              <span class="kpi-band" style="background:var(--accent)"></span>
+              <div class="kpi-h"><span class="kpi-label" style="color:var(--accent)">Requirements Hit</span><span class="kpi-tag ok">COVERAGE</span></div>
+              <div class="kpi-value" id="hipaaReqCount">0</div>
+              <div class="kpi-foot"><span class="kpi-sub">unique requirements</span></div>
+            </div>
+            <div class="kpi">
+              <span class="kpi-band" style="background:var(--ok)"></span>
+              <div class="kpi-h"><span class="kpi-label" style="color:var(--ok)">Active Agents</span><span class="kpi-tag ok">MONITORED</span></div>
+              <div class="kpi-value" id="hipaaAgentCount">0</div>
+              <div class="kpi-foot"><span class="kpi-sub">reporting agents</span></div>
+            </div>
           </div>
 
+          <!-- Tab bar -->
+          <div class="card" style="margin-bottom:16px">
+            <div class="tabs">
+              <button type="button" class="tab active hipaa-tab" data-hipaa-view="dashboard">Dashboard</button>
+              <button type="button" class="tab hipaa-tab" data-hipaa-view="controls">Controls</button>
+              <button type="button" class="tab hipaa-tab" data-hipaa-view="events">Events <span class="count" id="hipaaEventsHits">0</span></button>
+            </div>
+          </div>
+
+          <!-- DASHBOARD VIEW -->
           <div id="hipaa-dashboard-view" class="hipaa-view">
-            <div class="overview-middle">
-              <div class="panel">
-                <h3>Alerts volume by agent</h3>
-                <div id="hipaaHeatmap" class="hipaa-heatmap-wrap"></div>
+            <div class="grid grid-2" style="margin-bottom:12px">
+              <div class="card">
+                <div class="card-h"><h3 class="card-h-title"><span class="dot" style="background:var(--accent)"></span>ALERTS BY AGENT</h3></div>
+                <div class="card-body" id="hipaaHeatmap" style="padding:8px 0;min-height:80px"></div>
               </div>
-              <div class="panel">
-                <h3>Most common alerts</h3>
-                <div id="hipaaMostCommon" class="hipaa-list"></div>
+              <div class="card">
+                <div class="card-h"><h3 class="card-h-title"><span class="dot" style="background:var(--low)"></span>MOST COMMON ALERTS</h3></div>
+                <div class="card-body" id="hipaaMostCommon" style="padding:8px 0;min-height:80px"></div>
               </div>
             </div>
-            <div class="overview-middle">
-              <div class="panel">
-                <h3>Top 10 requirements</h3>
-                <div id="hipaaTopReqs" class="hipaa-donut-wrap"><canvas id="hipaaDonutCanvas" width="280" height="200"></canvas><div id="hipaaDonutLegend" class="hipaa-donut-legend"></div></div>
+            <div class="grid grid-3" style="margin-bottom:12px">
+              <div class="card" style="grid-column:span 2">
+                <div class="card-h"><h3 class="card-h-title"><span class="dot" style="background:var(--med)"></span>TOP 10 REQUIREMENTS</h3></div>
+                <div class="card-body" id="hipaaTopReqs" style="display:flex;align-items:center;gap:16px;padding:12px">
+                  <canvas id="hipaaDonutCanvas" width="160" height="160"></canvas>
+                  <div id="hipaaDonutLegend" style="font-size:11px;color:var(--fg-3);line-height:2"></div>
+                </div>
               </div>
-              <div class="panel">
-                <h3>Most active agents</h3>
-                <div id="hipaaActiveAgents" class="hipaa-list"></div>
+              <div class="card">
+                <div class="card-h"><h3 class="card-h-title"><span class="dot" style="background:var(--ok)"></span>MOST ACTIVE AGENTS</h3></div>
+                <div class="card-body" id="hipaaActiveAgents" style="padding:8px 0;min-height:80px"></div>
               </div>
-              <div class="panel">
-                <h3>Stats</h3>
-                <div class="hipaa-stats">
-                  <div class="hipaa-stat"><span id="hipaaTotalAlerts" class="hipaa-stat-num">—</span><span>Total alerts</span></div>
-                  <div class="hipaa-stat"><span id="hipaaMaxLevel" class="hipaa-stat-num">—</span><span>Max rule level</span></div>
+            </div>
+            <div class="card" style="margin-bottom:12px">
+              <div class="card-h"><h3 class="card-h-title"><span class="dot" style="background:var(--high)"></span>REQUIREMENTS OVER TIME</h3></div>
+              <div class="card-body" style="padding:12px"><canvas id="hipaaEvolutionCanvas" style="width:100%;height:180px"></canvas></div>
+            </div>
+            <div class="card">
+              <div class="card-h"><h3 class="card-h-title"><span class="dot" style="background:var(--crit)"></span>REQUIREMENTS BY AGENT</h3></div>
+              <div class="card-body" style="padding:12px"><canvas id="hipaaDistByAgentCanvas" style="width:100%;height:180px"></canvas></div>
+            </div>
+          </div>
+
+          <!-- CONTROLS VIEW -->
+          <div id="hipaa-controls-view" class="hipaa-view hidden">
+            <div style="display:grid;grid-template-columns:220px 1fr;gap:12px">
+              <div class="card">
+                <div class="card-h"><h3 class="card-h-title"><span class="dot" style="background:var(--accent)"></span>HIPAA SECTIONS</h3></div>
+                <div id="hipaaHighLevelList" style="padding:8px 0"></div>
+              </div>
+              <div class="card">
+                <div class="card-h">
+                  <h3 class="card-h-title"><span class="dot" style="background:var(--low)"></span>REQUIREMENTS</h3>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--fg-3);cursor:pointer">
+                    <input type="checkbox" id="hipaaHideZero"> Hide empty
+                  </label>
+                </div>
+                <div style="padding:8px 12px">
+                  <input type="search" id="hipaaFilterReqs" class="fld" style="width:100%;margin-bottom:8px" placeholder="Filter requirements…">
+                  <div id="hipaaRequirementsGrid" class="hipaa-req-grid"></div>
                 </div>
               </div>
             </div>
-            <div class="panel">
-              <h3>Requirements evolution over time</h3>
-              <div class="timeline-chart"><canvas id="hipaaEvolutionCanvas" width="700" height="220"></canvas></div>
-            </div>
-            <div class="panel">
-              <h3>Requirements distribution by agent</h3>
-              <div class="timeline-chart"><canvas id="hipaaDistByAgentCanvas" width="700" height="220"></canvas></div>
-            </div>
           </div>
 
-          <div id="hipaa-controls-view" class="hipaa-view hidden">
-            <div class="hipaa-controls-layout">
-              <div class="panel">
-                <h3>HIPAA <span class="hipaa-controls-gear">⚙</span></h3>
-                <div id="hipaaHighLevelList" class="hipaa-req-list"></div>
-              </div>
-              <div class="panel hipaa-controls-main">
-                <div class="panel-head"><h3>Requirements</h3><label class="hipaa-toggle"><input type="checkbox" id="hipaaHideZero"> Hide requirements with no alerts</label></div>
-                <input type="search" id="hipaaFilterReqs" class="global-search" placeholder="Filter requirements">
-                <div id="hipaaRequirementsGrid" class="hipaa-req-grid"></div>
-              </div>
-            </div>
-          </div>
-
+          <!-- EVENTS VIEW -->
           <div id="hipaa-events-view" class="hipaa-view hidden">
-            <div class="panel">
-              <h3>Event count over time</h3>
-              <div class="timeline-chart"><canvas id="hipaaEventsTimelineCanvas" width="700" height="180"></canvas></div>
+            <div class="card" style="margin-bottom:12px">
+              <div class="card-h"><h3 class="card-h-title"><span class="dot" style="background:var(--med)"></span>EVENTS OVER TIME</h3></div>
+              <div class="card-body" style="padding:12px"><canvas id="hipaaEventsTimelineCanvas" style="width:100%;height:140px"></canvas></div>
             </div>
-            <div class="panel">
-              <p class="panel-badge"><span id="hipaaEventsHits">0</span> hits</p>
-              <div class="table-wrap">
-                <table class="table">
-                  <thead><tr><th>timestamp</th><th>agent.name</th><th>rule.hipaa</th><th>rule.description</th><th>rule.level</th><th>rule.id</th></tr></thead>
-                  <tbody id="hipaaEventsBody"><tr><td colspan="6">Loading…</td></tr></tbody>
-                </table>
+            <div class="card">
+              <div class="card-h">
+                <h3 class="card-h-title"><span class="dot" style="background:var(--ok)"></span>EVENTS</h3>
+                <span class="card-h-action" id="hipaaEventsInfo">Showing 0 of 0</span>
               </div>
-              <div class="hygiene-table-footer">
-                <span id="hipaaEventsInfo">Showing 0 of 0</span>
-                <div class="hygiene-pagination">
-                  <button type="button" id="hipaaEventsPrev">← Previous</button>
-                  <span id="hipaaEventsPageInfo">Page 1</span>
-                  <button type="button" id="hipaaEventsNext">Next →</button>
+              <div class="tbl">
+                <div class="tbl-h" style="grid-template-columns:140px 120px 1fr 120px 80px 70px">
+                  <span>Timestamp</span><span>Agent</span><span>Description</span><span>Requirement</span><span>Level</span><span>Rule ID</span>
+                </div>
+                <tbody id="hipaaEventsBody"></tbody>
+              </div>
+              <div class="tbl-foot">
+                <span id="hipaaEventsPageInfo">Page 1</span>
+                <div class="right">
+                  <button type="button" class="act-btn" id="hipaaEventsPrev" style="height:24px;padding:0 8px;font-size:11px">← Prev</button>
+                  <button type="button" class="act-btn" id="hipaaEventsNext" style="height:24px;padding:0 8px;font-size:11px">Next →</button>
                 </div>
               </div>
             </div>
@@ -2665,24 +2738,33 @@ ALERT_EMAIL_TO=soc-team@yourdomain.com</pre>
 
         <!-- CLOUD MONITORING PAGE -->
         <section id="page-cloud-monitoring" class="page page-v2">
-          <div class="ag2-header">
-            <div class="ag2-header-left">
-              <h2 class="ag2-title">Cloud Monitoring <span class="ag2-fleet-badge">AWS · Azure · GCP</span></h2>
-              <p class="ag2-subtitle">CloudTrail, Activity Log, and Cloud Logging — unified into Sentinel SIEM</p>
+          <div class="page-h">
+            <div class="page-h-title">
+              <h1>Cloud Monitoring <span class="accent">· AWS · Azure · GCP</span></h1>
+              <p>CloudTrail, Activity Log, and Cloud Logging — unified event ingestion and threat visibility</p>
+            </div>
+            <div class="page-h-actions">
+              <select id="cloudProviderFilter" onchange="loadCloudEvents()" class="fld">
+                <option value="">All Providers</option>
+                <option value="aws">AWS</option>
+                <option value="azure">Azure</option>
+                <option value="gcp">GCP</option>
+              </select>
+              <select id="cloudHoursFilter" onchange="loadCloudEvents()" class="fld">
+                <option value="1">Last 1h</option>
+                <option value="24" selected>Last 24h</option>
+                <option value="168">Last 7d</option>
+              </select>
             </div>
           </div>
-          <div id="cloudProviderCards" class="grid grid-4" style="margin-bottom:12px"></div>
+
+          <!-- Provider KPI cards (populated by JS) -->
+          <div id="cloudProviderCards" class="grid grid-4" style="margin-bottom:16px"></div>
+
+          <!-- Events table -->
           <div class="card" style="margin-bottom:12px">
             <div class="card-h">
               <h3 class="card-h-title"><span class="dot" style="background:var(--low)"></span>CLOUD EVENTS</h3>
-              <div style="display:flex;gap:8px">
-                <select id="cloudProviderFilter" onchange="loadCloudEvents()" class="fld" style="height:26px;font-size:11px">
-                  <option value="">All Providers</option><option value="aws">AWS</option><option value="azure">Azure</option><option value="gcp">GCP</option>
-                </select>
-                <select id="cloudHoursFilter" onchange="loadCloudEvents()" class="fld" style="height:26px;font-size:11px">
-                  <option value="1">Last 1h</option><option value="24" selected>Last 24h</option><option value="168">Last 7d</option>
-                </select>
-              </div>
             </div>
             <div class="tbl">
               <div class="tbl-h" style="grid-template-columns:140px 90px 1fr 140px 1fr 90px">
@@ -2691,21 +2773,32 @@ ALERT_EMAIL_TO=soc-team@yourdomain.com</pre>
               <div id="cloudEventsBody"></div>
             </div>
           </div>
+
+          <!-- Setup instructions -->
           <div class="card">
-            <div class="card-h"><h3 class="card-h-title"><span class="dot" style="background:var(--fg-4)"></span>CONFIGURATION</h3></div>
-            <div class="card-body" style="padding:12px 16px">
-              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;font-size:11px">
-                <div><div style="font-weight:600;color:var(--high);margin-bottom:6px">AWS CloudTrail</div><pre style="background:var(--bg-2);padding:10px;border-radius:6px;line-height:1.8;color:var(--fg-3);margin:0;font-size:11px;overflow-x:auto">AWS_ACCESS_KEY_ID=xxx
+            <div class="card-h"><h3 class="card-h-title"><span class="dot" style="background:var(--fg-4)"></span>CONNECTOR CONFIGURATION</h3></div>
+            <div class="card-body" style="padding:16px">
+              <div class="grid grid-3" style="gap:16px;font-size:11px">
+                <div>
+                  <div style="font-weight:600;color:var(--high);margin-bottom:8px;font-size:12px">☁ AWS CloudTrail</div>
+                  <pre style="background:var(--bg-2);padding:12px;border-radius:6px;line-height:1.9;color:var(--fg-3);margin:0;font-size:11px;overflow-x:auto">AWS_ACCESS_KEY_ID=xxx
 AWS_SECRET_ACCESS_KEY=xxx
 AWS_REGION=us-east-1
-AWS_ACCOUNT_ALIAS=prod</pre></div>
-                <div><div style="font-weight:600;color:var(--accent);margin-bottom:6px">Azure Activity Log</div><pre style="background:var(--bg-2);padding:10px;border-radius:6px;line-height:1.8;color:var(--fg-3);margin:0;font-size:11px;overflow-x:auto">AZURE_TENANT_ID=xxx
+AWS_ACCOUNT_ALIAS=prod</pre>
+                </div>
+                <div>
+                  <div style="font-weight:600;color:var(--accent);margin-bottom:8px;font-size:12px">☁ Azure Activity Log</div>
+                  <pre style="background:var(--bg-2);padding:12px;border-radius:6px;line-height:1.9;color:var(--fg-3);margin:0;font-size:11px;overflow-x:auto">AZURE_TENANT_ID=xxx
 AZURE_CLIENT_ID=xxx
 AZURE_CLIENT_SECRET=xxx
-AZURE_SUBSCRIPTION_ID=xxx</pre></div>
-                <div><div style="font-weight:600;color:var(--ok);margin-bottom:6px">GCP Cloud Logging</div><pre style="background:var(--bg-2);padding:10px;border-radius:6px;line-height:1.8;color:var(--fg-3);margin:0;font-size:11px;overflow-x:auto">GCP_PROJECT_ID=my-project
+AZURE_SUBSCRIPTION_ID=xxx</pre>
+                </div>
+                <div>
+                  <div style="font-weight:600;color:var(--ok);margin-bottom:8px;font-size:12px">☁ GCP Cloud Logging</div>
+                  <pre style="background:var(--bg-2);padding:12px;border-radius:6px;line-height:1.9;color:var(--fg-3);margin:0;font-size:11px;overflow-x:auto">GCP_PROJECT_ID=my-project
 GCP_SERVICE_ACCOUNT_JSON=...
-CLOUD_SYNC_INTERVAL_MINUTES=15</pre></div>
+CLOUD_SYNC_INTERVAL=15m</pre>
+                </div>
               </div>
             </div>
           </div>
@@ -3069,10 +3162,13 @@ CLOUD_SYNC_INTERVAL_MINUTES=15</pre></div>
 
         <!-- DETECTION STUDIO / RULE VERSIONING PAGE -->
         <section id="page-rule-versions" class="page page-v2">
-          <div class="ag2-header" style="margin-bottom:12px">
-            <div class="ag2-header-left">
-              <h2 class="ag2-title">Detection Studio <span class="ag2-fleet-badge">Sigma · Versions</span></h2>
-              <p class="ag2-subtitle">Version-controlled Sigma rule management — edit, validate, diff, and rollback</p>
+          <div class="page-h">
+            <div class="page-h-title">
+              <h1>Detection Studio <span class="accent">· Sigma Rules</span></h1>
+              <p>Version-controlled rule management — edit, validate, diff, and rollback detection logic</p>
+            </div>
+            <div class="page-h-actions">
+              <span class="page-h-meta"><b id="rvFileCount">0</b><span class="sep">·</span>rule files</span>
             </div>
           </div>
 
@@ -3081,7 +3177,6 @@ CLOUD_SYNC_INTERVAL_MINUTES=15</pre></div>
             <div class="studio-sidebar">
               <div class="studio-sidebar-header">
                 <span class="studio-sidebar-label">Rule Files</span>
-                <span id="rvFileCount" style="font-size:10px;color:var(--text-muted)"></span>
               </div>
               <div class="studio-search">
                 <input type="text" id="rvSearchInput" class="fld" placeholder="Filter rules…" oninput="filterRvFiles()" autocomplete="off" style="width:100%" />

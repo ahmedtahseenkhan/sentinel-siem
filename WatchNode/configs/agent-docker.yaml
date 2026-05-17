@@ -1,0 +1,59 @@
+agent:
+  id: ""
+  name: "{{hostname}}"
+  labels:
+    environment: test
+    team: security
+    _enroll_token: "sentinel-enroll-secret-2024"
+
+manager:
+  url: "haproxy:50051"
+  tls: {}
+  reconnect:
+    max_attempts: 0
+    initial_backoff: "5s"
+    max_backoff: "2m"
+
+collectors:
+  system:
+    enabled: true
+    interval: "30s"
+    metrics: ["cpu", "memory", "disk", "network", "processes"]
+  process:
+    enabled: true
+    interval: "15s"
+  network:
+    enabled: true
+    interval: "15s"
+  logs:
+    enabled: true
+    sources:
+      - type: journal
+  fim:
+    enabled: true
+    interval: "30s"
+    paths:
+      - path: "/tmp"
+        recursive: true
+        realtime: false
+      - path: "/etc/hosts"
+        recursive: false
+        realtime: false
+  syscollector:
+    enabled: true
+    interval: "1h"
+    hardware: true
+    os: true
+    packages: false
+    ports: true
+    network_interfaces: true
+    users: true
+    services: false
+    hotfixes: false
+
+performance:
+  max_cpu_percent: 10
+  max_memory_bytes: 134217728
+  batch_size: 500
+  flush_interval: "15s"
+  queue_size: 5000

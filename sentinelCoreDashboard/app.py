@@ -842,14 +842,17 @@ def api_dashboard_overview():
         # system_health computed below after conn is available; placeholder for now
         out["ingestion_lag"] = "<1SEC"
 
-        # Threat detection rate: pct of recent alerts that have a MITRE technique
+        # Threat detection rate: pct of recent alerts that map to a known attack technique
+        # (rule_groups contains attack-category labels like 'malware', 'credential_dumping', etc.)
+        ATTACK_GROUPS = {
+            "malware", "credential_dumping", "lateral_movement", "privilege_escalation",
+            "persistence", "exfiltration", "defense_evasion", "initial_access",
+            "execution", "discovery", "ransomware", "brute_force", "attack",
+        }
         recent_alerts_raw_hits = alerts_res.get("hits", {}).get("hits", [])
         mitre_alert_count = sum(
             1 for h in recent_alerts_raw_hits
-            if h.get("_source", {}).get("rule_mitre_technique_id")
-               or h.get("_source", {}).get("rule_mitre_tactic")
-               or (h.get("_source", {}).get("rule") or {}).get("mitre")
-               or (h.get("_source", {}).get("event_data") or {}).get("mitre")
+            if set(h.get("_source", {}).get("rule_groups") or []) & ATTACK_GROUPS
         )
         out["threat_detection_rate"] = round(mitre_alert_count / max(len(recent_alerts_raw_hits), 1) * 100, 1)
 
@@ -886,11 +889,19 @@ def api_dashboard_overview():
             for b in user_buckets[:5]
         ]
 
-        # At-risk devices (agents)
+        # At-risk devices — aggregate by agent_id (keyword), then resolve hostname
         agent_buckets = _aggregation_buckets(agent_risk_res, "by_agent")
+        # Build id→hostname lookup from the agents list we already fetched
+        _agents_raw = (agents_list_res.get("data") or {}).get("affected_items") or []
+        _id_to_name = {a.get("id", ""): (a.get("name") or a.get("hostname") or a.get("id", "")) for a in _agents_raw}
         max_agent = max([b.get("doc_count", 0) for b in agent_buckets], default=1)
         out["at_risk_devices"] = [
-            {"name": b.get("key") or "—", "count": b.get("doc_count", 0), "score": min(100, int(100 * b.get("doc_count", 0) / max_agent))}
+            {
+                "name": _id_to_name.get(b.get("key"), b.get("key") or "—"),
+                "id": b.get("key"),
+                "count": b.get("doc_count", 0),
+                "score": min(100, int(100 * b.get("doc_count", 0) / max_agent)),
+            }
             for b in agent_buckets[:5]
         ]
 

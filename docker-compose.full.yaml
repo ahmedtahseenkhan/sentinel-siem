@@ -104,6 +104,22 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # One-shot container that creates required Kafka topics after broker is healthy.
+  # Exits with code 0 once done — restart:no ensures it doesn't loop.
+  kafka-init:
+    image: apache/kafka:3.7.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic sentinel.events  --partitions 6 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic sentinel.alerts  --partitions 6 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic __consumer_offsets --partitions 50 --replication-factor 1 --config cleanup.policy=compact
+        echo "Kafka topics ready"
+
   opensearch-node1:
     <<: *opensearch-common
     environment:

@@ -306,7 +306,8 @@ def get_agents_summary():
         counts = {"active": 0, "disconnected": 0, "pending": 0, "never_connected": 0}
         for a in agents:
             s = (a.get("status") or "").lower()
-            if s == "streaming":
+            # streaming / running / active all mean the agent is connected
+            if s in ("streaming", "running", "active"):
                 s = "active"
             if s in counts:
                 counts[s] += 1
@@ -537,17 +538,24 @@ def get_alerts_by_rule(size=10):
 
 
 def get_alerts_by_user(size=10):
-    """Top users by alert count — uses event_data.dstuser if present."""
-    body = {
-        "size": 0,
-        "aggs": {
-            "by_user": {
-                "terms": {"field": "event_data.dstuser", "size": size, "order": {"_count": "desc"}},
-            }
-        },
-    }
+    """Top users by alert count — extracted from event_data.fields.user in source docs."""
+    # event_data.fields.user is 'text' with no .keyword sub-field so we can't use a
+    # terms aggregation. Fetch recent high-value alerts and aggregate in Python instead.
     try:
-        return indexer_search(ALERTS_INDEX, body)
+        body = {
+            "size": 200,
+            "sort": [{"rule_level": {"order": "desc"}}],
+            "_source": ["event_data.fields.user"],
+        }
+        res = indexer_search(ALERTS_INDEX, body)
+        from collections import Counter
+        counts = Counter()
+        for h in (res.get("hits") or {}).get("hits", []):
+            user = ((h.get("_source") or {}).get("event_data") or {}).get("fields", {}).get("user") or ""
+            if user and user not in ("", "-", "SYSTEM", "LOCAL SERVICE", "NETWORK SERVICE"):
+                counts[user] += 1
+        buckets = [{"key": u, "doc_count": c} for u, c in counts.most_common(size)]
+        return {"aggregations": {"by_user": {"buckets": buckets}}}
     except Exception:
         return {"aggregations": {"by_user": {"buckets": []}}}
 
@@ -602,16 +610,25 @@ def get_alerts_severity_24h():
 
 
 def get_top_source_ips(size=20):
-    body = {
-        "size": 0,
-        "aggs": {
-            "by_ip": {
-                "terms": {"field": "event_data.srcip", "size": size, "order": {"_count": "desc"}},
-            }
-        },
-    }
+    """Top source IPs from alert event data — extracted in Python since IP fields are 'text'."""
     try:
-        return indexer_search(ALERTS_INDEX, body)
+        body = {
+            "size": 300,
+            "sort": [{"rule_level": {"order": "desc"}}],
+            "_source": ["event_data.fields"],
+        }
+        res = indexer_search(ALERTS_INDEX, body)
+        from collections import Counter
+        counts = Counter()
+        for h in (res.get("hits") or {}).get("hits", []):
+            fields = (((h.get("_source") or {}).get("event_data") or {}).get("fields") or {})
+            for ip_key in ("win_IpAddress", "src_ip", "source_ip", "raddr"):
+                ip = fields.get(ip_key) or ""
+                if ip and ip not in ("", "-", "0.0.0.0", "::", "::1", "127.0.0.1"):
+                    counts[ip] += 1
+                    break
+        buckets = [{"key": ip, "doc_count": c} for ip, c in counts.most_common(size)]
+        return {"aggregations": {"by_ip": {"buckets": buckets}}}
     except Exception:
         return {"aggregations": {"by_ip": {"buckets": []}}}
 
@@ -635,17 +652,47 @@ def get_alerts_high_level_count():
 
 
 def get_mitre_techniques(size=15):
-    """Top MITRE technique IDs — stored in event_data.mitre.technique_id or tags."""
+    """Top MITRE tactic/technique groups from rule_groups — rule_groups is keyword so agg works."""
+    # Map rule_groups values to MITRE-style technique labels
+    MITRE_GROUPS = {
+        "credential_dumping": "T1003 Credential Dumping",
+        "lateral_movement": "T1021 Lateral Movement",
+        "privilege_escalation": "T1068 Privilege Escalation",
+        "persistence": "T1053 Persistence",
+        "discovery": "T1082 System Discovery",
+        "execution": "T1059 Command Execution",
+        "exfiltration": "T1041 Exfiltration",
+        "defense_evasion": "T1055 Defense Evasion",
+        "initial_access": "T1190 Initial Access",
+        "malware": "T1204 Malware Execution",
+        "brute_force": "T1110 Brute Force",
+        "attack": "T1190 Exploit",
+        "authentication": "T1078 Valid Accounts",
+        "ransomware": "T1486 Data Encrypted",
+        "network": "T1043 Network Activity",
+        "fim": "T1565 Data Manipulation",
+    }
     body = {
         "size": 0,
         "aggs": {
-            "by_technique": {
-                "terms": {"field": "event_data.mitre.technique_id", "size": size, "order": {"_count": "desc"}},
+            "by_group": {
+                "terms": {"field": "rule_groups", "size": 50, "order": {"_count": "desc"}},
             }
         },
     }
     try:
-        return indexer_search(ALERTS_INDEX, body)
+        res = indexer_search(ALERTS_INDEX, body)
+        buckets_raw = (res.get("aggregations") or {}).get("by_group", {}).get("buckets", [])
+        # Collapse raw groups into MITRE technique labels
+        seen = {}
+        for b in buckets_raw:
+            grp = (b.get("key") or "").lower()
+            label = MITRE_GROUPS.get(grp)
+            if label:
+                seen[label] = seen.get(label, 0) + b.get("doc_count", 0)
+        buckets = [{"key": label, "doc_count": c} for label, c in
+                   sorted(seen.items(), key=lambda x: x[1], reverse=True)[:size]]
+        return {"aggregations": {"by_technique": {"buckets": buckets}}}
     except Exception:
         return {"aggregations": {"by_technique": {"buckets": []}}}
 
@@ -692,10 +739,8 @@ def get_alerts_by_agent(size=15, min_level=None, time_from=None, time_to=None,
         "size": 0,
         "aggs": {
             "by_agent": {
-                "terms": {"field": "agent_name", "size": size, "order": {"_count": "desc"}},
-                "aggs": {
-                    "agent_id": {"terms": {"field": "agent_id", "size": 1}},
-                },
+                # agent_id is keyword — agent_name is often empty so aggregate on id
+                "terms": {"field": "agent_id", "size": size, "order": {"_count": "desc"}},
             }
         },
     }
