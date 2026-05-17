@@ -11,7 +11,7 @@ from flask import Flask, render_template, jsonify, request, session, redirect, u
 _logger = _logging.getLogger(__name__)
 
 
-def _api_error(exc: Exception, status: int = 502) -> tuple:
+def _api_error(exc: Exception, status: int = 500) -> tuple:
     """Log the full exception but return a generic message to the client
     so internal details (file paths, query structure) are not leaked."""
     _logger.exception("API error: %s", exc)
@@ -876,15 +876,18 @@ def api_dashboard_overview():
         os_timeline_total = sum(t["count"] for t in timeline_list)
         timeline_sev_list = []
         if os_timeline_total == 0:
-            from watchtower_client import get_watchtower_alerts, get_watchtower_agents, build_alerts_dashboard_from_wt
-            wt_alerts = get_watchtower_alerts(500)
-            if wt_alerts:
-                wt_stats = build_alerts_dashboard_from_wt(wt_alerts, [])
-                timeline_sev_list = wt_stats.get("timeline_24h_by_severity", [])
-                timeline_list = [
-                    {"key": t.get("key"), "count": (t.get("critical",0)+t.get("high",0)+t.get("medium",0)+t.get("low",0))}
-                    for t in timeline_sev_list
-                ]
+            try:
+                from watchtower_client import get_watchtower_alerts, build_alerts_dashboard_from_wt
+                wt_alerts = get_watchtower_alerts(500) or []
+                if wt_alerts:
+                    wt_stats = build_alerts_dashboard_from_wt(wt_alerts, [])
+                    timeline_sev_list = wt_stats.get("timeline_24h_by_severity", [])
+                    timeline_list = [
+                        {"key": t.get("key"), "count": (t.get("critical",0)+t.get("high",0)+t.get("medium",0)+t.get("low",0))}
+                        for t in timeline_sev_list
+                    ]
+            except Exception:
+                pass  # WatchTower not ready yet — timeline stays empty
         out["timeline_24h"] = timeline_list
         out["timeline_24h_by_severity"] = timeline_sev_list  # for sparklines with severity split
         out["timeline_total"] = sum(t["count"] for t in timeline_list)
