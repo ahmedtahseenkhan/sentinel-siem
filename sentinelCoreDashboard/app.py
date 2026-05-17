@@ -1274,15 +1274,27 @@ def api_alerts_dashboard():
         start_24 = int((now - timedelta(hours=24)).timestamp() * 1000)
         end_24 = int(now.timestamp() * 1000)
 
+        def _safe(fn, *args, default=None):
+            try:
+                return fn(*args) or default
+            except Exception:
+                return default
+
+        def _get(f, default=None):
+            try:
+                return f.result(timeout=20) or default
+            except Exception:
+                return default
+
         # Parallel: OpenSearch stats + WatchTower direct alerts
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
-            f_os_total = ex.submit(get_alerts_list, 0, 0, start_24, end_24, None, None, None)
-            f_wt_alerts = ex.submit(get_watchtower_alerts, 500)
-            f_wt_agents = ex.submit(get_watchtower_agents, 200)
+            f_os_total  = ex.submit(_safe, get_alerts_list, 0, 0, start_24, end_24, None, None, None, default={})
+            f_wt_alerts = ex.submit(_safe, get_watchtower_alerts, 500, default=[])
+            f_wt_agents = ex.submit(_safe, get_watchtower_agents, 200, default=[])
 
-        os_total = (f_os_total.result() or {}).get("total", 0)
-        wt_alerts = f_wt_alerts.result() or []
-        wt_agents = f_wt_agents.result() or []
+        os_total  = (_get(f_os_total,  {}) or {}).get("total", 0)
+        wt_alerts = _get(f_wt_alerts, []) or []
+        wt_agents = _get(f_wt_agents, []) or []
 
         # Use WatchTower data when it has more alerts than OpenSearch (streaming lag)
         if len(wt_alerts) > os_total:
@@ -1290,13 +1302,13 @@ def api_alerts_dashboard():
         else:
             # OpenSearch is up to date — use it for richer aggregations
             with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
-                f_sev = ex.submit(get_alerts_severity_24h)
-                f_timeline = ex.submit(get_alerts_severity_over_time, 1, "1h", None, start_24, end_24)
-                f_categories = ex.submit(get_alerts_by_rule_groups, 10, start_24, end_24)
-                f_agents = ex.submit(get_alerts_by_agent, 10, None, start_24, end_24, None, None, None, None)
-                f_incidents = ex.submit(get_alerts_list, 10, 0, start_24, end_24, 8, None, None)
-            sev = f_sev.result()
-            timeline_res = f_timeline.result()
+                f_sev        = ex.submit(_safe, get_alerts_severity_24h, default={})
+                f_timeline   = ex.submit(_safe, get_alerts_severity_over_time, 1, "1h", None, start_24, end_24, default={})
+                f_categories = ex.submit(_safe, get_alerts_by_rule_groups, 10, start_24, end_24, default=[])
+                f_agents     = ex.submit(_safe, get_alerts_by_agent, 10, None, start_24, end_24, None, None, None, None, default={})
+                f_incidents  = ex.submit(_safe, get_alerts_list, 10, 0, start_24, end_24, 8, None, None, default={})
+            sev          = _get(f_sev,        {})
+            timeline_res = _get(f_timeline,   {})
             by_date = (timeline_res.get("aggregations") or {}).get("by_date", {}).get("buckets", [])
             tl = []
             for b in by_date:
@@ -1310,17 +1322,17 @@ def api_alerts_dashboard():
                     elif lv >= 4: med += c
                     else: low += c
                 tl.append({"key": key, "critical": crit, "high": high, "medium": med, "low": low})
-            cat = f_categories.result() or []
-            ag = f_agents.result()
+            cat          = _get(f_categories, []) or []
+            ag           = _get(f_agents,     {})
             agent_buckets = _aggregation_buckets(ag, "by_agent")
-            inc_data = f_incidents.result() or {}
+            inc_data     = _get(f_incidents,  {})
             out = {
                 "total_24h": os_total,
                 "severity_24h": sev,
                 "timeline_24h_by_severity": tl,
                 "top_categories": [{"key": c.get("key"), "count": c.get("doc_count", 0)} for c in cat],
                 "top_agents": [{"key": b.get("key"), "count": b.get("doc_count", 0)} for b in agent_buckets],
-                "incidents": _normalize_alerts({"hits": {"hits": inc_data.get("hits", [])}}),
+                "incidents": _normalize_alerts({"hits": {"hits": (inc_data or {}).get("hits", [])}}),
             }
         return jsonify(out)
     except Exception as e:
