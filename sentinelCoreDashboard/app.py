@@ -22,6 +22,9 @@ from config import (
     _verify_password,
     SECRET_KEY,
     ROLE_SUPER_ADMIN,
+    ROLE_ADMIN,
+    ROLE_ADMINISTRATOR,
+    ROLE_SECURITY_ANALYST,
     ROLES_CAN_SAVE_DASHBOARD,
     INDEX_PREFIX,
 )
@@ -187,6 +190,59 @@ SUPER_ADMIN_ONLY_PATHS = {
     "/api/indexer/info",
 }
 
+# Path prefixes that require write privileges (admin or higher).
+# Viewer/Security Analyst roles can read but not modify these resources.
+WRITE_PROTECTED_PREFIXES = (
+    "/api/rules/",          # Rule creation/edit/delete
+    "/api/decoders/",       # Decoder management
+    "/api/playbooks/",      # Playbook configuration
+    "/api/cases/",          # Case management (analysts can also modify — see role check below)
+    "/api/identity/sync",   # Manual identity sync
+    "/api/cdb-lists/",      # CDB list management
+    "/api/reports/schedules", # Report schedule management
+)
+
+# HTTP methods that are considered "write" operations
+WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+# Roles allowed to perform write operations on protected paths
+ROLES_CAN_WRITE = {ROLE_SUPER_ADMIN, ROLE_ADMINISTRATOR, ROLE_ADMIN}
+
+# Cases are an exception — security analysts can also write
+ROLES_CAN_MANAGE_CASES = ROLES_CAN_WRITE | {ROLE_SECURITY_ANALYST}
+
+
+# ── Rate limiting (token bucket per-IP) ──────────────────────────────────────
+# Prevents API abuse: each IP gets a refilling bucket of tokens.
+# Refill rate = RATE_LIMIT_RPS tokens/sec, burst capacity = RATE_LIMIT_BURST.
+import threading as _threading
+import time as _time
+
+_RATE_LIMIT_RPS = int(os.getenv("RATE_LIMIT_RPS", "20"))   # sustained req/sec per IP
+_RATE_LIMIT_BURST = int(os.getenv("RATE_LIMIT_BURST", "60"))
+_rate_buckets = {}   # ip -> [tokens, last_refill_ts]
+_rate_lock = _threading.Lock()
+
+
+def _rate_limit_check(client_ip):
+    """Returns True if the request is allowed; False if rate-limited."""
+    now = _time.time()
+    with _rate_lock:
+        bucket = _rate_buckets.get(client_ip)
+        if bucket is None:
+            _rate_buckets[client_ip] = [float(_RATE_LIMIT_BURST), now]
+            return True
+        tokens, last = bucket
+        # Refill based on elapsed time
+        tokens = min(float(_RATE_LIMIT_BURST), tokens + (now - last) * _RATE_LIMIT_RPS)
+        if tokens < 1:
+            bucket[0] = tokens
+            bucket[1] = now
+            return False
+        bucket[0] = tokens - 1
+        bucket[1] = now
+        return True
+
 
 def _check_login():
     """Return (username, role) if logged in, else None."""
@@ -274,10 +330,23 @@ def api_me():
 
 @app.before_request
 def _api_auth():
-    """Require login for all /api/* except /api/me; require super_admin for config/settings APIs."""
+    """Enforce login + RBAC for all /api/* requests.
+
+    Permission rules:
+      - All /api/* (except /api/me) require login.
+      - SUPER_ADMIN_ONLY_PATHS require super_admin.
+      - Write methods (POST/PUT/PATCH/DELETE) on WRITE_PROTECTED_PREFIXES
+        require an admin-level role (write).
+      - Case management writes additionally permit security_analyst.
+      - Viewers (and lower) can only read (GET/HEAD).
+    """
     path = request.path
     if not path.startswith("/api/"):
         return None
+    # Apply rate limiting before anything else (uses client IP)
+    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown").split(",")[0].strip()
+    if not _rate_limit_check(client_ip):
+        return jsonify({"error": "Too Many Requests", "retry_after_seconds": 1}), 429
     if path == "/api/me":
         return None
     login = _check_login()
@@ -286,6 +355,19 @@ def _api_auth():
     _, role = login
     if path in SUPER_ADMIN_ONLY_PATHS and role != ROLE_SUPER_ADMIN:
         return jsonify({"error": "Forbidden", "required_role": ROLE_SUPER_ADMIN}), 403
+
+    # Write protection: deny modify-actions to read-only roles on protected paths
+    if request.method in WRITE_METHODS:
+        is_protected = any(path.startswith(p) for p in WRITE_PROTECTED_PREFIXES)
+        if is_protected:
+            allowed = ROLES_CAN_MANAGE_CASES if path.startswith("/api/cases/") else ROLES_CAN_WRITE
+            if role not in allowed:
+                return jsonify({
+                    "error": "Forbidden",
+                    "message": f"Role '{role}' may not modify this resource",
+                    "required_any_role": sorted(allowed),
+                }), 403
+
     return None
 
 

@@ -77,6 +77,26 @@ ROLE_ADMIN = "admin"
 ROLE_ADMINISTRATOR = "administrator"
 ROLE_SECURITY_ANALYST = "security_analyst"
 ROLE_COMPLIANCE_OFFICER = "compliance_officer"
+ROLE_VIEWER = "viewer"  # Read-only access
+
+# Role hierarchy — used for permission checks
+# Higher index = more privileged
+ROLE_HIERARCHY = [
+    ROLE_VIEWER,
+    ROLE_COMPLIANCE_OFFICER,
+    ROLE_SECURITY_ANALYST,
+    ROLE_ADMIN,
+    ROLE_ADMINISTRATOR,
+    ROLE_SUPER_ADMIN,
+]
+
+
+def role_has_level(role, required_role):
+    """Returns True if the given role meets or exceeds the required role level."""
+    try:
+        return ROLE_HIERARCHY.index(role) >= ROLE_HIERARCHY.index(required_role)
+    except ValueError:
+        return False
 
 # Ticketing integration
 # TICKETING_PROVIDER = jira | servicenow | none

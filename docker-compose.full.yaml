@@ -7,9 +7,9 @@ x-watchtower-common: &watchtower-common
     - WATCHTOWER_LOG_LEVEL=info
     - WATCHTOWER_WATCHVAULT_ADDRESS=watchvault:50052
     - WATCHTOWER_ENGINE_WORKERS=16
-    - WATCHTOWER_API_KEY=sentinel-dev-api-key
-    - WATCHTOWER_DATABASE_URL=postgres://watchtower:watchtower_dev_pass@postgres:5432/watchtower?sslmode=disable
-    - WATCHTOWER_GRPC_ENROLL_TOKEN=sentinel-enroll-secret-2024
+    - WATCHTOWER_API_KEY=${WATCHTOWER_API_KEY:-sentinel-dev-api-key}
+    - WATCHTOWER_DATABASE_URL=postgres://${POSTGRES_USER:-watchtower}:${POSTGRES_PASSWORD:-watchtower_dev_pass}@postgres:5432/${POSTGRES_DB:-watchtower}?sslmode=disable
+    - WATCHTOWER_GRPC_ENROLL_TOKEN=${WATCHTOWER_GRPC_ENROLL_TOKEN:-sentinel-enroll-secret-2024}
     - WATCHTOWER_KAFKA_BROKERS=kafka:9092
     - WATCHTOWER_GRPC_TLS_CERT=/etc/sentinel/certs/watchtower.crt
     - WATCHTOWER_GRPC_TLS_KEY=/etc/sentinel/certs/watchtower.key
@@ -54,9 +54,9 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_DB=watchtower
-      - POSTGRES_USER=watchtower
-      - POSTGRES_PASSWORD=watchtower_dev_pass
+      - POSTGRES_DB=${POSTGRES_DB:-watchtower}
+      - POSTGRES_USER=${POSTGRES_USER:-watchtower}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-watchtower_dev_pass}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     ports:
@@ -170,7 +170,7 @@ services:
     environment:
       - WATCHVAULT_OPENSEARCH_URLS=http://opensearch-node1:9200,http://opensearch-node2:9200,http://opensearch-node3:9200
       - WATCHVAULT_LOG_LEVEL=info
-      - WATCHVAULT_API_KEY=sentinel-dev-api-key
+      - WATCHVAULT_API_KEY=${WATCHVAULT_API_KEY:-sentinel-dev-api-key}
       - WATCHVAULT_KAFKA_BROKERS=kafka:9092
     depends_on:
       opensearch-node1:
@@ -208,14 +208,14 @@ services:
       - WATCHTOWER_URL=http://haproxy:9400
       - OPENSEARCH_URL=http://opensearch-node1:9200
       - OPENSEARCH_USER=admin
-      - OPENSEARCH_PASSWORD=admin
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD:-admin}
       - VERIFY_SSL=false
-      - SECRET_KEY=sentinel-dev-key
-      - DASHBOARD_SUPER_ADMIN_USER=superadmin
-      - DASHBOARD_SUPER_ADMIN_PASSWORD=superadmin
-      - DASHBOARD_ADMIN_USER=admin
-      - DASHBOARD_ADMIN_PASSWORD=admin
-      - WATCHTOWER_API_KEY=sentinel-dev-api-key
+      - SECRET_KEY=${DASHBOARD_SECRET_KEY:-sentinel-dev-key}
+      - DASHBOARD_SUPER_ADMIN_USER=${DASHBOARD_SUPER_ADMIN_USER:-superadmin}
+      - DASHBOARD_SUPER_ADMIN_PASSWORD=${DASHBOARD_SUPER_ADMIN_PASSWORD:-superadmin}
+      - DASHBOARD_ADMIN_USER=${DASHBOARD_ADMIN_USER:-admin}
+      - DASHBOARD_ADMIN_PASSWORD=${DASHBOARD_ADMIN_PASSWORD:-admin}
+      - WATCHTOWER_API_KEY=${WATCHTOWER_API_KEY:-sentinel-dev-api-key}
     depends_on:
       - watchtower
       - opensearch-node1

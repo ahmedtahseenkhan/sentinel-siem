@@ -1,0 +1,65 @@
+# Sentinel SIEM — High Availability Overrides
+#
+# This compose file extends docker-compose.full.yaml with HA-grade data layer:
+#   - PostgreSQL primary + hot standby with streaming replication
+#   - Kafka 3-node KRaft cluster (replaces single-node kafka)
+#
+# Usage:
+#   docker compose -f docker-compose.full.yaml -f docker-compose.ha.yaml up -d
+#
+# Prerequisites:
+#   - Set POSTGRES_PASSWORD and POSTGRES_REPLICATION_PASSWORD in .env
+#   - At least 16GB RAM recommended for the full HA stack
+
+services:
+  # ── PostgreSQL Primary ───────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-watchtower}
+      - POSTGRES_USER=${POSTGRES_USER:-watchtower}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-watchtower_dev_pass}
+      - POSTGRES_REPLICATION_USER=${POSTGRES_REPLICATION_USER:-replicator}
+      - POSTGRES_REPLICATION_PASSWORD=${POSTGRES_REPLICATION_PASSWORD:-replicator_dev_pass}
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=replica"
+      - "-c"
+      - "max_wal_senders=10"
+      - "-c"
+      - "max_replication_slots=10"
+      - "-c"
+      - "hot_standby=on"
+      - "-c"
+      - "hba_file=/etc/postgresql/pg_hba.conf"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./infra/postgres/init-replication.sh:/docker-entrypoint-initdb.d/init-replication.sh:ro
+
+  # ── PostgreSQL Hot Standby (read replica) ────────────────────────────────────
+  postgres-replica:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-watchtower}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-watchtower_dev_pass}
+      - POSTGRES_REPLICATION_USER=${POSTGRES_REPLICATION_USER:-replicator}
+      - POSTGRES_REPLICATION_PASSWORD=${POSTGRES_REPLICATION_PASSWORD:-replicator_dev_pass}
+      - PRIMARY_HOST=postgres
+    entrypoint: ["/bin/bash", "/replica-entrypoint.sh"]
+    volumes:
+      - postgres-replica-data:/var/lib/postgresql/data
+      - ./infra/postgres/replica-entrypoint.sh:/replica-entrypoint.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-watchtower}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres-replica-data:
