@@ -1,0 +1,69 @@
+agent:
+  id: ""
+  name: "{{hostname}}"
+  labels:
+    environment: production
+    team: security
+    _enroll_token: "sentinel-enroll-secret-2024"
+
+manager:
+  # !! IMPORTANT: Replace with your Sentinel server IP or hostname !!
+  url: "YOUR_SERVER_IP:50051"
+  tls: {}
+  reconnect:
+    max_attempts: 0
+    initial_backoff: "5s"
+    max_backoff: "2m"
+
+collectors:
+  system:
+    enabled: true
+    interval: "30s"
+    metrics: ["cpu", "memory", "disk", "network", "processes"]
+  process:
+    enabled: true
+    interval: "30s"
+  network:
+    enabled: true
+    interval: "30s"
+  logs:
+    enabled: true
+    sources:
+      - type: eventlog
+        channels: ["Security", "Application", "System"]
+  fim:
+    enabled: true
+    interval: "60s"
+    paths:
+      - path: "C:\\Windows\\System32"
+        recursive: false
+        realtime: false
+      - path: "C:\\Users"
+        recursive: false
+        realtime: false
+      - path: "C:\\Program Files"
+        recursive: false
+        realtime: false
+  sca:
+    enabled: true
+    interval: "12h"
+    policy_dirs:
+      - "configs\\sca"
+  syscollector:
+    enabled: true
+    interval: "1h"
+    hardware: true
+    os: true
+    packages: true
+    ports: true
+    network_interfaces: true
+    users: true
+    services: true
+    hotfixes: true
+
+performance:
+  max_cpu_percent: 10
+  max_memory_bytes: 268435456
+  batch_size: 500
+  flush_interval: "30s"
+  queue_size: 10000
