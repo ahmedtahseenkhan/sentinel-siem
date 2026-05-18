@@ -2193,12 +2193,14 @@ const GEO_CONTINENTS = [
       }
     }
 
-    // Active incidents
+    // Active incidents — keep agent_id and rule_id for Investigate button
     const incData  = (dash.incidents || []).map(a => ({
       time: a.timestamp ? new Date(a.timestamp).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—',
       sev: parseInt(a.rule_level,10) >= 12 ? 'crit' : 'high',
       title: (a.rule_description || '—').slice(0,55),
       affected: a.agent_name || a.agent_id || '—',
+      agent_id: a.agent_id || '',
+      rule_id: a.rule_id || '',
       status: 'in-triage',
     }));
     const incWrap  = document.getElementById('alertsIncidentsWrap');
@@ -2224,7 +2226,7 @@ const GEO_CONTINENTS = [
             <span class="tbl-pri">${escapeHtml(r.title)}</span>
             <span class="tbl-mono">${escapeHtml(r.affected)}</span>
             <span class="tbl-muted"><span style="width:6px;height:6px;border-radius:50%;background:${statusColor(r.status)};flex-shrink:0;display:inline-block"></span>${escapeHtml(r.status)}</span>
-            <span><a href="#" class="tbl-link" onclick="event.preventDefault();goToPage('discover')">Investigate →</a></span>
+            <span><a href="#" class="tbl-link" onclick="event.preventDefault();investigateIncident(${JSON.stringify(r.agent_id)},${JSON.stringify(r.rule_id)})">Investigate →</a></span>
           </div>`).join('')}
         </div>`;
       }
@@ -2241,13 +2243,13 @@ const GEO_CONTINENTS = [
   let discoverDropdownsLoaded = false;
   let discoverAgentMap = {};  // agent_id -> hostname, built from dropdown data
   const DISCOVER_POPULAR_FIELDS = [
-    'timestamp', 'rule_level', 'rule_id', 'rule_description',
-    'agent_id', 'rule_groups', 'event_data.type',
-    'net_remote', 'net_local', 'net_status',
-    'proc_name', 'proc_pid', 'proc_cmdline', '_index',
+    'timestamp', 'rule_level', 'title', 'agent_name',
+    'src_ip', 'dst_ip', 'username', 'process_name',
+    'win_event_id', 'rule_groups', 'event_category',
+    'rule_id', 'rule_description', 'agent_id',
   ];
-  // Default columns — use fields that actually have data in documents
-  let discoverSelectedFields = ['timestamp', 'rule_level', 'rule_id', 'rule_description', 'agent_name', 'event_type'];
+  // Default columns shown in the table
+  let discoverSelectedFields = ['timestamp', 'rule_level', 'title', 'agent_name', 'src_ip', 'username', 'process_name'];
   let discoverDslFilters = [];
 
   function getDiscoverParams() {
@@ -2532,14 +2534,30 @@ const GEO_CONTINENTS = [
   }
 
   const FIELD_LABELS = {
-    'timestamp': 'Time',
-    'rule_id': 'Rule ID', 'rule_level': 'Level', 'rule_description': 'Description', 'rule_groups': 'Groups',
-    'agent_id': 'Agent ID', 'agent_name': 'Agent', 'agent_ip': 'Agent IP',
-    'title': 'Title', 'event_type': 'Event Type',
-    'event_data.type': 'Event Type', 'event_data.srcip': 'Source IP', 'event_data.dstuser': 'User',
-    'net_remote': 'Remote Addr', 'net_local': 'Local Addr', 'net_status': 'Conn Status',
-    'proc_name': 'Process', 'proc_pid': 'PID', 'proc_cmdline': 'Cmd Line',
-    '_index': 'Index', 'manager': 'Manager',
+    // Core
+    'timestamp':       'Time',
+    'title':           'Alert Title',
+    'rule_id':         'Rule ID',
+    'rule_level':      'Severity',
+    'rule_description':'Description',
+    'rule_groups':     'Rule Groups',
+    // Agent
+    'agent_id':        'Agent ID',
+    'agent_name':      'Agent',
+    // Network — normalized top-level fields (new)
+    'src_ip':          'Source IP',
+    'dst_ip':          'Dest IP',
+    'src_hostname':    'Source Host',
+    // Identity & process — normalized top-level fields (new)
+    'username':        'Username',
+    'process_name':    'Process',
+    // Windows
+    'win_event_id':    'Win Event ID',
+    // Event meta
+    'event_type':      'Event Type',
+    'event_category':  'Category',
+    // Legacy aliases (kept for backwards compat)
+    'event_data.type': 'Event Type',
   };
 
   function renderDiscoverRows(alerts) {
@@ -4142,6 +4160,25 @@ const GEO_CONTINENTS = [
   }
   window.goToPage = goToPage;
 
+  // investigateIncident — called from Active Incidents "Investigate →" button.
+  // Pre-filters Discover by agent_id so results show immediately.
+  window.investigateIncident = function(agentId, ruleId) {
+    discoverDslFilters = [];
+    if (agentId) {
+      discoverDslFilters.push({ term: { agent_id: agentId } });
+    }
+    if (ruleId) {
+      discoverDslFilters.push({ term: { rule_id: parseInt(ruleId, 10) } });
+    }
+    // Reset to alerts index and widen time range to catch the incident
+    const timeEl = document.getElementById('discoverTimeRange');
+    if (timeEl) timeEl.value = '24h';
+    const idxEl = document.getElementById('discoverIndex');
+    if (idxEl) idxEl.value = 'watchvault-alerts-*';
+    discoverOffset = 0;
+    goToPage('discover');
+  };
+
   (async function initAuth() {
     try {
       const res = await fetch('/api/me');
@@ -4437,7 +4474,7 @@ const GEO_CONTINENTS = [
   document.getElementById('alertsOpenDiscover')?.addEventListener('click', (e) => { e.preventDefault(); goToPage('discover'); });
 
   document.getElementById('discoverRefresh')?.addEventListener('click', () => { discoverOffset = 0; loadDiscover(); });
-  document.getElementById('discoverIndex')?.addEventListener('change', () => { discoverOffset = 0; discoverDslFilters = []; discoverSelectedFields = ['timestamp','agent_name','event_type','agent_id']; renderDiscoverFilterPills(); loadDiscover(); });
+  document.getElementById('discoverIndex')?.addEventListener('change', () => { discoverOffset = 0; discoverDslFilters = []; discoverSelectedFields = ['timestamp','rule_level','title','agent_name','src_ip','username','process_name']; renderDiscoverFilterPills(); loadDiscover(); });
   document.getElementById('discoverExportCsv')?.addEventListener('click', discoverExportCsv);
   document.getElementById('discoverPrev')?.addEventListener('click', () => { discoverOffset = Math.max(0, discoverOffset - DISCOVER_PAGE_SIZE); loadDiscover(); });
   document.getElementById('discoverNext')?.addEventListener('click', () => { discoverOffset += DISCOVER_PAGE_SIZE; loadDiscover(); });
