@@ -2226,7 +2226,7 @@ const GEO_CONTINENTS = [
             <span class="tbl-pri">${escapeHtml(r.title)}</span>
             <span class="tbl-mono">${escapeHtml(r.affected)}</span>
             <span class="tbl-muted"><span style="width:6px;height:6px;border-radius:50%;background:${statusColor(r.status)};flex-shrink:0;display:inline-block"></span>${escapeHtml(r.status)}</span>
-            <span><a href="#" class="tbl-link" onclick="event.preventDefault();investigateIncident(${JSON.stringify(r.agent_id)},${JSON.stringify(r.rule_id)})">Investigate →</a></span>
+            <span><a href="#" class="tbl-link" onclick="event.preventDefault();investigateIncident('${escapeHtml(r.agent_id)}','${escapeHtml(r.rule_id)}')">Investigate →</a></span>
           </div>`).join('')}
         </div>`;
       }
