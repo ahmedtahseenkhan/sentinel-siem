@@ -102,6 +102,9 @@ func (c *Consumer) handleEvent(data []byte) {
 		c.logger.Warn("kafka: failed to decode event", zap.Error(err))
 		return
 	}
+	// Flatten Kafka event fields — WatchTower sends events with all fields
+	// nested under e.Data (e.g. {"raddr":"1.2.3.4","win_IpAddress":"..."}).
+	// Merge them into a flat Data map so pipeline.eventToDoc can normalize them.
 	ev := &models.IndexEvent{
 		ID:        e.ID,
 		Timestamp: e.Timestamp,
@@ -137,11 +140,80 @@ func (c *Consumer) handleAlert(data []byte) {
 		var ed map[string]interface{}
 		if err := json.Unmarshal([]byte(a.EventData), &ed); err == nil {
 			doc["event_data"] = ed
+			normalizeAlertFields(doc, ed)
 		} else {
 			doc["event_data"] = a.EventData
 		}
 	}
 	if err := c.pipeline.ProcessDocument("alerts", doc); err != nil {
 		c.logger.Warn("kafka: pipeline rejected alert", zap.String("id", a.ID), zap.Error(err))
+	}
+}
+
+// normalizeAlertFields extracts IPs, usernames, and process names from
+// event_data.fields to top-level fields so OpenSearch can search and
+// aggregate them in Discover and dashboards.
+func normalizeAlertFields(doc map[string]interface{}, ed map[string]interface{}) {
+	fields, _ := ed["fields"].(map[string]interface{})
+	if fields == nil {
+		fields = ed
+	}
+
+	str := func(key string) string {
+		if v, ok := fields[key].(string); ok && v != "" && v != "-" && v != "0.0.0.0" && v != "::" {
+			return v
+		}
+		return ""
+	}
+
+	// Source IP
+	if ip := str("win_IpAddress"); ip != "" {
+		doc["src_ip"] = ip
+	} else if ip := str("src_ip"); ip != "" {
+		doc["src_ip"] = ip
+	} else if ip := str("source_ip"); ip != "" {
+		doc["src_ip"] = ip
+	} else if ip := str("raddr"); ip != "" {
+		doc["src_ip"] = ip
+	}
+
+	// Destination IP
+	if ip := str("dst_ip"); ip != "" {
+		doc["dst_ip"] = ip
+	} else if ip := str("laddr"); ip != "" {
+		doc["dst_ip"] = ip
+	}
+
+	// Username
+	if u := str("win_TargetUserName"); u != "" {
+		doc["username"] = u
+	} else if u := str("user"); u != "" {
+		doc["username"] = u
+	} else if u := str("dstuser"); u != "" {
+		doc["username"] = u
+	}
+
+	// Process name
+	if p := str("name"); p != "" {
+		doc["process_name"] = p
+	} else if p := str("process"); p != "" {
+		doc["process_name"] = p
+	}
+
+	// Hostname
+	if h := str("win_WorkstationName"); h != "" {
+		doc["src_hostname"] = h
+	} else if h := str("hostname"); h != "" {
+		doc["src_hostname"] = h
+	}
+
+	// Windows Event ID
+	if eid, ok := fields["win_event_id"]; ok {
+		doc["win_event_id"] = eid
+	}
+
+	// Event category
+	if t, _ := ed["type"].(string); t != "" {
+		doc["event_category"] = t
 	}
 }
