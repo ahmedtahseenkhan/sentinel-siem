@@ -5261,8 +5261,11 @@ const GEO_CONTINENTS = [
   async function loadVisualizePage() {
     document.getElementById('vizBuilderPanel')?.classList.add('hidden');
     document.getElementById('vizListView')?.classList.remove('hidden');
+    document.getElementById('vizHeaderBar')?.classList.remove('hidden');
     const res = await fetchJson(API.customVizList).catch(() => ({ visualizations: [] }));
     const vizs = res.visualizations || [];
+    const countEl = document.getElementById('vizCountMeta');
+    if (countEl) countEl.textContent = vizs.length;
     const grid = document.getElementById('vizList');
     const empty = document.getElementById('vizListEmpty');
     if (!grid) return;
@@ -5273,16 +5276,26 @@ const GEO_CONTINENTS = [
     }
     empty?.classList.add('hidden');
     const TYPE_ICONS = { metric:'🔢', area:'📈', bar:'📊', pie:'🥧', table:'📋', markdown:'📝' };
+    const TYPE_COLORS = { metric:'var(--accent)', area:'var(--low)', bar:'var(--high)', pie:'var(--med)', table:'var(--ok)', markdown:'var(--fg-3)' };
     grid.innerHTML = vizs.map(v => `
-      <div class="viz-card" data-viz-id="${escapeHtml(v.id)}">
-        <div class="viz-card-icon">${TYPE_ICONS[v.viz_type] || '📊'}</div>
-        <div class="viz-card-info">
-          <div class="viz-card-title">${escapeHtml(v.title)}</div>
-          <div class="viz-card-meta">${escapeHtml(v.viz_type)} · ${escapeHtml(v.datasource.replace('watchvault-','').replace('-*',''))}</div>
+      <div class="card" data-viz-id="${escapeHtml(v.id)}" style="cursor:default">
+        <div class="card-h">
+          <h3 class="card-h-title">
+            <span style="font-size:16px;margin-right:6px">${TYPE_ICONS[v.viz_type] || '📊'}</span>
+            ${escapeHtml(v.title)}
+          </h3>
         </div>
-        <div class="viz-card-actions">
-          <button type="button" class="viz-card-edit global-btn" data-viz-id="${escapeHtml(v.id)}">✏ Edit</button>
-          <button type="button" class="viz-card-delete global-btn" style="color:#ff4444" data-viz-id="${escapeHtml(v.id)}">🗑</button>
+        <div class="card-body" style="padding:8px 16px 12px">
+          <div style="font-size:11px;color:var(--fg-4);margin-bottom:10px">
+            <span style="background:var(--bg-2);border:1px solid var(--border);border-radius:4px;padding:2px 7px;text-transform:uppercase;letter-spacing:.04em">${escapeHtml(v.viz_type)}</span>
+            <span style="margin-left:6px">${escapeHtml((v.datasource||'').replace('watchvault-','').replace('-*',''))}</span>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button type="button" class="act-btn viz-card-edit" data-viz-id="${escapeHtml(v.id)}" style="flex:1;font-size:11px">Edit</button>
+            <button type="button" class="act-btn viz-card-delete" data-viz-id="${escapeHtml(v.id)}" style="color:var(--crit);font-size:11px;width:32px;padding:0">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            </button>
+          </div>
         </div>
       </div>`).join('');
 
@@ -5450,15 +5463,20 @@ const GEO_CONTINENTS = [
     }
     empty?.classList.add('hidden');
     list.innerHTML = dashes.map(d => `
-      <div class="dash-card">
-        <div class="dash-card-icon">🗂</div>
-        <div class="dash-card-info">
-          <div class="dash-card-title">${escapeHtml(d.title)}</div>
-          <div class="dash-card-meta">${d.widgets?.length || 0} widget${(d.widgets?.length||0)!==1?'s':''} · ${escapeHtml(d.time_filter||'24h')}</div>
-          <div class="dash-card-desc">${escapeHtml(d.description||'')}</div>
+      <div class="card">
+        <div class="card-h">
+          <h3 class="card-h-title">
+            <span style="font-size:16px;margin-right:6px">🗂</span>
+            ${escapeHtml(d.title)}
+          </h3>
         </div>
-        <div class="dash-card-actions">
-          <button type="button" class="btn-primary dash-open-btn" data-dash-id="${escapeHtml(d.id)}">Open</button>
+        <div class="card-body" style="padding:8px 16px 14px">
+          <div style="font-size:11px;color:var(--fg-4);margin-bottom:4px">${d.widgets?.length || 0} widget${(d.widgets?.length||0)!==1?'s':''} · ${escapeHtml(d.time_filter||'24h')}</div>
+          ${d.description ? `<div style="font-size:12px;color:var(--fg-3);margin-bottom:10px">${escapeHtml(d.description)}</div>` : '<div style="margin-bottom:10px"></div>'}
+          <button type="button" class="act-btn primary dash-open-btn" style="width:100%" data-dash-id="${escapeHtml(d.id)}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            Open
+          </button>
         </div>
       </div>`).join('');
     list.querySelectorAll('.dash-open-btn').forEach(btn => {
