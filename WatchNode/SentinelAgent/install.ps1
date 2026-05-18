@@ -210,7 +210,7 @@ collectors:
     hotfixes: true
 
 performance:
-  max_cpu_percent: 10
+  max_cpu_percent: 20
   max_memory_bytes: 268435456
   batch_size: 500
   flush_interval: "30s"
