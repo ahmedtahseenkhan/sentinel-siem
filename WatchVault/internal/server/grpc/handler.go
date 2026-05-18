@@ -158,25 +158,100 @@ func protoIndexEventToModel(pe *pb.IndexEvent) (*models.IndexEvent, error) {
 
 func protoAlertToDoc(pa *pb.IndexAlert) map[string]interface{} {
 	doc := map[string]interface{}{
-		"id":                pa.GetId(),
-		"timestamp":         pa.GetTimestamp(),
-		"rule_id":           int(pa.GetRuleId()),
-		"rule_level":        int(pa.GetRuleLevel()),
-		"rule_description":  pa.GetRuleDescription(),
-		"rule_groups":       pa.GetRuleGroups(),
-		"agent_id":          pa.GetAgentId(),
-		"agent_name":        pa.GetAgentName(),
-		"title":             pa.GetTitle(),
+		"id":               pa.GetId(),
+		"timestamp":        pa.GetTimestamp(),
+		"rule_id":          int(pa.GetRuleId()),
+		"rule_level":       int(pa.GetRuleLevel()),
+		"rule_description": pa.GetRuleDescription(),
+		"rule_groups":      pa.GetRuleGroups(),
+		"agent_id":         pa.GetAgentId(),
+		"agent_name":       pa.GetAgentName(),
+		"title":            pa.GetTitle(),
 	}
 	if len(pa.GetEventData()) > 0 {
 		var ed map[string]interface{}
 		if err := json.Unmarshal(pa.GetEventData(), &ed); err == nil {
 			doc["event_data"] = ed
+			// Extract key security fields to top level so they are
+			// searchable and aggregatable in Discover and dashboards.
+			normalizeAlertFields(doc, ed)
 		} else {
 			doc["event_data"] = string(pa.GetEventData())
 		}
 	}
 	return doc
+}
+
+// normalizeAlertFields extracts IPs, usernames, and process names from the
+// nested event_data.fields object to top-level keyword fields so OpenSearch
+// can aggregate and filter on them directly.
+func normalizeAlertFields(doc map[string]interface{}, ed map[string]interface{}) {
+	fields, _ := ed["fields"].(map[string]interface{})
+	if fields == nil {
+		// Some events store fields at the event_data root level
+		fields = ed
+	}
+
+	strField := func(key string) string {
+		if v, ok := fields[key].(string); ok && v != "" && v != "-" && v != "0.0.0.0" && v != "::" {
+			return v
+		}
+		return ""
+	}
+
+	// Source IP — Windows login (4624/4625) uses win_IpAddress,
+	// network events use raddr, syslog events use src_ip / source_ip.
+	if ip := strField("win_IpAddress"); ip != "" {
+		doc["src_ip"] = ip
+	} else if ip := strField("src_ip"); ip != "" {
+		doc["src_ip"] = ip
+	} else if ip := strField("source_ip"); ip != "" {
+		doc["src_ip"] = ip
+	} else if ip := strField("raddr"); ip != "" {
+		doc["src_ip"] = ip
+	}
+
+	// Destination IP
+	if ip := strField("dst_ip"); ip != "" {
+		doc["dst_ip"] = ip
+	} else if ip := strField("dest_ip"); ip != "" {
+		doc["dst_ip"] = ip
+	} else if ip := strField("laddr"); ip != "" {
+		doc["dst_ip"] = ip
+	}
+
+	// Username — Windows events use win_TargetUserName, Linux uses user
+	if u := strField("win_TargetUserName"); u != "" {
+		doc["username"] = u
+	} else if u := strField("user"); u != "" {
+		doc["username"] = u
+	} else if u := strField("dstuser"); u != "" {
+		doc["username"] = u
+	}
+
+	// Process name
+	if p := strField("name"); p != "" {
+		doc["process_name"] = p
+	} else if p := strField("process"); p != "" {
+		doc["process_name"] = p
+	}
+
+	// Hostname / workstation
+	if h := strField("win_WorkstationName"); h != "" {
+		doc["src_hostname"] = h
+	} else if h := strField("hostname"); h != "" {
+		doc["src_hostname"] = h
+	}
+
+	// Windows Event ID — useful for filtering in Discover
+	if eid, ok := fields["win_event_id"]; ok {
+		doc["win_event_id"] = eid
+	}
+
+	// Event type from nested data (e.g. "network.connection", "process.new")
+	if t, _ := ed["type"].(string); t != "" {
+		doc["event_category"] = t
+	}
 }
 
 func validateProtoEvent(pe *pb.IndexEvent) error {

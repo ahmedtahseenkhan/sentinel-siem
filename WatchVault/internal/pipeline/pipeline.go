@@ -208,9 +208,50 @@ func eventToDoc(e *models.IndexEvent) map[string]interface{} {
 		for k, v := range e.Data {
 			doc[k] = v
 		}
+		// Promote common IP/identity fields to top level for Discover and dashboards
+		normalizeEventFields(doc, e.Data)
 	}
 	if len(e.Tags) > 0 {
 		doc["tags"] = e.Tags
 	}
 	return doc
+}
+
+// normalizeEventFields promotes nested IP and identity fields to top-level
+// keyword fields so OpenSearch can search and aggregate on them directly.
+func normalizeEventFields(doc map[string]interface{}, data map[string]interface{}) {
+	str := func(key string) string {
+		if v, ok := data[key].(string); ok && v != "" && v != "-" && v != "0.0.0.0" && v != "::" {
+			return v
+		}
+		return ""
+	}
+
+	// Network events: raddr/laddr are already at top level (spread from Data)
+	// but we also set canonical src_ip/dst_ip aliases
+	if ip := str("raddr"); ip != "" {
+		doc["src_ip"] = ip
+	} else if ip := str("src_ip"); ip == "" {
+		if ip2 := str("source_ip"); ip2 != "" {
+			doc["src_ip"] = ip2
+		}
+	}
+	if ip := str("laddr"); ip != "" {
+		doc["dst_ip"] = ip
+	}
+
+	// Login events
+	if u := str("win_TargetUserName"); u != "" {
+		doc["username"] = u
+	} else if u := str("user"); u != "" {
+		doc["username"] = u
+	}
+	if ip := str("win_IpAddress"); ip != "" {
+		doc["src_ip"] = ip
+	}
+
+	// Process events
+	if p := str("name"); p != "" {
+		doc["process_name"] = p
+	}
 }
