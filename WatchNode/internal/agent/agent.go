@@ -3,12 +3,14 @@ package agent
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/watchnode/watchnode/internal/models"
+	"github.com/watchnode/watchnode/internal/queue"
 	"github.com/watchnode/watchnode/internal/resource"
 	"github.com/watchnode/watchnode/internal/utils"
 	"go.uber.org/zap"
@@ -32,6 +34,7 @@ type Agent struct {
 	limiter    *resource.Limiter
 	comm       ManagerClient
 	dataCh     chan models.DataPoint
+	diskQueue  *queue.DiskQueue
 	stopCh     chan struct{}
 	runCtx     context.Context
 	cancel     context.CancelFunc
@@ -40,6 +43,7 @@ type Agent struct {
 	wg         sync.WaitGroup
 	configMu   sync.RWMutex // guards live Config updates pushed from manager
 	droppedPts int64        // total data points dropped due to full channel
+	hostIPs    []string     // non-loopback IPv4 addresses discovered at startup
 }
 
 // ManagerClient is the interface for sending data and receiving commands from the manager.
@@ -72,15 +76,64 @@ func New(cfg *Config, log Logger, comm ManagerClient) (*Agent, error) {
 		info.ID = cfg.Agent.ID
 	}
 	return &Agent{
-		Config:    cfg,
-		Logger:    log,
-		Info:      info,
-		limiter:   resource.NewLimiter(cfg.Performance.MaxCPUPercent, cfg.Performance.MaxMemoryBytes, cfg.Performance.MaxDiskBytes),
-		comm:      comm,
-		dataCh:    make(chan models.DataPoint, cfg.Performance.QueueSize),
-		stopCh:    make(chan struct{}),
+		Config:     cfg,
+		Logger:     log,
+		Info:       info,
+		limiter:    resource.NewLimiter(cfg.Performance.MaxCPUPercent, cfg.Performance.MaxMemoryBytes, cfg.Performance.MaxDiskBytes),
+		comm:       comm,
+		dataCh:     make(chan models.DataPoint, cfg.Performance.QueueSize),
+		stopCh:     make(chan struct{}),
 		collectors: nil,
+		hostIPs:    discoverHostIPs(),
 	}, nil
+}
+
+// discoverHostIPs returns the first non-loopback, non-link-local IPv4 address
+// on each active interface. Called once at startup and cached.
+func discoverHostIPs() []string {
+	var ips []string
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return ips
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback != 0 || iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		addrs, _ := iface.Addrs()
+		for _, addr := range addrs {
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			if ipv4 := ip.To4(); ipv4 != nil {
+				ips = append(ips, ipv4.String())
+			}
+		}
+	}
+	return ips
+}
+
+// enrichPoint injects agent-level metadata into every outbound DataPoint.
+// This ensures every event reaching OpenSearch carries agent_id, hostname,
+// version, OS, and IP — regardless of which collector emitted it.
+func (a *Agent) enrichPoint(p *models.DataPoint) {
+	if p.Tags == nil {
+		p.Tags = make(map[string]string, 6)
+	}
+	p.Tags["agent_id"] = a.Info.ID
+	p.Tags["agent_version"] = a.Info.Version
+	p.Tags["host_hostname"] = a.Info.Hostname
+	p.Tags["host_os"] = a.Info.OS
+	if len(a.hostIPs) > 0 {
+		p.Tags["host_ip"] = a.hostIPs[0]
+	}
 }
 
 // LoadAgentID loads or creates the agent ID and sets it on Info.
@@ -107,6 +160,24 @@ func (a *Agent) Start(ctx context.Context) error {
 		if err := a.LoadAgentID(""); err != nil {
 			a.Logger.Warn("agent id not loaded, using ephemeral id", zap.Error(err))
 			a.Info.ID, _ = utils.GenerateAgentID()
+		}
+	}
+
+	// Initialise disk-backed queue when enabled.
+	var streamCh <-chan models.DataPoint = a.dataCh
+	if a.Config.Performance.DiskQueue.Enabled {
+		dir := a.Config.Performance.DiskQueue.Dir
+		if dir == "" {
+			dir = defaultQueueDir()
+		}
+		dq, err := queue.NewDiskQueue(dir, a.Config.Performance.DiskQueue.MaxBytes)
+		if err != nil {
+			a.Logger.Warn("disk queue init failed, falling back to RAM queue", zap.Error(err))
+		} else {
+			a.diskQueue = dq
+			dq.Start(a.runCtx)
+			streamCh = dq.Output()
+			a.Logger.Info("disk queue enabled", zap.String("dir", dir))
 		}
 	}
 
@@ -137,7 +208,7 @@ func (a *Agent) Start(ctx context.Context) error {
 	a.wg.Add(1)
 	go func() {
 		defer a.wg.Done()
-		if err := a.comm.RunStream(a.runCtx, a.Info.ID, a.dataCh); err != nil {
+		if err := a.comm.RunStream(a.runCtx, a.Info.ID, streamCh); err != nil {
 			a.Logger.Warn("stream exited", zap.Error(err))
 		}
 	}()
@@ -146,8 +217,26 @@ func (a *Agent) Start(ctx context.Context) error {
 	a.wg.Add(1)
 	go a.runHeartbeat(interval)
 
-	a.Logger.Info("agent started", zap.String("product", ProductName), zap.String("agent_id", a.Info.ID), zap.String("version", a.Info.Version))
+	a.Logger.Info("agent started",
+		zap.String("product", ProductName),
+		zap.String("agent_id", a.Info.ID),
+		zap.String("version", a.Info.Version),
+		zap.Strings("host_ips", a.hostIPs),
+	)
 	return nil
+}
+
+// defaultQueueDir returns the OS-appropriate data directory for the disk queue.
+func defaultQueueDir() string {
+	// Windows: C:\ProgramData\SentinelAgent\queue
+	// Linux/macOS: /var/lib/watchnode/queue or ./queue
+	if dir := os.Getenv("WATCHNODE_QUEUE_DIR"); dir != "" {
+		return dir
+	}
+	if _, err := os.Stat("/var/lib"); err == nil {
+		return "/var/lib/watchnode/queue"
+	}
+	return "queue"
 }
 
 // Stop stops all collectors and the communication layer gracefully.
@@ -163,6 +252,9 @@ func (a *Agent) Stop() {
 	}
 	close(a.dataCh)
 	_ = a.comm.Close()
+	if a.diskQueue != nil {
+		_ = a.diskQueue.Close()
+	}
 
 	// Wait with a hard deadline so a stuck goroutine never blocks shutdown.
 	done := make(chan struct{})
@@ -200,21 +292,41 @@ func (a *Agent) fanIn() {
 						a.throttledWarn("resource limit exceeded, dropping point", err, 10*time.Second)
 						continue
 					}
-					select {
-					case a.dataCh <- p:
-					default:
-						dropped := atomic.AddInt64(&a.droppedPts, 1)
-						a.throttledWarn(
-							"data channel full, dropping point",
-							fmt.Errorf("type=%s total_dropped=%d", p.Type, dropped),
-							5*time.Second,
-						)
+					// Inject agent identity + host context into every event.
+					a.enrichPoint(&p)
+
+					if a.diskQueue != nil {
+						if err := a.diskQueue.Write(p); err != nil {
+							// Disk full or queue full — fall back to RAM channel.
+							a.throttledWarn("disk queue write failed, using RAM", err, 30*time.Second)
+							select {
+							case a.dataCh <- p:
+							default:
+								dropped := atomic.AddInt64(&a.droppedPts, 1)
+								a.throttledWarn(
+									"data channel full, dropping point",
+									fmt.Errorf("type=%s total_dropped=%d", p.Type, dropped),
+									5*time.Second,
+								)
+							}
+						}
+					} else {
+						select {
+						case a.dataCh <- p:
+						default:
+							dropped := atomic.AddInt64(&a.droppedPts, 1)
+							a.throttledWarn(
+								"data channel full, dropping point",
+								fmt.Errorf("type=%s total_dropped=%d", p.Type, dropped),
+								5*time.Second,
+							)
+						}
 					}
 				}
 			}
 		}(ch)
 	}
-	// Wait for stop to close dataCh; fanIn doesn't close it so RunStream can drain
+	// Wait for stop; fanIn never closes dataCh so RunStream can drain it.
 	<-a.stopCh
 }
 

@@ -20,35 +20,117 @@ collectors:
     enabled: true
     interval: "30s"
     metrics: ["cpu", "memory", "disk", "network", "processes"]
+
   process:
     enabled: true
     interval: "30s"
+
   network:
     enabled: true
     interval: "30s"
+
   logs:
     enabled: true
     sources:
       - type: eventlog
-        channels: ["Security", "Application", "System"]
-  fim:
+        channels:
+          # Core Windows channels
+          - "Security"
+          - "Application"
+          - "System"
+          # Sysmon — process/network/file/registry telemetry with hashes + parent
+          # Requires Sysmon to be installed (install.ps1 handles this)
+          - "Microsoft-Windows-Sysmon/Operational"
+          # PowerShell script-block and module logging
+          - "Microsoft-Windows-PowerShell/Operational"
+          - "Windows PowerShell"
+          # Scheduled tasks (T1053)
+          - "Microsoft-Windows-TaskScheduler/Operational"
+          # WMI activity (T1047)
+          - "Microsoft-Windows-WMI-Activity/Operational"
+          # Windows Defender detections
+          - "Microsoft-Windows-Windows Defender/Operational"
+          # AppLocker / WDAC policy violations
+          - "Microsoft-Windows-AppLocker/EXE and DLL"
+          - "Microsoft-Windows-AppLocker/MSI and Script"
+          - "Microsoft-Windows-AppLocker/Packaged app-Deployment"
+          - "Microsoft-Windows-AppLocker/Packaged app-Execution"
+          # Code integrity (driver/kernel signing violations)
+          - "Microsoft-Windows-CodeIntegrity/Operational"
+          # RDP session tracking
+          - "Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational"
+          - "Microsoft-Windows-TerminalServices-LocalSessionManager/Operational"
+          # BITS transfers (used by malware for persistence/exfil)
+          - "Microsoft-Windows-Bits-Client/Operational"
+          # DNS client queries
+          - "Microsoft-Windows-DNS-Client/Operational"
+          # Firewall
+          - "Microsoft-Windows-Windows Firewall With Advanced Security/Firewall"
+
+  # NOTE: YAML key is "file_integrity" — matches Go struct yaml tag
+  file_integrity:
     enabled: true
     interval: "60s"
+    scan_on_start: true
     paths:
+      # System binaries — detect binary replacement / DLL hijacking
       - path: "C:\\Windows\\System32"
         recursive: false
-        realtime: false
+        ignore_patterns: ["*.log", "*.etl", "*.evt", "winevt"]
+      - path: "C:\\Windows\\SysWOW64"
+        recursive: false
+        ignore_patterns: ["*.log", "*.etl"]
+      # Startup persistence locations — recursive to catch subdirs
+      - path: "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"
+        recursive: true
       - path: "C:\\Users"
         recursive: false
-        realtime: false
-      - path: "C:\\Program Files"
+        ignore_patterns: ["NTUSER.DAT*", "UsrClass.dat*", "*.log", "*.tmp"]
+      # User startup folders (watch top-level only; agent iterates live users via FIM)
+      - path: "C:\\Users\\Default\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"
+        recursive: true
+      # Hosts file tampering
+      - path: "C:\\Windows\\System32\\drivers\\etc"
         recursive: false
-        realtime: false
+      # Agent self-integrity — detect tampering with our own binary/config
+      - path: "C:\\Program Files\\SentinelAgent"
+        recursive: false
+
+  registry:
+    enabled: true
+    interval: "5m"
+    keys:
+      # Run key persistence (T1547.001)
+      - path: "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"
+        recursive: false
+      - path: "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\RunOnce"
+        recursive: false
+      - path: "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"
+        recursive: false
+      - path: "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\RunOnce"
+        recursive: false
+      # Services (T1543.003)
+      - path: "HKLM\\SYSTEM\\CurrentControlSet\\Services"
+        recursive: false
+      # LSA / credential providers (T1547.002)
+      - path: "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa"
+        recursive: false
+      # AppInit DLLs (T1546.010)
+      - path: "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Windows"
+        recursive: false
+      # Image File Execution Options — debugger hijacking (T1546.012)
+      - path: "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options"
+        recursive: false
+      # Winlogon (T1547.004)
+      - path: "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon"
+        recursive: false
+
   sca:
     enabled: true
     interval: "12h"
     policy_dirs:
       - "configs\\sca"
+
   syscollector:
     enabled: true
     interval: "1h"
@@ -62,8 +144,12 @@ collectors:
     hotfixes: true
 
 performance:
-  max_cpu_percent: 20
+  max_cpu_percent: 10
   max_memory_bytes: 268435456
   batch_size: 500
   flush_interval: "30s"
   queue_size: 10000
+  disk_queue:
+    enabled: true
+    dir: "C:\\ProgramData\\SentinelAgent\\queue"
+    max_bytes: 524288000  # 500 MB

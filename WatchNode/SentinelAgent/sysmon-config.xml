@@ -1,0 +1,217 @@
+<Sysmon schemaversion="4.90">
+  <!--
+    Sentinel SIEM - Sysmon Configuration
+    Tuned for Sigma rule coverage. Based on SwiftOnSecurity/sysmon-config
+    with aggressive noise reduction for SOC environments.
+
+    Coverage: T1003, T1027, T1036, T1047, T1053, T1055, T1059, T1068,
+              T1078, T1082, T1098, T1110, T1190, T1204, T1218, T1543,
+              T1547, T1548, T1566, T1569, T1574
+  -->
+
+  <HashAlgorithms>md5,sha256,IMPHASH</HashAlgorithms>
+  <CheckRevocation/>
+
+  <EventFiltering>
+
+    <!-- ══════════════════════════════════════════════════════
+         Event ID 1 — Process Create
+         Captures full command line, parent, hashes, user
+         ══════════════════════════════════════════════════════ -->
+    <RuleGroup name="" groupRelation="or">
+      <ProcessCreate onmatch="exclude">
+        <!-- Exclude noisy but benign Windows background processes -->
+        <Image condition="is">C:\Windows\System32\wermgr.exe</Image>
+        <Image condition="is">C:\Windows\System32\WerFault.exe</Image>
+        <Image condition="is">C:\Windows\System32\backgroundTaskHost.exe</Image>
+        <Image condition="is">C:\Windows\System32\conhost.exe</Image>
+        <CommandLine condition="contains">C:\Windows\system32\DllHost.exe /Processid</CommandLine>
+      </ProcessCreate>
+    </RuleGroup>
+
+    <!-- ══════════════════════════════════════════════════════
+         Event ID 2 — File Creation Time Changed
+         ══════════════════════════════════════════════════════ -->
+    <RuleGroup name="" groupRelation="or">
+      <FileCreateTime onmatch="include">
+        <!-- Timestomping detection — only care about executables/scripts -->
+        <TargetFilename condition="end with">.exe</TargetFilename>
+        <TargetFilename condition="end with">.dll</TargetFilename>
+        <TargetFilename condition="end with">.ps1</TargetFilename>
+        <TargetFilename condition="end with">.bat</TargetFilename>
+        <TargetFilename condition="end with">.vbs</TargetFilename>
+        <TargetFilename condition="end with">.js</TargetFilename>
+      </FileCreateTime>
+    </RuleGroup>
+
+    <!-- ══════════════════════════════════════════════════════
+         Event ID 3 — Network Connection
+         Tuned: only log interesting outbound connections
+         ══════════════════════════════════════════════════════ -->
+    <RuleGroup name="" groupRelation="or">
+      <NetworkConnect onmatch="exclude">
+        <!-- Exclude extremely noisy system processes -->
+        <Image condition="is">C:\Windows\System32\svchost.exe</Image>
+        <Image condition="is">C:\Windows\System32\services.exe</Image>
+        <Image condition="is">C:\Windows\System32\lsass.exe</Image>
+        <Image condition="is">C:\Windows\System32\dns.exe</Image>
+        <Image condition="is">C:\Program Files\SentinelAgent\watchnode.exe</Image>
+        <!-- Loopback -->
+        <DestinationIp condition="is">127.0.0.1</DestinationIp>
+        <DestinationIp condition="is">::1</DestinationIp>
+        <!-- DNS queries to RFC1918 DCs on port 53 are noise -->
+        <DestinationPort condition="is">53</DestinationPort>
+      </NetworkConnect>
+    </RuleGroup>
+
+    <!-- ══════════════════════════════════════════════════════
+         Event ID 5 — Process Terminated
+         Disabled — high volume, low signal
+         ══════════════════════════════════════════════════════ -->
+    <RuleGroup name="" groupRelation="or">
+      <ProcessTerminate onmatch="include">
+        <!-- Only capture termination of security tools (potential tampering) -->
+        <Image condition="contains">SentinelAgent</Image>
+        <Image condition="contains">MsMpEng</Image>
+        <Image condition="contains">csrss</Image>
+      </ProcessTerminate>
+    </RuleGroup>
+
+    <!-- ══════════════════════════════════════════════════════
+         Event ID 6 — Driver Loaded
+         Capture all — rootkit / BYOVD detection
+         ══════════════════════════════════════════════════════ -->
+    <RuleGroup name="" groupRelation="or">
+      <DriverLoad onmatch="exclude">
+        <Signature condition="contains">Microsoft</Signature>
+        <Signature condition="contains">Windows</Signature>
+      </DriverLoad>
+    </RuleGroup>
+
+    <!-- ══════════════════════════════════════════════════════
+         Event ID 7 — Image Loaded (DLL)
+         Disabled by default — extremely noisy.
+         Enable for specific investigations via targeted rules.
+         ══════════════════════════════════════════════════════ -->
+    <RuleGroup name="" groupRelation="or">
+      <ImageLoad onmatch="include">
+        <!-- Only unsigned DLLs loaded into high-value processes -->
+        <Signed condition="is">false</Signed>
+      </ImageLoad>
+    </RuleGroup>
+
+    <!-- ══════════════════════════════════════════════════════
+         Event ID 8 — CreateRemoteThread
+         Process injection (T1055) — keep all
+         ══════════════════════════════════════════════════════ -->
+    <RuleGroup name="" groupRelation="or">
+      <CreateRemoteThread onmatch="exclude">
+        <!-- Known benign injectors -->
+        <SourceImage condition="is">C:\Windows\System32\wbem\WmiPrvSE.exe</TargetImage>
+      </CreateRemoteThread>
+    </RuleGroup>
+
+    <!-- ══════════════════════════════════════════════════════
+         Event ID 10 — Process Access
+         Credential dumping (T1003) via lsass access
+         ══════════════════════════════════════════════════════ -->
+    <RuleGroup name="" groupRelation="or">
+      <ProcessAccess onmatch="include">
+        <TargetImage condition="end with">lsass.exe</TargetImage>
+        <TargetImage condition="end with">csrss.exe</TargetImage>
+        <TargetImage condition="end with">winlogon.exe</TargetImage>
+      </ProcessAccess>
+    </RuleGroup>
+
+    <!-- ══════════════════════════════════════════════════════
+         Event ID 11 — File Created
+         Catch dropped payloads in high-risk directories
+         ══════════════════════════════════════════════════════ -->
+    <RuleGroup name="" groupRelation="or">
+      <FileCreate onmatch="include">
+        <!-- Executables/scripts written to temp/user dirs -->
+        <TargetFilename condition="contains">\Temp\</TargetFilename>
+        <TargetFilename condition="contains">\AppData\Local\Temp\</TargetFilename>
+        <TargetFilename condition="contains">\AppData\Roaming\</TargetFilename>
+        <TargetFilename condition="contains">\Downloads\</TargetFilename>
+        <TargetFilename condition="contains">\ProgramData\</TargetFilename>
+        <TargetFilename condition="contains">\Windows\Temp\</TargetFilename>
+        <TargetFilename condition="end with">.exe</TargetFilename>
+        <TargetFilename condition="end with">.dll</TargetFilename>
+        <TargetFilename condition="end with">.ps1</TargetFilename>
+        <TargetFilename condition="end with">.bat</TargetFilename>
+        <TargetFilename condition="end with">.vbs</TargetFilename>
+        <TargetFilename condition="end with">.hta</TargetFilename>
+        <TargetFilename condition="end with">.jar</TargetFilename>
+      </FileCreate>
+    </RuleGroup>
+
+    <!-- ══════════════════════════════════════════════════════
+         Event ID 12/13/14 — Registry Create/Set/Rename
+         Persistence and defense evasion registry keys
+         ══════════════════════════════════════════════════════ -->
+    <RuleGroup name="" groupRelation="or">
+      <RegistryEvent onmatch="include">
+        <!-- Run keys (T1547.001) -->
+        <TargetObject condition="contains">CurrentVersion\Run</TargetObject>
+        <!-- Services -->
+        <TargetObject condition="contains">CurrentControlSet\Services</TargetObject>
+        <!-- LSA / auth packages (T1547.002) -->
+        <TargetObject condition="contains">Control\Lsa</TargetObject>
+        <!-- AppInit DLLs (T1546.010) -->
+        <TargetObject condition="contains">AppInit_DLLs</TargetObject>
+        <!-- Winlogon hijack (T1547.004) -->
+        <TargetObject condition="contains">Winlogon</TargetObject>
+        <!-- Image File Execution Options — debugger hijack (T1546.012) -->
+        <TargetObject condition="contains">Image File Execution Options</TargetObject>
+        <!-- COM object hijacking (T1546.015) -->
+        <TargetObject condition="contains">Classes\CLSID</TargetObject>
+        <!-- UAC bypass via COM -->
+        <TargetObject condition="contains">DelegateExecute</TargetObject>
+      </RegistryEvent>
+    </RuleGroup>
+
+    <!-- ══════════════════════════════════════════════════════
+         Event ID 15 — FileCreateStreamHash (ADS)
+         Alternate data stream creation (T1564.004)
+         ══════════════════════════════════════════════════════ -->
+    <RuleGroup name="" groupRelation="or">
+      <FileCreateStreamHash onmatch="include">
+        <TargetFilename condition="end with">.exe</TargetFilename>
+        <TargetFilename condition="end with">.dll</TargetFilename>
+        <TargetFilename condition="end with">.ps1</TargetFilename>
+      </FileCreateStreamHash>
+    </RuleGroup>
+
+    <!-- ══════════════════════════════════════════════════════
+         Event ID 17/18 — Pipe Created/Connected
+         Named pipe lateral movement (T1021)
+         ══════════════════════════════════════════════════════ -->
+    <RuleGroup name="" groupRelation="or">
+      <PipeEvent onmatch="include">
+        <!-- Common C2/lateral movement pipe names -->
+        <PipeName condition="contains">msagent_</PipeName>
+        <PipeName condition="contains">\postex_</PipeName>
+        <PipeName condition="contains">mojo.5688.</PipeName>
+        <PipeName condition="contains">MSSE-</PipeName>
+        <PipeName condition="begin with">\</PipeName>
+      </PipeEvent>
+    </RuleGroup>
+
+    <!-- ══════════════════════════════════════════════════════
+         Event ID 22 — DNS Query
+         C2 beaconing and DGA detection
+         ══════════════════════════════════════════════════════ -->
+    <RuleGroup name="" groupRelation="or">
+      <DnsQuery onmatch="exclude">
+        <!-- Known benign processes that generate DNS noise -->
+        <Image condition="is">C:\Windows\System32\svchost.exe</Image>
+        <Image condition="is">C:\Windows\System32\SearchIndexer.exe</Image>
+        <QueryName condition="end with">.microsoft.com</QueryName>
+        <QueryName condition="end with">.windows.com</QueryName>
+        <QueryName condition="end with">.windowsupdate.com</QueryName>
+      </DnsQuery>
+    </RuleGroup>
+
+  </EventFiltering>
+</Sysmon>

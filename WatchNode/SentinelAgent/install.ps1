@@ -11,21 +11,26 @@
 #>
 
 param(
-    [string]$ServerIP   = "",
-    [string]$ServerPort = "50051",
-    [string]$Token      = "sentinel-enroll-secret-2024",
+    [string]$ServerIP      = "",
+    [string]$ServerPort    = "50051",
+    [string]$Token         = "sentinel-enroll-secret-2024",
     [switch]$Silent,
-    [switch]$Uninstall
+    [switch]$Uninstall,
+    [switch]$SkipSysmon,   # Pass to skip automatic Sysmon installation
+    [switch]$SkipAuditPol  # Pass to skip Windows audit policy configuration
 )
 
 $ErrorActionPreference = "Stop"
-$ServiceName  = "SentinelAgent"
-$DisplayName  = "Sentinel Core SIEM Agent"
-$InstallDir   = "C:\Program Files\SentinelAgent"
-$ConfigPath   = "$InstallDir\config.yaml"
-$BinaryPath   = "$InstallDir\watchnode.exe"
-$LogDir       = "C:\ProgramData\SentinelAgent\logs"
-$ScriptDir    = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$ServiceName   = "SentinelAgent"
+$DisplayName   = "Sentinel Core SIEM Agent"
+$InstallDir    = "C:\Program Files\SentinelAgent"
+$ConfigPath    = "$InstallDir\config.yaml"
+$BinaryPath    = "$InstallDir\watchnode.exe"
+$LogDir        = "C:\ProgramData\SentinelAgent\logs"
+$SysmonDir     = "C:\Program Files\Sysmon"
+$SysmonBin     = "$SysmonDir\Sysmon64.exe"
+$SysmonConfig  = "$SysmonDir\sysmon-config.xml"
+$ScriptDir     = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
 function Write-Banner {
     Write-Host ""
@@ -51,6 +56,95 @@ function Write-OK($msg) {
 
 function Write-Fail($msg) {
     Write-Host "  [✗] $msg" -ForegroundColor Red
+}
+
+function Configure-AuditPolicy {
+    Write-Step "Configuring Windows Audit Policy for SIEM coverage..."
+    # Process creation with command line — required for Sigma process rules
+    auditpol /set /subcategory:"Process Creation" /success:enable /failure:enable | Out-Null
+    # Enable command-line logging in process creation events (4688)
+    reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System\Audit" `
+        /v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 1 /f | Out-Null
+    # Logon / Logoff
+    auditpol /set /subcategory:"Logon" /success:enable /failure:enable | Out-Null
+    auditpol /set /subcategory:"Logoff" /success:enable /failure:enable | Out-Null
+    auditpol /set /subcategory:"Account Lockout" /success:enable /failure:enable | Out-Null
+    auditpol /set /subcategory:"Special Logon" /success:enable /failure:enable | Out-Null
+    # Account management
+    auditpol /set /subcategory:"User Account Management" /success:enable /failure:enable | Out-Null
+    auditpol /set /subcategory:"Security Group Management" /success:enable /failure:enable | Out-Null
+    # Privilege use
+    auditpol /set /subcategory:"Sensitive Privilege Use" /success:enable /failure:enable | Out-Null
+    # Object access (file/registry)
+    auditpol /set /subcategory:"File System" /success:enable /failure:enable | Out-Null
+    auditpol /set /subcategory:"Registry" /success:enable /failure:enable | Out-Null
+    # Policy changes
+    auditpol /set /subcategory:"Audit Policy Change" /success:enable /failure:enable | Out-Null
+    auditpol /set /subcategory:"Authentication Policy Change" /success:enable /failure:enable | Out-Null
+    # System events
+    auditpol /set /subcategory:"Security State Change" /success:enable /failure:enable | Out-Null
+    auditpol /set /subcategory:"Security System Extension" /success:enable /failure:enable | Out-Null
+    # PowerShell script-block logging
+    reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging" `
+        /v EnableScriptBlockLogging /t REG_DWORD /d 1 /f | Out-Null
+    reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\ModuleLogging" `
+        /v EnableModuleLogging /t REG_DWORD /d 1 /f | Out-Null
+    reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription" `
+        /v EnableTranscripting /t REG_DWORD /d 1 /f | Out-Null
+    Write-OK "Audit policy and PowerShell logging configured."
+}
+
+function Install-Sysmon {
+    Write-Step "Checking for Sysmon..."
+    $srcSysmon = Join-Path $ScriptDir "Sysmon64.exe"
+    $srcConfig = Join-Path $ScriptDir "sysmon-config.xml"
+
+    if (-not (Test-Path $srcSysmon)) {
+        Write-Host "  [i] Sysmon64.exe not found in installer directory — skipping Sysmon install." -ForegroundColor DarkGray
+        Write-Host "  [i] Download Sysmon from: https://docs.microsoft.com/sysinternals/downloads/sysmon" -ForegroundColor DarkGray
+        Write-Host "  [i] Place Sysmon64.exe + sysmon-config.xml next to install.ps1 and re-run." -ForegroundColor DarkGray
+        return
+    }
+    if (-not (Test-Path $srcConfig)) {
+        Write-Host "  [!] sysmon-config.xml not found — Sysmon will install with no config." -ForegroundColor Yellow
+    }
+
+    New-Item -ItemType Directory -Force -Path $SysmonDir | Out-Null
+    Copy-Item -Force $srcSysmon $SysmonBin
+    if (Test-Path $srcConfig) { Copy-Item -Force $srcConfig $SysmonConfig }
+
+    # Check if already installed
+    $sysmonSvc = Get-Service -Name "Sysmon64" -ErrorAction SilentlyContinue
+    if ($sysmonSvc) {
+        Write-Host "  [i] Sysmon already installed — updating config..." -ForegroundColor DarkGray
+        if (Test-Path $SysmonConfig) {
+            & $SysmonBin -c $SysmonConfig | Out-Null
+        }
+        Write-OK "Sysmon config updated."
+    } else {
+        $configArg = if (Test-Path $SysmonConfig) { "-c `"$SysmonConfig`"" } else { "" }
+        $acceptEulaCmd = "& `"$SysmonBin`" -accepteula -i $configArg"
+        Invoke-Expression $acceptEulaCmd | Out-Null
+        Write-OK "Sysmon installed and running."
+    }
+}
+
+function Set-InstallDirACL {
+    # Lock down install dir: SYSTEM + Administrators full, Users no access
+    $acl = Get-Acl $InstallDir
+    $acl.SetAccessRuleProtection($true, $false)
+
+    $system   = New-Object System.Security.Principal.NTAccount("NT AUTHORITY\SYSTEM")
+    $admins   = New-Object System.Security.Principal.NTAccount("BUILTIN\Administrators")
+    $fullCtrl = [System.Security.AccessControl.FileSystemRights]::FullControl
+    $allow    = [System.Security.AccessControl.AccessControlType]::Allow
+    $inherit  = [System.Security.AccessControl.InheritanceFlags]"ContainerInherit,ObjectInherit"
+    $prop     = [System.Security.AccessControl.PropagationFlags]::None
+
+    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($system, $fullCtrl, $inherit, $prop, $allow)))
+    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($admins, $fullCtrl, $inherit, $prop, $allow)))
+    Set-Acl -Path $InstallDir -AclObject $acl
+    Write-OK "Install directory ACL hardened (SYSTEM + Admins only)."
 }
 
 # ── UNINSTALL ─────────────────────────────────────────────────────────────────
@@ -171,32 +265,90 @@ collectors:
     enabled: true
     interval: "30s"
     metrics: ["cpu", "memory", "disk", "network", "processes"]
+
   process:
     enabled: true
     interval: "30s"
+
   network:
     enabled: true
     interval: "30s"
+
   logs:
     enabled: true
     sources:
       - type: eventlog
-        channels: ["Security", "Application", "System"]
-  fim:
+        channels:
+          - "Security"
+          - "Application"
+          - "System"
+          - "Microsoft-Windows-Sysmon/Operational"
+          - "Microsoft-Windows-PowerShell/Operational"
+          - "Windows PowerShell"
+          - "Microsoft-Windows-TaskScheduler/Operational"
+          - "Microsoft-Windows-WMI-Activity/Operational"
+          - "Microsoft-Windows-Windows Defender/Operational"
+          - "Microsoft-Windows-AppLocker/EXE and DLL"
+          - "Microsoft-Windows-AppLocker/MSI and Script"
+          - "Microsoft-Windows-AppLocker/Packaged app-Deployment"
+          - "Microsoft-Windows-AppLocker/Packaged app-Execution"
+          - "Microsoft-Windows-CodeIntegrity/Operational"
+          - "Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational"
+          - "Microsoft-Windows-TerminalServices-LocalSessionManager/Operational"
+          - "Microsoft-Windows-Bits-Client/Operational"
+          - "Microsoft-Windows-DNS-Client/Operational"
+          - "Microsoft-Windows-Windows Firewall With Advanced Security/Firewall"
+
+  file_integrity:
     enabled: true
     interval: "60s"
+    scan_on_start: true
     paths:
       - path: "C:\\Windows\\System32"
         recursive: false
-        realtime: false
+        ignore_patterns: ["*.log", "*.etl", "*.evt"]
+      - path: "C:\\Windows\\SysWOW64"
+        recursive: false
+        ignore_patterns: ["*.log", "*.etl"]
+      - path: "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Startup"
+        recursive: true
       - path: "C:\\Users"
         recursive: false
-        realtime: false
+        ignore_patterns: ["NTUSER.DAT*", "UsrClass.dat*", "*.log", "*.tmp"]
+      - path: "C:\\Windows\\System32\\drivers\\etc"
+        recursive: false
+      - path: "C:\\Program Files\\SentinelAgent"
+        recursive: false
+
+  registry:
+    enabled: true
+    interval: "5m"
+    keys:
+      - path: "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"
+        recursive: false
+      - path: "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\RunOnce"
+        recursive: false
+      - path: "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"
+        recursive: false
+      - path: "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\RunOnce"
+        recursive: false
+      - path: "HKLM\\SYSTEM\\CurrentControlSet\\Services"
+        recursive: false
+      - path: "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa"
+        recursive: false
+      - path: "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Windows"
+        recursive: false
+      - path: "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options"
+        recursive: false
+      - path: "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon"
+        recursive: false
+
   sca:
     enabled: true
     interval: "12h"
     policy_dirs:
       - "configs\sca"
+
   syscollector:
     enabled: true
     interval: "1h"
@@ -210,7 +362,7 @@ collectors:
     hotfixes: true
 
 performance:
-  max_cpu_percent: 20
+  max_cpu_percent: 10
   max_memory_bytes: 268435456
   batch_size: 500
   flush_interval: "30s"
@@ -218,6 +370,23 @@ performance:
 "@
 $configContent | Out-File -Encoding UTF8 -FilePath $ConfigPath
 Write-OK "Config written to $ConfigPath"
+
+# Audit policy and PowerShell logging
+if (-not $SkipAuditPol) {
+    Configure-AuditPolicy
+} else {
+    Write-Host "  [i] Skipping audit policy configuration (-SkipAuditPol)." -ForegroundColor DarkGray
+}
+
+# Sysmon — critical for Sigma process/network/registry rules
+if (-not $SkipSysmon) {
+    Install-Sysmon
+} else {
+    Write-Host "  [i] Skipping Sysmon installation (-SkipSysmon)." -ForegroundColor DarkGray
+}
+
+# Harden install directory ACL
+Set-InstallDirACL
 
 # Install as Windows service
 Write-Step "Installing Windows service..."
@@ -256,6 +425,8 @@ Write-Host "  │  Config  : $ConfigPath  │" -ForegroundColor Green
 Write-Host "  │                                                   │" -ForegroundColor Green
 Write-Host "  │  The agent will appear in your Sentinel dashboard │" -ForegroundColor Green
 Write-Host "  │  within 30 seconds.                               │" -ForegroundColor Green
+Write-Host "  │                                                   │" -ForegroundColor Green
+Write-Host "  │  Sysmon + 16 event channels + audit policy set.  │" -ForegroundColor Green
 Write-Host "  └─────────────────────────────────────────────────┘" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Useful commands:" -ForegroundColor DarkGray

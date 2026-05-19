@@ -262,6 +262,10 @@ func renderEvent(handle evtHandle, channel string) *models.DataPoint {
 		fields["win_logon_type_name"] = mapLogonType(lt)
 	}
 
+	// Promote EventData fields to standard Sigma field names so detection rules
+	// can reference Image, CommandLine, TargetUserName etc. directly.
+	normalizeSigmaFields(numericID, evData, fields)
+
 	return &models.DataPoint{
 		Timestamp: ts,
 		Type:      "log.eventlog",
@@ -447,6 +451,99 @@ func securityEventDescription(eventID int) string {
 		return "Service start type changed"
 	case 7045:
 		return "New service installed"
+	// Sysmon events
+	case 1:
+		return "Sysmon: Process created"
+	case 2:
+		return "Sysmon: File creation time changed (timestomping)"
+	case 3:
+		return "Sysmon: Network connection"
+	case 5:
+		return "Sysmon: Process terminated"
+	case 6:
+		return "Sysmon: Driver loaded"
+	case 7:
+		return "Sysmon: Image/DLL loaded"
+	case 8:
+		return "Sysmon: CreateRemoteThread (process injection)"
+	case 9:
+		return "Sysmon: RawAccessRead (disk read bypass)"
+	case 10:
+		return "Sysmon: ProcessAccess (credential access)"
+	case 11:
+		return "Sysmon: FileCreate"
+	case 12:
+		return "Sysmon: RegistryEvent - key/value create/delete"
+	case 13:
+		return "Sysmon: RegistryEvent - value set"
+	case 14:
+		return "Sysmon: RegistryEvent - key/value rename"
+	case 15:
+		return "Sysmon: FileCreateStreamHash (ADS)"
+	case 17:
+		return "Sysmon: Pipe created"
+	case 18:
+		return "Sysmon: Pipe connected"
+	case 19:
+		return "Sysmon: WMI filter registered"
+	case 20:
+		return "Sysmon: WMI consumer registered"
+	case 21:
+		return "Sysmon: WMI consumer bound to filter"
+	case 22:
+		return "Sysmon: DNS query"
+	case 23:
+		return "Sysmon: File deleted"
+	case 24:
+		return "Sysmon: Clipboard changed"
+	case 25:
+		return "Sysmon: Process tampered"
+	case 26:
+		return "Sysmon: File delete logged"
+	case 27:
+		return "Sysmon: File block executable"
+	case 28:
+		return "Sysmon: File block shredding"
+	case 29:
+		return "Sysmon: File executable detected"
+	// PowerShell events
+	case 4103:
+		return "PowerShell: Module logging"
+	case 4104:
+		return "PowerShell: Script block logging"
+	case 4105:
+		return "PowerShell: Script started"
+	case 4106:
+		return "PowerShell: Script completed"
+	// AppLocker
+	case 8003:
+		return "AppLocker: Executable allowed (audit)"
+	case 8004:
+		return "AppLocker: Executable blocked"
+	case 8006:
+		return "AppLocker: Script/DLL allowed (audit)"
+	case 8007:
+		return "AppLocker: Script/DLL blocked"
+	// Windows Defender
+	case 1116:
+		return "Defender: Malware detected"
+	case 1117:
+		return "Defender: Malware action taken"
+	case 1119:
+		return "Defender: Malware remediation succeeded"
+	case 1121:
+		return "Defender: Attack Surface Reduction rule triggered"
+	case 1122:
+		return "Defender: Attack Surface Reduction rule audited"
+	// WMI
+	case 5857:
+		return "WMI: Provider loaded"
+	case 5858:
+		return "WMI: Query error"
+	case 5860:
+		return "WMI: Temporary subscription registered"
+	case 5861:
+		return "WMI: Permanent subscription registered"
 	default:
 		return ""
 	}
@@ -515,6 +612,166 @@ func extractXMLAttr(xml, tag, attr string) string {
 		return ""
 	}
 	return rest[:qi]
+}
+
+// normalizeSigmaFields promotes known Windows EventData fields to standard
+// Sigma field names at the top level of the DataPoint. This lets the WatchTower
+// Sigma engine match rules that reference field names like Image, CommandLine,
+// TargetUserName directly without requiring event-specific fieldset knowledge.
+//
+// Sysmon events already use standard Sigma names in EventData (e.g. "Image",
+// "CommandLine") so they are promoted verbatim. Security audit events (4xxx)
+// use different field names and are mapped explicitly per event ID.
+func normalizeSigmaFields(eventID int, evData map[string]string, fields map[string]interface{}) {
+	// Common Sysmon / generic field promotions (already correctly named in EventData).
+	// These cover Sysmon event IDs 1–29 and many other providers.
+	genericPromotions := []string{
+		"Image", "CommandLine", "ParentImage", "ParentCommandLine",
+		"User", "Hashes", "ProcessGuid", "ParentProcessGuid",
+		"OriginalFileName", "FileVersion", "Description", "Product", "Company",
+		"DestinationIp", "DestinationPort", "DestinationHostname",
+		"SourceIp", "SourcePort", "SourceHostname",
+		"TargetFilename", "CreationUtcTime", "PreviousCreationUtcTime",
+		"ImageLoaded", "Signed", "Signature", "SignatureStatus",
+		"SourceImage", "TargetImage", "GrantedAccess", "CallTrace",
+		"TargetObject", "Details", "EventType", "NewName",
+		"PipeName", "Operation", "Path", "Device",
+		"QueryName", "QueryResults", "QueryStatus",
+		"RuleName", "UtcTime", "ProcessId", "ParentProcessId",
+		"TargetUserName", "SubjectUserName", "IpAddress",
+		"WorkstationName", "ServiceName", "TaskName",
+		// DNS
+		"Image", "QueryName", "QueryResults",
+	}
+	for _, name := range genericPromotions {
+		if val, ok := evData[name]; ok && val != "" {
+			if _, already := fields[name]; !already {
+				fields[name] = val
+			}
+		}
+	}
+
+	// Security event-specific field mappings.
+	// Windows audit events use different field names than Sigma expects.
+	switch eventID {
+	case 4688: // Process Create — maps to Sysmon event 1 semantics
+		mapField(evData, fields, "NewProcessName", "Image")
+		mapField(evData, fields, "ProcessCommandLine", "CommandLine")
+		mapField(evData, fields, "ParentProcessName", "ParentImage")
+		mapField(evData, fields, "SubjectUserName", "User")
+		mapField(evData, fields, "NewProcessId", "ProcessId")
+		mapField(evData, fields, "ProcessId", "ParentProcessId")
+		mapField(evData, fields, "TokenElevationType", "TokenElevationType")
+
+	case 4689: // Process Exit
+		mapField(evData, fields, "ProcessName", "Image")
+
+	case 4624, 4625: // Logon / Failed Logon
+		mapField(evData, fields, "TargetUserName", "TargetUserName")
+		mapField(evData, fields, "TargetDomainName", "TargetDomainName")
+		mapField(evData, fields, "SubjectUserName", "SubjectUserName")
+		mapField(evData, fields, "IpAddress", "IpAddress")
+		mapField(evData, fields, "IpPort", "IpPort")
+		mapField(evData, fields, "WorkstationName", "WorkstationName")
+		mapField(evData, fields, "LogonProcessName", "LogonProcessName")
+		mapField(evData, fields, "AuthenticationPackageName", "AuthenticationPackageName")
+
+	case 4648: // Logon with explicit credentials
+		mapField(evData, fields, "SubjectUserName", "SubjectUserName")
+		mapField(evData, fields, "TargetUserName", "TargetUserName")
+		mapField(evData, fields, "TargetServerName", "TargetServerName")
+		mapField(evData, fields, "ProcessName", "Image")
+
+	case 4698, 4702, 4699, 4700, 4701: // Scheduled Task lifecycle
+		mapField(evData, fields, "TaskName", "TaskName")
+		mapField(evData, fields, "SubjectUserName", "SubjectUserName")
+		mapField(evData, fields, "TaskContent", "TaskContent")
+
+	case 4720, 4722, 4723, 4724, 4725, 4726, 4738, 4740: // Account management
+		mapField(evData, fields, "TargetUserName", "TargetUserName")
+		mapField(evData, fields, "TargetDomainName", "TargetDomainName")
+		mapField(evData, fields, "SubjectUserName", "SubjectUserName")
+
+	case 4728, 4729, 4732, 4733, 4756, 4757: // Group membership changes
+		mapField(evData, fields, "MemberName", "MemberName")
+		mapField(evData, fields, "GroupName", "GroupName")
+		mapField(evData, fields, "SubjectUserName", "SubjectUserName")
+
+	case 4663, 4656: // Object access
+		mapField(evData, fields, "ObjectName", "ObjectName")
+		mapField(evData, fields, "ObjectType", "ObjectType")
+		mapField(evData, fields, "SubjectUserName", "SubjectUserName")
+		mapField(evData, fields, "ProcessName", "Image")
+		mapField(evData, fields, "AccessMask", "AccessMask")
+
+	case 4657: // Registry value modified
+		mapField(evData, fields, "ObjectName", "TargetObject")
+		mapField(evData, fields, "NewValue", "Details")
+		mapField(evData, fields, "SubjectUserName", "SubjectUserName")
+		mapField(evData, fields, "ProcessName", "Image")
+
+	case 4672: // Special privileges assigned
+		mapField(evData, fields, "SubjectUserName", "SubjectUserName")
+		mapField(evData, fields, "PrivilegeList", "PrivilegeList")
+
+	case 7045, 7040: // Service installed / start type changed
+		mapField(evData, fields, "ServiceName", "ServiceName")
+		mapField(evData, fields, "ImagePath", "Image")
+		mapField(evData, fields, "StartType", "StartType")
+		mapField(evData, fields, "AccountName", "User")
+
+	case 4776: // NTLM credential validation
+		mapField(evData, fields, "TargetName", "TargetUserName")
+		mapField(evData, fields, "Workstation", "WorkstationName")
+
+	case 4768, 4769, 4771: // Kerberos
+		mapField(evData, fields, "TargetUserName", "TargetUserName")
+		mapField(evData, fields, "IpAddress", "IpAddress")
+		mapField(evData, fields, "ServiceName", "ServiceName")
+
+	case 4778, 4779: // RDP session connect/disconnect
+		mapField(evData, fields, "AccountName", "TargetUserName")
+		mapField(evData, fields, "ClientName", "WorkstationName")
+		mapField(evData, fields, "ClientAddress", "IpAddress")
+	}
+
+	// Extract hash components from Sysmon Hashes field:
+	// Format: "MD5=<hex>,SHA256=<hex>,IMPHASH=<hex>"
+	if hashes, ok := evData["Hashes"]; ok && hashes != "" {
+		for _, part := range strings.Split(hashes, ",") {
+			kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+			if len(kv) != 2 {
+				continue
+			}
+			switch strings.ToUpper(kv[0]) {
+			case "SHA256":
+				fields["sha256"] = kv[1]
+			case "MD5":
+				fields["md5"] = kv[1]
+			case "IMPHASH":
+				fields["imphash"] = kv[1]
+			}
+		}
+	}
+
+	// Derive ECS-compatible process.name from Image path for easier dashboarding.
+	if img, ok := fields["Image"].(string); ok && img != "" {
+		if idx := strings.LastIndexAny(img, `/\`); idx >= 0 {
+			fields["process_name"] = img[idx+1:]
+		} else {
+			fields["process_name"] = img
+		}
+	}
+}
+
+// mapField copies evData[src] into fields[dest] only when it's non-empty and
+// dest is not already set (generic promotions run first).
+func mapField(evData map[string]string, fields map[string]interface{}, src, dest string) {
+	if val, ok := evData[src]; ok && val != "" {
+		if _, already := fields[dest]; !already {
+			fields[dest] = val
+		}
+	}
 }
 
 func emitError(dataCh chan<- models.DataPoint, channel, msg string) {

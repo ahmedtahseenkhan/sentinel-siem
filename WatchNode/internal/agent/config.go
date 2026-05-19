@@ -277,12 +277,24 @@ type OsqueryQuery struct {
 
 // PerformanceConfig for resource limits and batching.
 type PerformanceConfig struct {
-	MaxCPUPercent   float64 `yaml:"max_cpu_percent"`
-	MaxMemoryBytes  uint64  `yaml:"max_memory_bytes"`
-	MaxDiskBytes    uint64  `yaml:"max_disk_bytes"`
-	BatchSize       int     `yaml:"batch_size"`
-	FlushInterval   string  `yaml:"flush_interval"`
-	QueueSize       int     `yaml:"queue_size"`
+	MaxCPUPercent  float64        `yaml:"max_cpu_percent"`
+	MaxMemoryBytes uint64         `yaml:"max_memory_bytes"`
+	MaxDiskBytes   uint64         `yaml:"max_disk_bytes"`
+	BatchSize      int            `yaml:"batch_size"`
+	FlushInterval  string         `yaml:"flush_interval"`
+	QueueSize      int            `yaml:"queue_size"`
+	DiskQueue      DiskQueueConfig `yaml:"disk_queue"`
+}
+
+// DiskQueueConfig controls the persistent WAL-backed queue.
+type DiskQueueConfig struct {
+	// Enabled turns on disk-backed persistence; RAM-only when false.
+	Enabled bool `yaml:"enabled"`
+	// Dir is the directory for WAL and checkpoint files.
+	// Defaults to OS data dir when empty.
+	Dir string `yaml:"dir"`
+	// MaxBytes is the maximum WAL file size before writes are dropped (default 500 MB).
+	MaxBytes int64 `yaml:"max_bytes"`
 }
 
 // LoadConfig reads YAML from path and overlays with environment variables.
@@ -421,6 +433,11 @@ func DefaultConfig() *Config {
 			BatchSize:      1000,
 			FlushInterval:  "30s",
 			QueueSize:      10000,
+			DiskQueue: DiskQueueConfig{
+				Enabled:  true,
+				Dir:      "",
+				MaxBytes: 500 * 1024 * 1024,
+			},
 		},
 	}
 }

@@ -90,6 +90,24 @@ func main() {
 			return
 		}
 
+		// Config integrity monitoring — alerts the SOC if config.yaml is
+		// tampered with while the agent is running.
+		if *configPath != "" {
+			checker, err := agent.NewConfigIntegrityChecker(*configPath, "", log)
+			if err != nil {
+				log.Warn("config integrity check failed to init", zap.Error(err))
+			} else {
+				stopCh := ctx.Done()
+			go checker.RunPeriodicCheck(stopCh, func(path, expected, current string) {
+					log.Warn("CONFIG TAMPER DETECTED",
+						zap.String("path", path),
+						zap.String("expected_sha256", expected),
+						zap.String("current_sha256", current),
+					)
+				})
+			}
+		}
+
 		if cfg.AutoUpdate.Enabled {
 			uCfg := updater.Config{
 				Enabled:         cfg.AutoUpdate.Enabled,

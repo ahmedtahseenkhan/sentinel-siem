@@ -63,8 +63,14 @@ func (c *Client) Connect(ctx context.Context) error {
 		}
 		transport = grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg))
 	} else {
-		// No TLS certs configured — connect insecurely.
-		// For production deployments configure manager.tls.cert/key/ca.
+		// Warn loudly: all telemetry and credentials travel over plaintext.
+		// Configure manager.tls.cert/key/ca (or set WATCHNODE_MANAGER_CERT/KEY/CA)
+		// for production deployments.
+		fmt.Fprintf(os.Stderr,
+			"[WATCHNODE WARNING] mTLS is NOT configured — connecting to %s without encryption.\n"+
+				"  Set manager.tls.cert/key/ca in config.yaml for production use.\n",
+			c.cfg.Manager.URL,
+		)
 		transport = grpc.WithTransportCredentials(insecure.NewCredentials())
 	}
 
@@ -285,6 +291,9 @@ func (c *Client) RunStream(ctx context.Context, agentID string, dataCh <-chan mo
 }
 
 // RunHeartbeat sends heartbeats at the given interval.
+// The Timestamp field carries the agent's UTC nanosecond clock. WatchTower
+// computes clock skew by comparing this value to its own receive time —
+// drift > 60s is flagged as a data-integrity warning in the manager.
 func (c *Client) RunHeartbeat(ctx context.Context, agentID string, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -300,9 +309,9 @@ func (c *Client) RunHeartbeat(ctx context.Context, agentID string, interval time
 				continue
 			}
 			_, _ = client.Heartbeat(ctx, &proto.HeartbeatRequest{
-				AgentId:  agentID,
-				Timestamp: time.Now().UnixNano(),
-				Status:   "running",
+				AgentId:   agentID,
+				Timestamp: time.Now().UTC().UnixNano(),
+				Status:    "running",
 			})
 		}
 	}
