@@ -8,6 +8,7 @@ import (
 	"github.com/watchtower/watchtower/internal/audit"
 	"github.com/watchtower/watchtower/internal/config"
 	"github.com/watchtower/watchtower/internal/engine"
+	"github.com/watchtower/watchtower/internal/engine/decoder"
 	"github.com/watchtower/watchtower/internal/registry"
 	"github.com/watchtower/watchtower/internal/store"
 	"go.uber.org/zap"
@@ -29,10 +30,21 @@ type Server struct {
 	registry       *registry.Registry
 	store          *store.Store
 	engine         *engine.Engine
+	syslogDecoder  *decoder.SyslogEngine
 	audit          *audit.Logger
 	identitySyncer IdentitySyncer
 	uebaAnalyzer   UebaRunner
 	http           *http.Server
+}
+
+// SetSyslogDecoder wires the syslog decoder engine into the API server.
+func (s *Server) SetSyslogDecoder(e *decoder.SyslogEngine) {
+	s.syslogDecoder = e
+}
+
+// SyslogDecoder returns the syslog decoder engine (satisfies SyslogDecoderProvider).
+func (s *Server) SyslogDecoder() *decoder.SyslogEngine {
+	return s.syslogDecoder
 }
 
 func NewServer(cfg config.APIConfig, logger *zap.Logger, reg *registry.Registry, st *store.Store, eng *engine.Engine, al *audit.Logger) *Server {

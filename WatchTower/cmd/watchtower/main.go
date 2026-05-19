@@ -14,7 +14,9 @@ import (
 	"github.com/watchtower/watchtower/internal/config"
 	"github.com/watchtower/watchtower/internal/license"
 	"github.com/watchtower/watchtower/internal/engine"
+	"github.com/watchtower/watchtower/internal/engine/decoder"
 	"github.com/watchtower/watchtower/internal/forwarder"
+	"github.com/watchtower/watchtower/internal/models"
 	"github.com/watchtower/watchtower/internal/registry"
 	"github.com/watchtower/watchtower/internal/response"
 	"github.com/watchtower/watchtower/internal/server/api"
@@ -167,6 +169,12 @@ func main() {
 	if cfg.Notifier.Enabled {
 		notif := notifier.New(cfg.Notifier, logger)
 		eng.SetNotifierHook(notif)
+
+		// Fire a notification whenever an agent goes disconnected.
+		reg.SetDisconnectHook(func(agent *models.Agent) {
+			notif.NotifyAgentDisconnect(agent)
+		})
+
 		logger.Info("notifier enabled",
 			zap.Int("destinations", len(cfg.Notifier.Destinations)),
 		)
@@ -174,6 +182,14 @@ func main() {
 
 	eng.Start()
 	defer eng.Stop()
+
+	// Wire engine into registry so agent lifecycle events (connect/disconnect/
+	// reconnect) are ingested and can match rules 501-509, just like Wazuh.
+	reg.SetEngine(eng)
+
+	// Wire registry as agent resolver so every event and alert gets agent_name
+	// (hostname) stamped on it — fixes the blank agent_name gap.
+	eng.SetAgentResolver(reg)
 
 	// Threat intel feed manager
 	if cfg.ThreatIntel.Enabled {
@@ -184,6 +200,19 @@ func main() {
 		)
 	}
 
+	// Syslog decoder engine — Wazuh-like YAML-driven decoder pipeline.
+	syslogDecoderEngine := decoder.NewSyslogEngine(logger)
+	syslogDecoderDir := cfg.Engine.DecodersDir + "/syslog"
+	if err := syslogDecoderEngine.LoadFromDir(syslogDecoderDir); err != nil {
+		logger.Warn("syslog decoder: failed to load built-in decoders",
+			zap.String("dir", syslogDecoderDir), zap.Error(err))
+	} else {
+		logger.Info("syslog decoders loaded",
+			zap.String("dir", syslogDecoderDir),
+			zap.Int("total", syslogDecoderEngine.Count()))
+	}
+	syslogDecoderEngine.StartWatcher(ctx)
+
 	// Syslog receiver (UDP + TCP)
 	if cfg.Syslog.Enabled {
 		addr := cfg.Syslog.Addr
@@ -191,6 +220,7 @@ func main() {
 			addr = ":514"
 		}
 		syslogSrv := syslogserver.New(addr, cfg.Syslog.MaxMessageSize, eng, logger)
+		syslogSrv.SetDecoder(syslogDecoderEngine)
 		if err := syslogSrv.Start(); err != nil {
 			logger.Warn("syslog receiver failed to start", zap.Error(err))
 		} else {
@@ -222,6 +252,7 @@ func main() {
 
 	// API server
 	apiSrv := api.NewServer(cfg.Server.API, logger, reg, st, eng, auditLogger)
+	apiSrv.SetSyslogDecoder(syslogDecoderEngine)
 	apiSrv.SetUebaAnalyzer(uebaAnalyzer)
 	if cfg.Identity.Enabled {
 		apiSrv.SetIdentitySyncer(idMgr)

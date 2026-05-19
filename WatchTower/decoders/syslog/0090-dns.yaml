@@ -1,0 +1,127 @@
+group: dns
+description: "DNS server log decoders — BIND/named and dnsmasq"
+
+decoders:
+  # ── BIND / named ──────────────────────────────────────────────────────────────
+
+  - name: named
+    program: "^(named|bind)$"
+    description: "Root BIND/named decoder"
+
+  - name: named-query
+    parent: named
+    prematch: "query:"
+    regex: "client (?:@\\S+ )?(?P<src_ip>[^#]+)#(?P<src_port>\\d+).*?query: (?P<query_name>\\S+) (?P<query_class>\\S+) (?P<query_type>\\S+)"
+    static_fields:
+      action: dns-query
+      category: dns
+
+  - name: named-refused
+    parent: named
+    prematch: "query (cache|zone).*REFUSED"
+    regex: "client (?:@\\S+ )?(?P<src_ip>[^#]+)#(?P<src_port>\\d+).*?query (?:cache|zone) '(?P<query_name>[^']+)' denied"
+    static_fields:
+      action: dns-refused
+      category: dns
+
+  - name: named-nxdomain
+    parent: named
+    prematch: "NXDOMAIN"
+    regex: "client (?:@\\S+ )?(?P<src_ip>[^#]+)#(?P<src_port>\\d+).*?(?P<query_name>\\S+) IN (?P<query_type>\\S+).*?NXDOMAIN"
+    static_fields:
+      action: dns-nxdomain
+      category: dns
+
+  - name: named-xfer-in
+    parent: named
+    prematch: "zone transfer"
+    regex: "transfer of '(?P<zone>[^']+)' from (?P<src_ip>[^#]+)#(?P<src_port>\\d+): (?P<xfer_status>.+)"
+    static_fields:
+      action: dns-zone-transfer
+      category: dns
+
+  - name: named-xfer-out
+    parent: named
+    prematch: "zone.*Transfer started"
+    regex: "client (?:@\\S+ )?(?P<src_ip>[^#]+)#(?P<src_port>\\d+).*?: transfer of '(?P<zone>[^']+)'"
+    static_fields:
+      action: dns-zone-transfer-out
+      category: dns
+
+  - name: named-update
+    parent: named
+    prematch: "updating zone"
+    regex: "client (?:@\\S+ )?(?P<src_ip>[^#]+)#(?P<src_port>\\d+).*?updating zone '(?P<zone>[^']+)': (?P<update_op>\\S+) '(?P<rr>[^']+)'"
+    static_fields:
+      action: dns-dynamic-update
+      category: dns
+
+  - name: named-bad-cookie
+    parent: named
+    prematch: "bad cookie"
+    regex: "client (?:@\\S+ )?(?P<src_ip>[^#]+)#(?P<src_port>\\d+).*?bad cookie"
+    static_fields:
+      action: dns-bad-cookie
+      category: dns
+
+  - name: named-rpz-rewrite
+    parent: named
+    prematch: "rpz "
+    regex: "client (?:@\\S+ )?(?P<src_ip>[^#]+)#(?P<src_port>\\d+).*?rpz (?P<rpz_action>\\S+) (?P<query_name>\\S+)"
+    static_fields:
+      action: dns-rpz-block
+      category: dns
+
+  # ── dnsmasq ───────────────────────────────────────────────────────────────────
+
+  - name: dnsmasq
+    program: "^dnsmasq$"
+    description: "Root dnsmasq decoder"
+
+  - name: dnsmasq-query
+    parent: dnsmasq
+    prematch: "query["
+    regex: "query\\[(?P<query_type>[^\\]]+)\\] (?P<query_name>\\S+) from (?P<src_ip>\\S+)"
+    static_fields:
+      action: dns-query
+      category: dns
+
+  - name: dnsmasq-forwarded
+    parent: dnsmasq
+    prematch: "forwarded"
+    regex: "forwarded (?P<query_name>\\S+) to (?P<dst_ip>\\S+)"
+    static_fields:
+      action: dns-forwarded
+      category: dns
+
+  - name: dnsmasq-reply
+    parent: dnsmasq
+    prematch: "reply"
+    regex: "reply (?P<query_name>\\S+) is (?P<answer>\\S+)"
+    static_fields:
+      action: dns-reply
+      category: dns
+
+  - name: dnsmasq-nxdomain
+    parent: dnsmasq
+    prematch: "NXDOMAIN"
+    regex: "reply (?P<query_name>\\S+) is NXDOMAIN"
+    static_fields:
+      action: dns-nxdomain
+      category: dns
+
+  - name: dnsmasq-dhcp-ack
+    parent: dnsmasq
+    prematch: "DHCPACK"
+    regex: "DHCPACK\\((?P<iface>[^)]+)\\) (?P<src_ip>\\S+) (?P<mac_address>\\S+) (?P<hostname>\\S+)"
+    static_fields:
+      action: dhcp-ack
+      category: network
+
+  - name: dnsmasq-dhcp-discover
+    parent: dnsmasq
+    prematch: "DHCPDISCOVER"
+    regex: "DHCPDISCOVER\\((?P<iface>[^)]+)\\) (?P<mac_address>\\S+)"
+    static_fields:
+      action: dhcp-discover
+      category: network

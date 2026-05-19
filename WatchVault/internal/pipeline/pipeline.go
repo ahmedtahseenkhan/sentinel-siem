@@ -83,6 +83,20 @@ func (p *Pipeline) ProcessDocument(docType string, doc map[string]interface{}) e
 		id = uuid.New().String()
 	}
 
+	// Ensure @timestamp is always present for OpenSearch time-based queries.
+	if _, ok := doc["@timestamp"]; !ok {
+		var tsMs int64
+		switch v := doc["timestamp"].(type) {
+		case int64:
+			tsMs = v
+		case float64:
+			tsMs = int64(v)
+		default:
+			tsMs = time.Now().UnixMilli()
+		}
+		doc["@timestamp"] = time.UnixMilli(tsMs).UTC().Format(time.RFC3339Nano)
+	}
+
 	return p.addToBuffer(opensearch.BulkItem{
 		Index: indexName,
 		ID:    id,
@@ -126,6 +140,8 @@ func (p *Pipeline) routeEvent(eventType string) string {
 		return p.indexName("system")
 	case eventType == "vulnerability":
 		return p.indexName("vulnerability")
+	case eventType == "audit":
+		return p.indexName("audit")
 	default:
 		return p.indexName("events")
 	}
@@ -198,11 +214,16 @@ func (p *Pipeline) Stop() {
 }
 
 func eventToDoc(e *models.IndexEvent) map[string]interface{} {
+	ts := e.Timestamp
+	if ts == 0 {
+		ts = time.Now().UnixMilli()
+	}
 	doc := map[string]interface{}{
-		"timestamp":  e.Timestamp,
-		"event_type": e.EventType,
-		"agent_id":   e.AgentID,
-		"agent_name": e.AgentName,
+		"timestamp":   ts,
+		"@timestamp":  time.UnixMilli(ts).UTC().Format(time.RFC3339Nano), // OpenSearch standard time field
+		"event_type":  e.EventType,
+		"agent_id":    e.AgentID,
+		"agent_name":  e.AgentName,
 	}
 	if e.Data != nil {
 		for k, v := range e.Data {

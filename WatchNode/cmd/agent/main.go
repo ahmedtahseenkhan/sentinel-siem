@@ -73,45 +73,64 @@ func main() {
 		log = agent.NewLoggerDevelopment()
 	}
 
-	comm := communication.NewClient(cfg)
-	a, err := agent.New(cfg, log, comm)
-	if err != nil {
-		log.Error("create agent", zap.Error(err))
-		os.Exit(1)
-	}
-
-	collectors := buildCollectors(cfg)
-	a.SetCollectors(collectors)
-
-	ctx := context.Background()
-	if err := a.Start(ctx); err != nil {
-		log.Error("start agent", zap.Error(err))
-		os.Exit(1)
-	}
-
-	// Auto-updater — runs in the background, replaces the binary and
-	// re-execs in-place when a newer version is available.
-	if cfg.AutoUpdate.Enabled {
-		uCfg := updater.Config{
-			Enabled:         cfg.AutoUpdate.Enabled,
-			UpdateServerURL: cfg.AutoUpdate.UpdateServerURL,
-			CheckInterval:   cfg.AutoUpdate.CheckInterval,
-			AllowPrerelease: cfg.AutoUpdate.AllowPrerelease,
+	// runAgent is the platform-agnostic agent loop used both for CLI and service modes.
+	runAgent := func(ctx context.Context) {
+		comm := communication.NewClient(cfg)
+		a, err := agent.New(cfg, log, comm)
+		if err != nil {
+			log.Error("create agent", zap.Error(err))
+			return
 		}
-		var zapLog *zap.Logger
-		if zl, ok := log.(*agent.ZapLogger); ok {
-			zapLog = zl.Logger
-		} else {
-			zapLog, _ = zap.NewProduction()
+
+		collectors := buildCollectors(cfg)
+		a.SetCollectors(collectors)
+
+		if err := a.Start(ctx); err != nil {
+			log.Error("start agent", zap.Error(err))
+			return
 		}
-		u := updater.New(uCfg, Version, zapLog)
-		go u.Start(ctx)
+
+		if cfg.AutoUpdate.Enabled {
+			uCfg := updater.Config{
+				Enabled:         cfg.AutoUpdate.Enabled,
+				UpdateServerURL: cfg.AutoUpdate.UpdateServerURL,
+				CheckInterval:   cfg.AutoUpdate.CheckInterval,
+				AllowPrerelease: cfg.AutoUpdate.AllowPrerelease,
+			}
+			var zapLog *zap.Logger
+			if zl, ok := log.(*agent.ZapLogger); ok {
+				zapLog = zl.Logger
+			} else {
+				zapLog, _ = zap.NewProduction()
+			}
+			u := updater.New(uCfg, Version, zapLog)
+			go u.Start(ctx)
+		}
+
+		<-ctx.Done()
+		a.Stop()
 	}
 
+	// When started by the Windows SCM, hand control to the service runner.
+	// It receives START/STOP signals from SCM and translates them to context cancellation.
+	// On exit with non-zero code the SCM triggers the configured failure/restart actions.
+	if isRunningAsService() {
+		if err := runAsService(runAgent); err != nil {
+			fmt.Fprintf(os.Stderr, "service run: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Normal CLI mode: run until SIGINT/SIGTERM.
+	ctx, cancel := context.WithCancel(context.Background())
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
-	a.Stop()
+	go func() {
+		<-sigCh
+		cancel()
+	}()
+	runAgent(ctx)
 }
 
 func loadConfig(path string) (*agent.Config, error) {

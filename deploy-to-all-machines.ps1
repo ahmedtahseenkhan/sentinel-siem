@@ -102,8 +102,19 @@ $DeploymentScript = {
         
         # Create Windows Service
         nssm.exe install SentinelWatchNode "$InstallDir\watchnode.exe" "-c $InstallDir\agent.yaml" 2>$null
+
+        # Ensure service starts automatically on Windows boot
+        nssm.exe set SentinelWatchNode Start SERVICE_AUTO_START
+
+        # Auto-restart on failure: 5s, 30s, 60s delays, then keep trying
+        nssm.exe set SentinelWatchNode AppRestartDelay 5000
+        nssm.exe set SentinelWatchNode AppThrottle 60000
+        nssm.exe set SentinelWatchNode AppExit Default Restart
+        # Also set via sc.exe for redundancy
+        sc.exe failure SentinelWatchNode reset= 86400 actions= restart/5000/restart/30000/restart/60000 2>$null
+
         nssm.exe start SentinelWatchNode 2>$null
-        
+
         return @{
             Success = $true
             Message = "Installation successful"

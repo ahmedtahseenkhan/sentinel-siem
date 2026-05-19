@@ -1,0 +1,121 @@
+group: juniper
+description: "Juniper Junos syslog decoders — RT_FLOW, LOGIN, UI_COMMIT, IDP"
+
+decoders:
+  # ── Juniper root ──────────────────────────────────────────────────────────────
+  # Junos syslog format: <facility.severity> timestamp hostname process[pid]: eventid: message
+
+  - name: juniper
+    program: "^(RT_FLOW|RT_IDP|UI|MGD|SSHD|ALARMD|CHASSISD|RPDD|SNMPD)$"
+    description: "Root Juniper Junos decoder (by process name)"
+
+  # RT_FLOW — Session tracking
+  - name: juniper-flow-create
+    parent: juniper
+    prematch: "RT_FLOW_SESSION_CREATE"
+    regex: "RT_FLOW_SESSION_CREATE: session created (?P<src_ip>\\S+)/(?P<src_port>\\d+)->(?P<dst_ip>\\S+)/(?P<dst_port>\\d+) (?P<protocol>\\S+) (?P<src_zone>\\S+)->(?P<dst_zone>\\S+) (?P<policy_name>\\S+) (?P<session_id>\\d+)"
+    static_fields:
+      action: flow-session-created
+      category: network
+
+  - name: juniper-flow-close
+    parent: juniper
+    prematch: "RT_FLOW_SESSION_CLOSE"
+    regex: "RT_FLOW_SESSION_CLOSE: session closed (?P<close_reason>[^:]+): (?P<src_ip>\\S+)/(?P<src_port>\\d+)->(?P<dst_ip>\\S+)/(?P<dst_port>\\d+) (?P<protocol>\\S+) (?P<src_zone>\\S+)->(?P<dst_zone>\\S+) (?P<policy_name>\\S+) (?P<bytes_from_client>\\d+) (?P<bytes_from_server>\\d+)"
+    static_fields:
+      action: flow-session-closed
+      category: network
+
+  - name: juniper-flow-deny
+    parent: juniper
+    prematch: "RT_FLOW_SESSION_DENY"
+    regex: "RT_FLOW_SESSION_DENY: session denied (?P<src_ip>\\S+)/(?P<src_port>\\d+)->(?P<dst_ip>\\S+)/(?P<dst_port>\\d+) (?P<protocol>\\S+) (?P<src_zone>\\S+)->(?P<dst_zone>\\S+) (?P<policy_name>\\S+)"
+    static_fields:
+      action: flow-session-denied
+      category: network
+
+  # LOGIN / LOGOUT — Management plane access
+  - name: juniper-login
+    parent: juniper
+    prematch: "LOGIN_INFORMATION"
+    regex: "LOGIN_INFORMATION: Login (?P<login_result>succeeded|failed) for user '(?P<user>[^']+)' from host '(?P<src_ip>[^']+)'"
+    static_fields:
+      action: login-event
+      category: authentication
+
+  - name: juniper-logout
+    parent: juniper
+    prematch: "LOGOUT_INFORMATION"
+    regex: "LOGOUT_INFORMATION: User '(?P<user>[^']+)' logged out from host '(?P<src_ip>[^']+)'"
+    static_fields:
+      action: logout
+      category: authentication
+
+  - name: juniper-auth-failed
+    parent: juniper
+    prematch: "INTERACTIVE_COMMANDS"
+    regex: "INTERACTIVE_COMMANDS: User '(?P<user>[^']+)' executed the '(?P<command>[^']+)' command"
+    static_fields:
+      action: cli-command
+      category: configuration
+
+  # UI_COMMIT — Configuration commits
+  - name: juniper-commit
+    parent: juniper
+    prematch: "UI_COMMIT"
+    regex: "UI_COMMIT: User '(?P<user>[^']+)' initiated a (?P<commit_type>\\S+) (?:commit|rollback) (?:request )?(?:with log message (?P<commit_msg>.+))?"
+    static_fields:
+      action: config-committed
+      category: configuration
+
+  - name: juniper-commit-complete
+    parent: juniper
+    prematch: "UI_COMMIT_COMPLETED"
+    regex: "UI_COMMIT_COMPLETED: commit (?P<commit_result>complete|failed)"
+    static_fields:
+      action: config-commit-complete
+      category: configuration
+
+  # IDP — Intrusion Detection and Prevention
+  - name: juniper-idp-attack
+    parent: juniper
+    prematch: "IDP_ATTACK_LOG_EVENT"
+    regex: "IDP_ATTACK_LOG_EVENT: .*?attack-name='(?P<attack_name>[^']+)'.*?source-address='(?P<src_ip>[^']+)'.*?source-port='(?P<src_port>\\d+)'.*?destination-address='(?P<dst_ip>[^']+)'.*?destination-port='(?P<dst_port>\\d+)'.*?severity='(?P<severity>[^']+)'"
+    static_fields:
+      action: ids-alert
+      category: ids
+
+  - name: juniper-idp-close
+    parent: juniper
+    prematch: "IDP_SESS_CLOSE"
+    regex: "IDP_SESS_CLOSE:.*?source-address='(?P<src_ip>[^']+)'.*?destination-address='(?P<dst_ip>[^']+)'"
+    static_fields:
+      action: ids-session-close
+      category: ids
+
+  # CHASSIS / ALARM
+  - name: juniper-alarm
+    parent: juniper
+    prematch: "ALARM_"
+    regex: "ALARM_(?P<alarm_type>\\S+): (?P<alarm_msg>.+)"
+    static_fields:
+      action: chassis-alarm
+      category: system
+
+  # SNMP
+  - name: juniper-snmp-auth
+    parent: juniper
+    prematch: "SNMP_AUTH_FAILURE"
+    regex: "SNMP_AUTH_FAILURE: SNMP authentication failure from (?P<src_ip>\\S+) community (?P<community>\\S+)"
+    static_fields:
+      action: snmp-auth-failed
+      category: network
+
+  # Routing changes (OSPF/BGP)
+  - name: juniper-ospf-neighbor
+    parent: juniper
+    prematch: "OSPF_NBR_STATE_CHANGE"
+    regex: "OSPF_NBR_STATE_CHANGE: OSPF neighbor (?P<neighbor_ip>\\S+) .* changed state from (?P<old_state>\\S+) to (?P<new_state>\\S+)"
+    static_fields:
+      action: ospf-neighbor-change
+      category: routing

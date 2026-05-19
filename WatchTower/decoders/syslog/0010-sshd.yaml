@@ -1,0 +1,96 @@
+group: sshd
+description: "OpenSSH daemon — login, auth, and connection events"
+
+decoders:
+  - name: sshd
+    program: "^sshd$"
+    description: "Root SSH decoder — matches all sshd messages"
+
+  - name: sshd-failed-password
+    parent: sshd
+    prematch: "Failed password"
+    regex: "Failed password for (?:invalid user )?(?P<user>\\S+) from (?P<src_ip>\\S+) port (?P<src_port>\\d+)"
+    static_fields:
+      action: login-failed
+      category: authentication
+
+  - name: sshd-accepted-password
+    parent: sshd
+    prematch: "Accepted password"
+    regex: "Accepted password for (?P<user>\\S+) from (?P<src_ip>\\S+) port (?P<src_port>\\d+)"
+    static_fields:
+      action: login-success
+      category: authentication
+
+  - name: sshd-accepted-publickey
+    parent: sshd
+    prematch: "Accepted publickey"
+    regex: "Accepted publickey for (?P<user>\\S+) from (?P<src_ip>\\S+) port (?P<src_port>\\d+).*?:(?P<key_type>[A-Z0-9-]+) (?P<key_fingerprint>\\S+)"
+    static_fields:
+      action: login-success
+      auth_method: publickey
+      category: authentication
+
+  - name: sshd-invalid-user
+    parent: sshd
+    prematch: "Invalid user"
+    regex: "Invalid user (?P<user>\\S+) from (?P<src_ip>\\S+)(?:\\s+port (?P<src_port>\\d+))?"
+    static_fields:
+      action: invalid-user
+      category: authentication
+
+  - name: sshd-disconnected
+    parent: sshd
+    prematch: "Disconnected from"
+    regex: "Disconnected from (?:invalid user )?(?P<user>\\S+) (?P<src_ip>\\S+) port (?P<src_port>\\d+)"
+    static_fields:
+      action: disconnected
+      category: authentication
+
+  - name: sshd-connection-closed
+    parent: sshd
+    prematch: "Connection closed by"
+    regex: "Connection closed by (?:authenticating user )?(?P<user>\\S+) (?P<src_ip>\\S+) port (?P<src_port>\\d+)"
+    static_fields:
+      action: connection-closed
+      category: network
+
+  - name: sshd-max-auth-exceeded
+    parent: sshd
+    prematch: "maximum authentication attempts exceeded"
+    regex: "maximum authentication attempts exceeded for (?:invalid user )?(?P<user>\\S+) from (?P<src_ip>\\S+) port (?P<src_port>\\d+)"
+    static_fields:
+      action: max-auth-exceeded
+      category: authentication
+
+  - name: sshd-no-id-string
+    parent: sshd
+    prematch: "Did not receive identification"
+    regex: "Did not receive identification string from (?P<src_ip>\\S+)"
+    static_fields:
+      action: no-id-string
+      category: network
+
+  - name: sshd-listening
+    parent: sshd
+    prematch: "Server listening"
+    regex: "Server listening on (?P<listen_addr>\\S+) port (?P<listen_port>\\d+)"
+    static_fields:
+      action: server-listening
+      category: service
+
+  - name: sshd-preauth-timeout
+    parent: sshd
+    prematch: "Timeout before authentication"
+    regex: "Timeout before authentication for (?P<src_ip>\\S+)"
+    static_fields:
+      action: preauth-timeout
+      category: authentication
+
+  - name: sshd-reverse-map-failed
+    parent: sshd
+    prematch: "reverse mapping"
+    regex: "reverse mapping checking getaddrinfo for (?P<hostname>\\S+) \\[(?P<src_ip>[^\\]]+)\\] failed"
+    static_fields:
+      action: reverse-dns-failed
+      category: network

@@ -1,0 +1,237 @@
+group: linux-system
+description: "Linux system events — PAM, cron, user management, systemd, login"
+
+decoders:
+  # ── PAM ─────────────────────────────────────────────────────────────────────
+
+  - name: pam
+    program: "^(pam|pam_unix|login|sshd|gdm|lightdm)$"
+    description: "PAM authentication events"
+
+  - name: pam-auth-failure
+    parent: pam
+    prematch: "authentication failure"
+    regex: "pam_unix\\([^)]+\\):authentication failure.*?(?:user=(?P<user>\\S+))?.*?(?:rhost=(?P<src_ip>\\S+))?"
+    static_fields:
+      action: auth-failure
+      category: authentication
+
+  - name: pam-session-opened
+    parent: pam
+    prematch: "session opened"
+    regex: "pam_unix\\([^)]+\\):session opened for user (?P<user>[^\\s(]+)(?:\\(uid=(?P<uid>\\d+)\\))? by"
+    static_fields:
+      action: session-opened
+      category: authentication
+
+  - name: pam-session-closed
+    parent: pam
+    prematch: "session closed"
+    regex: "pam_unix\\([^)]+\\):session closed for user (?P<user>\\S+)"
+    static_fields:
+      action: session-closed
+      category: authentication
+
+  - name: pam-bad-auth-count
+    parent: pam
+    prematch: "bad authentication count"
+    regex: "pam_tally.*?user (?P<user>\\S+).*?(?P<attempts>\\d+) failures"
+    static_fields:
+      action: bad-auth-count
+      category: authentication
+
+  # ── cron ─────────────────────────────────────────────────────────────────────
+
+  - name: cron
+    program: "^(cron|crond|anacron)$"
+    description: "Cron job execution"
+
+  - name: cron-job-run
+    parent: cron
+    prematch: "CMD"
+    regex: "\\((?P<user>[^)]+)\\) CMD \\((?P<command>.+)\\)"
+    static_fields:
+      action: cron-run
+      category: execution
+
+  - name: cron-session-opened
+    parent: cron
+    prematch: "session opened"
+    regex: "pam_unix\\([^)]+\\):session opened for user (?P<user>\\S+)"
+    static_fields:
+      action: session-opened
+      category: execution
+
+  - name: cron-bad-user
+    parent: cron
+    prematch: "UNKNOWN"
+    regex: "\\((?P<user>[^)]+)\\) UNKNOWN"
+    static_fields:
+      action: cron-unknown-user
+      category: execution
+
+  # ── user management ──────────────────────────────────────────────────────────
+
+  - name: useradd
+    program: "^useradd$"
+    description: "User creation events"
+
+  - name: useradd-new-user
+    parent: useradd
+    prematch: "new user"
+    regex: "new user: name=(?P<user>[^,]+),.*?uid=(?P<uid>\\d+),.*?gid=(?P<gid>\\d+),.*?home=(?P<home_dir>[^,]+)"
+    static_fields:
+      action: user-created
+      category: user-management
+
+  - name: userdel
+    program: "^userdel$"
+    description: "User deletion events"
+
+  - name: userdel-delete-user
+    parent: userdel
+    prematch: "delete user"
+    regex: "delete user '(?P<user>[^']+)'"
+    static_fields:
+      action: user-deleted
+      category: user-management
+
+  - name: userdel-remove-home
+    parent: userdel
+    prematch: "removed"
+    regex: "removed (?P<path>.+)"
+    static_fields:
+      action: home-removed
+      category: user-management
+
+  - name: usermod
+    program: "^usermod$"
+    description: "User modification events"
+
+  - name: usermod-change-user
+    parent: usermod
+    prematch: "change user"
+    regex: "change user '(?P<user>[^']+)' information"
+    static_fields:
+      action: user-modified
+      category: user-management
+
+  - name: groupadd
+    program: "^groupadd$"
+    description: "Group creation events"
+
+  - name: groupadd-new-group
+    parent: groupadd
+    prematch: "new group"
+    regex: "new group: name=(?P<group>[^,]+),.*?gid=(?P<gid>\\d+)"
+    static_fields:
+      action: group-created
+      category: user-management
+
+  - name: passwd
+    program: "^passwd$"
+    description: "Password change events"
+
+  - name: passwd-changed
+    parent: passwd
+    prematch: "password changed"
+    regex: "password changed for (?P<user>\\S+)"
+    static_fields:
+      action: password-changed
+      category: user-management
+
+  - name: passwd-failed
+    parent: passwd
+    prematch: "Authentication failure"
+    regex: "Authentication failure for (?P<user>\\S+)"
+    static_fields:
+      action: password-change-failed
+      category: authentication
+
+  # ── systemd ──────────────────────────────────────────────────────────────────
+
+  - name: systemd
+    program: "^systemd$"
+    description: "systemd service lifecycle events"
+
+  - name: systemd-service-started
+    parent: systemd
+    prematch: "Started"
+    regex: "Started (?P<service>.+)\\."
+    static_fields:
+      action: service-started
+      category: service
+
+  - name: systemd-service-stopped
+    parent: systemd
+    prematch: "Stopped"
+    regex: "Stopped (?P<service>.+)\\."
+    static_fields:
+      action: service-stopped
+      category: service
+
+  - name: systemd-service-failed
+    parent: systemd
+    prematch: "Failed"
+    regex: "(?P<service>\\S+\\.service): (?P<reason>Failed .+|Main process exited.*)"
+    static_fields:
+      action: service-failed
+      category: service
+
+  - name: systemd-service-restarting
+    parent: systemd
+    prematch: "Scheduled restart"
+    regex: "Scheduled restart job for (?P<service>\\S+)"
+    static_fields:
+      action: service-restarting
+      category: service
+
+  # ── login / logout ────────────────────────────────────────────────────────────
+
+  - name: login
+    program: "^(login|gdm|gdm-session-worker|lightdm)$"
+    description: "Console and display manager login events"
+
+  - name: login-success
+    parent: login
+    prematch: "logged in"
+    regex: "(?P<user>\\S+) logged in"
+    static_fields:
+      action: login-success
+      category: authentication
+
+  - name: login-failed
+    parent: login
+    prematch: "FAILED LOGIN"
+    regex: "FAILED LOGIN.*?FOR '(?P<user>[^']+)'"
+    static_fields:
+      action: login-failed
+      category: authentication
+
+  - name: logind
+    program: "^(systemd-logind|logind)$"
+    description: "systemd-logind session events"
+
+  - name: logind-new-session
+    parent: logind
+    prematch: "New session"
+    regex: "New session (?P<session_id>\\S+) of user (?P<user>\\S+)"
+    static_fields:
+      action: new-session
+      category: authentication
+
+  - name: logind-removed-session
+    parent: logind
+    prematch: "Removed session"
+    regex: "Removed session (?P<session_id>\\S+)"
+    static_fields:
+      action: session-removed
+      category: authentication
+
+  - name: logind-power-button
+    parent: logind
+    prematch: "Power key"
+    regex: "Power key pressed"
+    static_fields:
+      action: power-button
+      category: system

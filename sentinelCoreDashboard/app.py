@@ -445,9 +445,15 @@ def _normalize_vulns(res):
 
 
 def _aggregation_buckets(res, key):
-    """Get aggregation buckets from indexer response."""
+    """Get aggregation buckets from indexer response.
+    Normalises OpenSearch's doc_count → count so all callers see a consistent field.
+    """
     aggs = (res.get("aggregations") or {}).get(key) or {}
-    return aggs.get("buckets") or []
+    buckets = aggs.get("buckets") or []
+    for b in buckets:
+        if "count" not in b and "doc_count" in b:
+            b["count"] = b["doc_count"]
+    return buckets
 
 
 import time as _time_mod
@@ -1212,21 +1218,26 @@ def api_alerts_list():
                 if not alerts[i].get("agent_name") and alerts[i].get("agent_id"):
                     alerts[i]["agent_name"] = agent_map.get(alerts[i]["agent_id"], "")
                     src["agent_name"] = alerts[i]["agent_name"]
-                # Expose real network fields as top-level aliases for easier column access.
-                fields = (src.get("event_data") or {}).get("fields") or {}
-                ev_type = (src.get("event_data") or {}).get("type", "")
+                # Fields are now flat at the top level (event_data.fields.* was removed).
+                # Fall back to the legacy nested path for any old documents still in the index.
+                _legacy = (src.get("event_data") or {}).get("fields") or {}
+                ev_type = src.get("event_category") or src.get("event_type") or \
+                          (src.get("event_data") or {}).get("type", "")
                 if "network" in ev_type:
-                    raddr = fields.get("raddr", "")
-                    rport = fields.get("rport", "")
-                    laddr = fields.get("laddr", "")
-                    lport = fields.get("lport", "")
+                    raddr = src.get("raddr") or _legacy.get("raddr", "")
+                    rport = src.get("rport") or _legacy.get("rport", "")
+                    laddr = src.get("laddr") or _legacy.get("laddr", "")
+                    lport = src.get("lport") or _legacy.get("lport", "")
+                    # Ports may be integers after field flattening — cast to str.
+                    rport = str(rport) if rport else ""
+                    lport = str(lport) if lport else ""
                     src["net_remote"] = (raddr + ":" + rport).strip(":") if raddr else ""
                     src["net_local"]  = (laddr + ":" + lport).strip(":") if laddr else ""
-                    src["net_status"] = fields.get("status", "")
+                    src["net_status"] = src.get("status") or _legacy.get("status", "")
                 elif "process" in ev_type:
-                    src["proc_name"]    = fields.get("name", "")
-                    src["proc_pid"]     = fields.get("pid", "")
-                    src["proc_cmdline"] = fields.get("cmdline", "")
+                    src["proc_name"]    = src.get("process_name") or _legacy.get("name", "")
+                    src["proc_pid"]     = src.get("pid") or _legacy.get("pid", "")
+                    src["proc_cmdline"] = src.get("cmdline") or _legacy.get("cmdline", "")
                 alerts[i]["source"] = src
                 if hit.get("_index"):
                     src["_index"] = hit["_index"]
@@ -1411,17 +1422,32 @@ def api_hipaa_events():
 def api_alerts_by_severity():
     try:
         from watchtower_client import get_watchtower_alerts
-        # Try OpenSearch first, fall back to WatchTower aggregation
+
+        def _level_to_band(lvl):
+            lvl = int(lvl or 0)
+            if lvl >= 12: return "Critical"
+            if lvl >= 8:  return "High"
+            if lvl >= 4:  return "Medium"
+            return "Low"
+
         res = get_alerts_by_severity()
-        buckets = _aggregation_buckets(res, "by_level")
-        if not buckets:
-            wt = get_watchtower_alerts(500)
-            counts = {}
-            for a in wt:
-                lvl = int(a.get("level", 0))
-                name = "critical" if lvl >= 12 else "high" if lvl >= 8 else "medium" if lvl >= 4 else "low"
-                counts[name] = counts.get(name, 0) + 1
-            buckets = [{"key": k, "count": v} for k, v in counts.items()]
+        raw = _aggregation_buckets(res, "by_level")
+
+        # Aggregate raw numeric levels into severity bands, normalize doc_count → count
+        band_counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0}
+        if raw:
+            for b in raw:
+                band = _level_to_band(b.get("key", 0))
+                band_counts[band] += int(b.get("doc_count") or b.get("count") or 0)
+        else:
+            # Fallback: query WatchTower directly
+            for a in (get_watchtower_alerts(500) or []):
+                band = _level_to_band(a.get("level", 0))
+                band_counts[band] += 1
+
+        # Return in severity order, skip empty bands
+        order = ["Critical", "High", "Medium", "Low"]
+        buckets = [{"key": k, "count": band_counts[k]} for k in order if band_counts[k] > 0]
         return jsonify({"buckets": buckets})
     except Exception as e:
         return _api_error(e)
@@ -3726,6 +3752,60 @@ def api_ai_summarize_batch():
         return jsonify({"summaries": results, "count": len(results)})
     except Exception as exc:
         return _api_error(exc)
+
+
+# ── Syslog Decoder Management ─────────────────────────────────────────────────
+
+@app.route("/api/decoders/syslog", methods=["GET"])
+def api_syslog_decoders_list():
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request("/api/v1/decoders/syslog", method="GET")
+        return jsonify(res or {"data": [], "total": 0})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/decoders/syslog", methods=["POST"])
+def api_syslog_decoders_create():
+    try:
+        from watchtower_client import watchtower_request
+        body = request.get_json(force=True) or {}
+        res = watchtower_request("/api/v1/decoders/syslog", method="POST", json_body=body)
+        return jsonify(res or {}), 201
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/decoders/syslog/<name>", methods=["DELETE"])
+def api_syslog_decoders_delete(name):
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request(f"/api/v1/decoders/syslog/{name}", method="DELETE")
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/decoders/syslog/test", methods=["POST"])
+def api_syslog_decoders_test():
+    try:
+        from watchtower_client import watchtower_request
+        body = request.get_json(force=True) or {}
+        res = watchtower_request("/api/v1/decoders/syslog/test", method="POST", json_body=body)
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/decoders/syslog/reload", methods=["POST"])
+def api_syslog_decoders_reload():
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request("/api/v1/decoders/syslog/reload", method="POST")
+        return jsonify(res or {"message": "reload triggered"})
+    except Exception as e:
+        return _api_error(e)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,85 @@
+group: web-servers
+description: "Nginx, Apache/httpd, and HAProxy access and error log decoders"
+
+decoders:
+  # ── nginx ─────────────────────────────────────────────────────────────────────
+
+  - name: nginx
+    program: "^nginx$"
+    description: "Root nginx decoder"
+
+  - name: nginx-access
+    parent: nginx
+    prematch: "GET |POST |PUT |DELETE |HEAD |OPTIONS |PATCH "
+    regex: "(?P<src_ip>\\S+) \\S+ (?P<user>\\S+) \\[[^\\]]+\\] \"(?P<method>\\S+) (?P<url>\\S+) (?P<http_version>[^\"]+)\" (?P<status_code>\\d+) (?P<bytes>\\d+)(?: \"(?P<referrer>[^\"]*)\" \"(?P<user_agent>[^\"]*)\")?"
+    static_fields:
+      action: http-access
+      category: web
+
+  - name: nginx-error
+    parent: nginx
+    prematch: "[error]"
+    regex: "\\[(?P<log_level>\\w+)\\] \\d+#\\d+:(?:.*?\\*\\d+)? (?P<error_msg>[^,]+), client: (?P<src_ip>[^,]+), server: (?P<server>[^,]+), request: \"(?P<method>\\S+) (?P<url>\\S+)"
+    static_fields:
+      action: http-error
+      category: web
+
+  - name: nginx-upstream-error
+    parent: nginx
+    prematch: "upstream"
+    regex: "upstream (?P<upstream_action>timed out|connect\\(\\) failed).*?\\((?P<upstream_addr>[^)]+)\\)"
+    static_fields:
+      action: upstream-error
+      category: web
+
+  # ── Apache / httpd ─────────────────────────────────────────────────────────────
+
+  - name: apache
+    program: "^(apache|apache2|httpd)$"
+    description: "Root Apache/httpd decoder"
+
+  - name: apache-access
+    parent: apache
+    prematch: "GET |POST |PUT |DELETE |HEAD |OPTIONS |PATCH "
+    regex: "(?P<src_ip>\\S+) \\S+ (?P<user>\\S+) \\[[^\\]]+\\] \"(?P<method>\\S+) (?P<url>\\S+) (?P<http_version>[^\"]+)\" (?P<status_code>\\d+) (?P<bytes>\\S+)(?: \"(?P<referrer>[^\"]*)\" \"(?P<user_agent>[^\"]*)\")?"
+    static_fields:
+      action: http-access
+      category: web
+
+  - name: apache-error
+    parent: apache
+    prematch: "[error]"
+    regex: "\\[(?P<log_level>[^\\]]+)\\].*?\\[client (?P<src_ip>[^\\]]+)\\] (?P<error_msg>AH\\d+: .+)"
+    static_fields:
+      action: http-error
+      category: web
+
+  - name: apache-modsecurity
+    parent: apache
+    prematch: "ModSecurity"
+    regex: "ModSecurity: (?P<modsec_action>Warning|Access denied).*?\\[id \"(?P<rule_id>[^\"]+)\"\\].*?\\[msg \"(?P<rule_msg>[^\"]+)\"\\]"
+    static_fields:
+      action: modsecurity-event
+      category: web
+
+  # ── HAProxy ───────────────────────────────────────────────────────────────────
+
+  - name: haproxy
+    program: "^haproxy$"
+    description: "Root HAProxy decoder"
+
+  - name: haproxy-http
+    parent: haproxy
+    prematch: "HTTP"
+    regex: "(?P<src_ip>[^:]+):(?P<src_port>\\d+) \\[(?P<timestamp>[^\\]]+)\\] (?P<frontend>\\S+) (?P<backend>[^/]+)/(?P<server>\\S+) (?P<timings>[^\\s]+) (?P<status_code>\\d+) (?P<bytes>\\d+)"
+    static_fields:
+      action: http-request
+      category: network
+
+  - name: haproxy-tcp
+    parent: haproxy
+    prematch: "TCP"
+    regex: "(?P<src_ip>[^:]+):(?P<src_port>\\d+) \\[(?P<timestamp>[^\\]]+)\\] (?P<frontend>\\S+) (?P<backend>[^/]+)/(?P<server>\\S+)"
+    static_fields:
+      action: tcp-connection
+      category: network

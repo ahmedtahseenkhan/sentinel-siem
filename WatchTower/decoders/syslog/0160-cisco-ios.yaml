@@ -1,0 +1,137 @@
+group: cisco-ios
+description: "Cisco IOS/IOS-XE syslog decoders — %FACILITY-SEVERITY-MNEMONIC format"
+
+decoders:
+  # ── Cisco IOS root ────────────────────────────────────────────────────────────
+  # IOS syslog format: %FACILITY-SEVERITY-MNEMONIC: description
+  # e.g. %SEC_LOGIN-4-LOGIN_FAILED: Login failed [user: admin] [Source: 10.0.0.1]
+
+  - name: cisco-ios
+    program: "^(cisco-ios|cisco_ios|IOS|ios-syslog)$"
+    description: "Root Cisco IOS/IOS-XE decoder"
+
+  # %SEC_LOGIN — Login security events
+  - name: cisco-ios-login-failed
+    parent: cisco-ios
+    prematch: "%SEC_LOGIN-"
+    regex: "%SEC_LOGIN-\\d-LOGIN_FAILED: Login failed \\[user: (?P<user>[^\\]]+)\\] \\[Source: (?P<src_ip>[^\\]]+)\\] \\[localport: (?P<dst_port>\\d+)\\]"
+    static_fields:
+      action: login-failed
+      category: authentication
+      facility: SEC_LOGIN
+
+  - name: cisco-ios-login-success
+    parent: cisco-ios
+    prematch: "LOGIN_SUCCESS"
+    regex: "%SEC_LOGIN-\\d-LOGIN_SUCCESS: Login Success \\[user: (?P<user>[^\\]]+)\\] \\[Source: (?P<src_ip>[^\\]]+)\\] \\[localport: (?P<dst_port>\\d+)\\]"
+    static_fields:
+      action: login-success
+      category: authentication
+      facility: SEC_LOGIN
+
+  - name: cisco-ios-quiet-mode
+    parent: cisco-ios
+    prematch: "QUIET_MODE"
+    regex: "%SEC_LOGIN-\\d-QUIET_MODE_(ON|OFF): (Still in Quiet-Mode|Quiet-Mode deactivated)"
+    static_fields:
+      action: brute-force-quiet-mode
+      category: authentication
+      facility: SEC_LOGIN
+
+  # %SYS — System events
+  - name: cisco-ios-config-change
+    parent: cisco-ios
+    prematch: "%SYS-5-CONFIG_I"
+    regex: "%SYS-5-CONFIG_I: Configured from (?P<src_type>[^ ]+) by (?P<user>\\S+) on (?P<terminal>\\S+)"
+    static_fields:
+      action: config-changed
+      category: configuration
+      facility: SYS
+
+  - name: cisco-ios-reload
+    parent: cisco-ios
+    prematch: "%SYS-5-RELOAD"
+    regex: "%SYS-5-RELOAD: Reload (?P<reload_reason>.+) by (?P<user>\\S+) on (?P<terminal>\\S+)"
+    static_fields:
+      action: device-reload
+      category: system
+      facility: SYS
+
+  # %LINK — Interface link state
+  - name: cisco-ios-link-updown
+    parent: cisco-ios
+    prematch: "%LINK-3-UPDOWN"
+    regex: "%LINK-3-UPDOWN: Interface (?P<interface>[^,]+), changed state to (?P<link_state>up|down)"
+    static_fields:
+      action: interface-state-change
+      category: network
+      facility: LINK
+
+  - name: cisco-ios-lineproto
+    parent: cisco-ios
+    prematch: "%LINEPROTO-5-UPDOWN"
+    regex: "%LINEPROTO-5-UPDOWN: Line protocol on Interface (?P<interface>[^,]+), changed state to (?P<link_state>up|down)"
+    static_fields:
+      action: lineproto-state-change
+      category: network
+      facility: LINEPROTO
+
+  # %AAA — Authentication, Authorization, Accounting
+  - name: cisco-ios-aaa-author
+    parent: cisco-ios
+    prematch: "%AAA-"
+    regex: "%AAA-\\d-\\S+: (?P<aaa_msg>.+) user=(?P<user>\\S+).*?(?:from (?P<src_ip>\\S+))?"
+    static_fields:
+      action: aaa-event
+      category: authentication
+      facility: AAA
+
+  # %OSPF — OSPF routing protocol
+  - name: cisco-ios-ospf-neighbor
+    parent: cisco-ios
+    prematch: "%OSPF-"
+    regex: "%OSPF-\\d-ADJCHG: Process (?P<ospf_pid>\\d+), Nbr (?P<neighbor_ip>\\S+) on (?P<interface>\\S+) from (?P<old_state>\\S+) to (?P<new_state>\\S+), (?P<reason>.+)"
+    static_fields:
+      action: ospf-neighbor-change
+      category: routing
+      facility: OSPF
+
+  # %BGP — BGP routing protocol
+  - name: cisco-ios-bgp-neighbor
+    parent: cisco-ios
+    prematch: "%BGP-"
+    regex: "%BGP-\\d-ADJCHANGE: neighbor (?P<neighbor_ip>\\S+).*?(?P<bgp_state>Up|Down).*?(?P<reason>.+)"
+    static_fields:
+      action: bgp-neighbor-change
+      category: routing
+      facility: BGP
+
+  # %FW — IOS Firewall / zone-based
+  - name: cisco-ios-fw-drop
+    parent: cisco-ios
+    prematch: "%FW-"
+    regex: "%FW-\\d-SESS_AUDIT_TRAIL_STOP: (?P<protocol>\\S+) session initiator \\((?P<src_ip>[^:]+):(?P<src_port>\\d+)\\) sent .* to responder \\((?P<dst_ip>[^:]+):(?P<dst_port>\\d+)\\)"
+    static_fields:
+      action: firewall-session-stop
+      category: network
+      facility: FW
+
+  # %CRYPTO — IPSec/IKE events
+  - name: cisco-ios-crypto-sa
+    parent: cisco-ios
+    prematch: "%CRYPTO-"
+    regex: "%CRYPTO-\\d-IKMP_NO_SA: IKE message from (?P<src_ip>\\S+) has no SA"
+    static_fields:
+      action: vpn-no-sa
+      category: vpn
+      facility: CRYPTO
+
+  # %SNMP — SNMP trap events
+  - name: cisco-ios-snmp-auth
+    parent: cisco-ios
+    prematch: "%SNMP-3-AUTHFAIL"
+    regex: "%SNMP-3-AUTHFAIL: Authentication failure for SNMP request from host (?P<src_ip>\\S+)"
+    static_fields:
+      action: snmp-auth-failed
+      category: network
+      facility: SNMP

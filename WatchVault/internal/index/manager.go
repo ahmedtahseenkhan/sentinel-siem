@@ -1,9 +1,12 @@
 package index
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/watchvault/watchvault/internal/config"
 	"github.com/watchvault/watchvault/internal/opensearch"
@@ -125,5 +128,77 @@ func (m *Manager) ApplyISMPolicy() error {
 		}
 	}
 	return nil
+}
+
+// StartRetentionScheduler runs a daily job that deletes watchvault-* indices
+// older than cfg.RetentionDays. This is the ILM fallback for OpenSearch
+// distributions that don't support the ISM plugin.
+func (m *Manager) StartRetentionScheduler(ctx context.Context) {
+	if m.cfg.RetentionDays <= 0 {
+		m.logger.Info("index retention disabled (retention_days=0)")
+		return
+	}
+	go func() {
+		// Run once at startup, then daily.
+		m.runRetention()
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				m.runRetention()
+			}
+		}
+	}()
+	m.logger.Info("index retention scheduler started",
+		zap.Int("retention_days", m.cfg.RetentionDays))
+}
+
+func (m *Manager) runRetention() {
+	prefix := m.cfg.Prefix
+	if prefix == "" {
+		prefix = "watchvault"
+	}
+	cutoff := time.Now().AddDate(0, 0, -m.cfg.RetentionDays)
+
+	indices, err := m.client.ListIndices(prefix + "-*")
+	if err != nil {
+		m.logger.Warn("retention: failed to list indices", zap.Error(err))
+		return
+	}
+
+	for _, idx := range indices {
+		name, _ := idx["index"].(string)
+		if name == "" {
+			continue
+		}
+		// Index names end with -YYYY.MM.DD
+		date, err := parseDateSuffix(name)
+		if err != nil {
+			continue // skip indices without a date suffix
+		}
+		if date.Before(cutoff) {
+			if err := m.client.DeleteIndex(name); err != nil {
+				m.logger.Warn("retention: failed to delete index",
+					zap.String("index", name), zap.Error(err))
+			} else {
+				m.logger.Info("retention: deleted old index",
+					zap.String("index", name),
+					zap.String("age", fmt.Sprintf("%.0f days", time.Since(date).Hours()/24)))
+			}
+		}
+	}
+}
+
+// parseDateSuffix extracts the date from an index name ending in -YYYY.MM.DD.
+func parseDateSuffix(name string) (time.Time, error) {
+	parts := strings.Split(name, "-")
+	if len(parts) == 0 {
+		return time.Time{}, fmt.Errorf("no suffix")
+	}
+	suffix := parts[len(parts)-1]
+	return time.Parse("2006.01.02", suffix)
 }
 

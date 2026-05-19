@@ -70,6 +70,9 @@ const GEO_CONTINENTS = [
     rulesFiles: '/api/rules/files',
     decoders: '/api/decoders',
     decodersFiles: '/api/decoders/files',
+    syslogDecoders: '/api/decoders/syslog',
+    syslogDecodersTest: '/api/decoders/syslog/test',
+    syslogDecodersReload: '/api/decoders/syslog/reload',
     indexerManagementIndices: '/api/indexer/management/indices',
     mitreTactics: '/api/alerts/by-tactic',
     mitreMatrix: '/api/mitre/matrix',
@@ -1869,7 +1872,7 @@ const GEO_CONTINENTS = [
     if (metaId) { const m = document.getElementById(metaId); if (m) m.textContent = `${rows.length} ${containerId.includes('Agent') ? 'agents' : containerId.includes('Sev') ? 'levels' : 'rules'}`; }
     el.innerHTML = rows.map((r, i) => {
       const pct = Math.min(100, (r.count / rows[0].count) * 100);
-      const num = r.sev ? `<span class="bigbar-r-num ${r.sev}">${r.sev ? r.name[0] : (i+1)}</span>` : `<span class="bigbar-r-num ${r.sev||''}">${i+1}</span>`;
+      const num = r.sev ? `<span class="bigbar-r-num ${r.sev}">${String(r.name||'')[0] || (i+1)}</span>` : `<span class="bigbar-r-num ${r.sev||''}">${i+1}</span>`;
       return `<div class="bigbar-row">
         ${num}
         <div class="bigbar-l">
@@ -2861,7 +2864,7 @@ const GEO_CONTINENTS = [
     const pageSizeEl = document.getElementById('discoverPageSize');
     if (pageSizeEl) DISCOVER_PAGE_SIZE = parseInt(pageSizeEl.value, 10) || 25;
     const dsl = buildDiscoverDsl();
-    const selectedIndex = document.getElementById('discoverIndex')?.value || 'watchvault-events-*';
+    const selectedIndex = document.getElementById('discoverIndex')?.value || 'watchvault-alerts-*';
     const q = new URLSearchParams();
     q.set('size', DISCOVER_PAGE_SIZE);
     q.set('offset', String(discoverOffset));
@@ -4120,7 +4123,7 @@ const GEO_CONTINENTS = [
     alerts: () => { _wireAlertChips(); loadAlerts(); },
     discover: loadDiscover,
     rules: loadRules,
-    decoders: loadDecoders,
+    decoders: () => { loadDecoders(); (window.loadSyslogDecoders || function(){})(); },
     vulnerabilities: loadVulnerabilities,
     visualizations: loadVisualizations,
     dashboard: loadDashboard,
@@ -7676,3 +7679,318 @@ document.addEventListener('DOMContentLoaded', () => {
     el.addEventListener('click', () => { loadPlaybooks(); switchPbTab('playbooks'); });
   });
 });
+
+// ── Syslog Decoder Management ─────────────────────────────────────────────────
+
+(function() {
+  'use strict';
+
+  // URL constants — defined locally so this IIFE doesn't depend on the outer API map.
+  var SD_URL        = '/api/decoders/syslog';
+  var SD_URL_TEST   = '/api/decoders/syslog/test';
+  var SD_URL_RELOAD = '/api/decoders/syslog/reload';
+
+  let _sdAll = [];   // full list from server
+  let _sdFiltered = [];  // after search/filter
+
+  // ── helpers ──────────────────────────────────────────────────────────────
+  function _esc(s) { return escapeHtml(String(s == null ? '' : s)); }
+
+  function _groupColor(name) {
+    if (!name) return 'var(--fg-4)';
+    const palette = ['var(--accent)', 'var(--ok)', 'var(--med)', 'var(--low)', 'var(--high)'];
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffffffff;
+    return palette[Math.abs(h) % palette.length];
+  }
+
+  // ── render table ─────────────────────────────────────────────────────────
+  function _renderTable() {
+    const search = (document.getElementById('sdSearch')?.value || '').toLowerCase();
+    const typeFilter = document.getElementById('sdFilterType')?.value || '';
+    _sdFiltered = _sdAll.filter(d => {
+      const name = (d.name || '').toLowerCase();
+      const group = (d.group || d.parent || '').toLowerCase();
+      if (search && !name.includes(search) && !group.includes(search)) return false;
+      if (typeFilter === 'builtin' && !d.built_in) return false;
+      if (typeFilter === 'custom' && d.built_in) return false;
+      return true;
+    });
+
+    // Always update stats regardless of filter — stats reflect the full loaded set.
+    const setEl = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    setEl('sdStatTotal',   _sdAll.length);
+    setEl('sdStatBuiltin', _sdAll.filter(d => d.built_in).length);
+    setEl('sdStatCustom',  _sdAll.filter(d => !d.built_in).length);
+    setEl('sdStatGroups',  new Set(_sdAll.map(d => d.group || d.parent || '').filter(Boolean)).size);
+
+    const col = 'grid-template-columns:1fr 110px 120px 160px 90px 100px';
+    const body = document.getElementById('sdTableBody');
+    if (!body) return;
+
+    if (!_sdFiltered.length) {
+      body.innerHTML = '<div class="sigil-block"><div class="sigil-text"><h4>No decoders found</h4><p>Try adjusting your search or add a custom decoder.</p></div></div>';
+      return;
+    }
+
+    body.innerHTML = _sdFiltered.map((d, i) => {
+      const name    = d.name || '—';
+      const group   = d.group || (d.parent ? '' : 'root');
+      const parent  = d.parent || '—';
+      const program = d.program || '—';
+      const isBuiltin = !!d.built_in;
+      const typeBadge = isBuiltin
+        ? '<span style="background:rgba(99,179,237,0.15);color:#63b3ed;border:1px solid rgba(99,179,237,0.3);border-radius:4px;font-size:10px;padding:1px 7px;font-weight:600">Built-in</span>'
+        : '<span style="background:rgba(72,187,120,0.15);color:#48bb78;border:1px solid rgba(72,187,120,0.3);border-radius:4px;font-size:10px;padding:1px 7px;font-weight:600">Custom</span>';
+      const groupColor = _groupColor(group);
+      const groupPill = group
+        ? `<span style="background:${groupColor};opacity:0.85;color:#fff;border-radius:10px;font-size:10px;padding:1px 8px;font-weight:600;white-space:nowrap">${_esc(group)}</span>`
+        : '<span style="color:var(--fg-4)">—</span>';
+      const deleteBtnHtml = isBuiltin
+        ? '<button type="button" disabled title="Built-in decoders cannot be deleted" style="opacity:0.3;cursor:not-allowed;background:var(--surface-2);border:1px solid var(--border);color:var(--text-muted);padding:3px 8px;border-radius:4px;font-size:11px">Delete</button>'
+        : `<button type="button" class="sd-delete-btn" data-name="${_esc(name)}" style="background:rgba(245,101,101,0.1);border:1px solid rgba(245,101,101,0.3);color:#f56565;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer">Delete</button>`;
+      return `<div class="tbl-r" style="${col}">
+        <span class="tbl-pri">${_esc(name)}</span>
+        <span>${groupPill}</span>
+        <span class="tbl-mono" style="font-size:11px">${_esc(parent)}</span>
+        <span class="tbl-mono" style="font-size:11px">${_esc(program)}</span>
+        <span>${typeBadge}</span>
+        <span style="display:flex;gap:5px;align-items:center">
+          <button type="button" class="sd-view-btn btn-disc-detail btn-agent-view" data-index="${i}" title="View details">&#8943;</button>
+          ${deleteBtnHtml}
+        </span>
+      </div>`;
+    }).join('');
+
+  }
+
+  // ── load from server ──────────────────────────────────────────────────────
+  async function loadSyslogDecoders() {
+    const body = document.getElementById('sdTableBody');
+    if (body) body.innerHTML = '<div class="tbl-r"><span style="color:var(--fg-3);grid-column:1/-1;padding:12px">Loading…</span></div>';
+    try {
+      const res = await fetch(SD_URL);
+      const data = await res.json().catch(() => ({}));
+      _sdAll = Array.isArray(data.data) ? data.data : [];
+    } catch (_) {
+      _sdAll = [];
+    }
+    _renderTable();
+  }
+  window.loadSyslogDecoders = loadSyslogDecoders;
+
+  // ── add decoder modal ─────────────────────────────────────────────────────
+  function _openAddModal() {
+    ['sdFormName','sdFormDesc','sdFormParent','sdFormProgram','sdFormPrematch','sdFormRegex','sdFormStaticFields'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    const m = document.getElementById('sdAddModal');
+    if (m) { m.style.display = 'flex'; }
+  }
+  function _closeAddModal() {
+    const m = document.getElementById('sdAddModal');
+    if (m) m.style.display = 'none';
+  }
+
+  async function _submitAddDecoder() {
+    const name = (document.getElementById('sdFormName')?.value || '').trim();
+    if (!name) { alert('Name is required.'); return; }
+    const desc      = (document.getElementById('sdFormDesc')?.value || '').trim();
+    const parent    = (document.getElementById('sdFormParent')?.value || '').trim();
+    const program   = (document.getElementById('sdFormProgram')?.value || '').trim();
+    const prematch  = (document.getElementById('sdFormPrematch')?.value || '').trim();
+    const regex     = (document.getElementById('sdFormRegex')?.value || '').trim();
+    const sfRaw     = (document.getElementById('sdFormStaticFields')?.value || '').trim();
+    const static_fields = {};
+    sfRaw.split('\n').forEach(line => {
+      const eq = line.indexOf('=');
+      if (eq > 0) {
+        const k = line.slice(0, eq).trim();
+        const v = line.slice(eq + 1).trim();
+        if (k) static_fields[k] = v;
+      }
+    });
+    const body = { name, description: desc, parent, program, prematch, regex, static_fields, built_in: false };
+    try {
+      const res = await fetch(SD_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || data.message || 'Failed to create decoder.');
+        return;
+      }
+      _closeAddModal();
+      await loadSyslogDecoders();
+    } catch (e) {
+      alert(e.message || 'Request failed.');
+    }
+  }
+
+  // ── delete decoder ────────────────────────────────────────────────────────
+  async function _deleteDecoder(name) {
+    if (!name) return;
+    if (!confirm(`Delete decoder "${name}"? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(SD_URL + '/' + encodeURIComponent(name), { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || data.message || 'Failed to delete decoder.');
+        return;
+      }
+      await loadSyslogDecoders();
+    } catch (e) {
+      alert(e.message || 'Request failed.');
+    }
+  }
+
+  // ── view decoder modal ────────────────────────────────────────────────────
+  function _openViewModal(index) {
+    const d = _sdFiltered[index];
+    if (!d) return;
+    const titleEl = document.getElementById('sdViewModalTitle');
+    const bodyEl  = document.getElementById('sdViewModalBody');
+    if (titleEl) titleEl.textContent = 'Decoder: ' + (d.name || '—');
+    if (bodyEl) {
+      const rows = [
+        ['Name',         d.name        || '—'],
+        ['Description',  d.description || '—'],
+        ['Parent',       d.parent      || '—'],
+        ['Program',      d.program     || '—'],
+        ['Prematch',     d.prematch    || '—'],
+        ['Regex',        d.regex       || '—'],
+        ['Type',         d.built_in ? 'Built-in' : 'Custom'],
+      ];
+      const sf = d.static_fields || {};
+      const sfKeys = Object.keys(sf);
+      if (sfKeys.length) {
+        rows.push(['Static Fields', sfKeys.map(k => `${k}=${sf[k]}`).join(', ')]);
+      }
+      bodyEl.innerHTML = '<table class="discover-detail-table"><tbody>'
+        + rows.map(([k, v]) => `<tr><td class="key">${_esc(k)}</td><td>${_esc(v)}</td></tr>`).join('')
+        + '</tbody></table>';
+    }
+    const m = document.getElementById('sdViewModal');
+    if (m) m.style.display = 'flex';
+  }
+  function _closeViewModal() {
+    const m = document.getElementById('sdViewModal');
+    if (m) m.style.display = 'none';
+  }
+
+  // ── test decoder ──────────────────────────────────────────────────────────
+  async function _testDecoder() {
+    const appName = (document.getElementById('sdTestAppName')?.value || '').trim();
+    const message = (document.getElementById('sdTestMessage')?.value || '').trim();
+    if (!appName || !message) {
+      alert('Please fill in both App Name and Message fields.');
+      return;
+    }
+    const resultEl = document.getElementById('sdTestResult');
+    const innerEl  = document.getElementById('sdTestResultInner');
+    if (resultEl) resultEl.style.display = 'block';
+    if (innerEl)  innerEl.innerHTML = '<span style="color:var(--fg-3)">Testing…</span>';
+    try {
+      const res = await fetch(SD_URL_TEST, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app_name: appName, message }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (innerEl) innerEl.innerHTML = `<span style="color:var(--crit)">Error: ${_esc(data.error || res.statusText)}</span>`;
+        return;
+      }
+      const result = data.data || data;
+      const matched = result.matched === true;
+      let html = '';
+      if (matched) {
+        html += `<div style="margin-bottom:10px"><span style="color:var(--ok);font-weight:600">&#10003; Matched</span>`;
+        if (result.decoder_name) html += ` &mdash; decoder: <span style="font-weight:600">${_esc(result.decoder_name)}</span>`;
+        html += '</div>';
+        const fields = result.fields || {};
+        const fkeys = Object.keys(fields);
+        if (fkeys.length) {
+          html += '<table class="discover-detail-table"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>'
+            + fkeys.map(k => `<tr><td class="key">${_esc(k)}</td><td>${_esc(fields[k])}</td></tr>`).join('')
+            + '</tbody></table>';
+        } else {
+          html += '<span style="color:var(--fg-3);font-size:12px">No named fields extracted.</span>';
+        }
+      } else {
+        html = '<span style="color:var(--crit);font-weight:600">&#10007; No decoder matched</span>';
+      }
+      if (innerEl) innerEl.innerHTML = html;
+    } catch (e) {
+      if (innerEl) innerEl.innerHTML = `<span style="color:var(--crit)">Error: ${_esc(e.message || 'Request failed')}</span>`;
+    }
+  }
+
+  // ── reload decoders ───────────────────────────────────────────────────────
+  async function _reloadDecoders() {
+    const btn = document.getElementById('sdReloadBtn');
+    if (btn) btn.textContent = 'Reloading…';
+    try {
+      const res = await fetch(SD_URL_RELOAD, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || data.message || 'Reload failed.');
+      } else {
+        await loadSyslogDecoders();
+      }
+    } catch (e) {
+      alert(e.message || 'Request failed.');
+    } finally {
+      if (btn) {
+        btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg> Reload';
+      }
+    }
+  }
+
+  // ── wire events ───────────────────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('sdAddBtn')?.addEventListener('click', _openAddModal);
+    document.getElementById('sdAddModalClose')?.addEventListener('click', _closeAddModal);
+    document.getElementById('sdAddModalCancel')?.addEventListener('click', _closeAddModal);
+    document.getElementById('sdAddModalSubmit')?.addEventListener('click', _submitAddDecoder);
+    document.getElementById('sdViewModalClose')?.addEventListener('click', _closeViewModal);
+    document.getElementById('sdReloadBtn')?.addEventListener('click', _reloadDecoders);
+    document.getElementById('sdTestBtn')?.addEventListener('click', _testDecoder);
+
+    let _sdSearchTimer = null;
+    document.getElementById('sdSearch')?.addEventListener('input', () => {
+      clearTimeout(_sdSearchTimer);
+      _sdSearchTimer = setTimeout(_renderTable, 300);
+    });
+    document.getElementById('sdFilterType')?.addEventListener('change', _renderTable);
+
+    document.getElementById('sdTableBody')?.addEventListener('click', (e) => {
+      const viewBtn = e.target.closest('.sd-view-btn');
+      if (viewBtn) {
+        const idx = parseInt(viewBtn.getAttribute('data-index'), 10);
+        _openViewModal(idx);
+        return;
+      }
+      const delBtn = e.target.closest('.sd-delete-btn');
+      if (delBtn) {
+        _deleteDecoder(delBtn.getAttribute('data-name'));
+      }
+    });
+
+    // close modals on backdrop click
+    document.getElementById('sdAddModal')?.addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) _closeAddModal();
+    });
+    document.getElementById('sdViewModal')?.addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) _closeViewModal();
+    });
+
+    // load when navigating to the decoders page
+    document.querySelectorAll('.nav-item[data-page="decoders"]').forEach(el => {
+      el.addEventListener('click', () => { loadSyslogDecoders(); });
+    });
+  });
+})();

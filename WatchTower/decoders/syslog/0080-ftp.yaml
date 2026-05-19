@@ -1,0 +1,157 @@
+group: ftp
+description: "FTP server log decoders — ProFTPD, vsftpd, pure-ftpd, wu-ftpd"
+
+decoders:
+  # ── ProFTPD ───────────────────────────────────────────────────────────────────
+
+  - name: proftpd
+    program: "^proftpd$"
+    description: "Root ProFTPD decoder"
+
+  - name: proftpd-login-ok
+    parent: proftpd
+    prematch: "USER "
+    regex: "(?P<src_ip>[^(]+)\\((?P<src_host>[^)]+)\\).*?USER (?P<user>\\S+): Login successful"
+    static_fields:
+      action: login-success
+      category: authentication
+
+  - name: proftpd-login-failed
+    parent: proftpd
+    prematch: "incorrect password"
+    regex: "(?P<src_ip>[^(]+)\\((?P<src_host>[^)]+)\\).*?USER (?P<user>\\S+) \\(Login failed\\): Incorrect password"
+    static_fields:
+      action: login-failed
+      category: authentication
+
+  - name: proftpd-no-such-user
+    parent: proftpd
+    prematch: "no such user"
+    regex: "(?P<src_ip>[^(]+)\\((?P<src_host>[^)]+)\\).*?USER (?P<user>\\S+): no such user found"
+    static_fields:
+      action: login-failed
+      category: authentication
+
+  - name: proftpd-upload
+    parent: proftpd
+    prematch: "STOR "
+    regex: "(?P<user>\\S+) \\[(?P<src_ip>[^\\]]+)\\] - STOR (?P<file_path>.+)"
+    static_fields:
+      action: file-upload
+      category: ftp
+
+  - name: proftpd-download
+    parent: proftpd
+    prematch: "RETR "
+    regex: "(?P<user>\\S+) \\[(?P<src_ip>[^\\]]+)\\] - RETR (?P<file_path>.+)"
+    static_fields:
+      action: file-download
+      category: ftp
+
+  - name: proftpd-delete
+    parent: proftpd
+    prematch: "DELE "
+    regex: "(?P<user>\\S+) \\[(?P<src_ip>[^\\]]+)\\] - DELE (?P<file_path>.+)"
+    static_fields:
+      action: file-delete
+      category: ftp
+
+  - name: proftpd-connection
+    parent: proftpd
+    prematch: "FTP session opened"
+    regex: "(?P<src_ip>[^(]+)\\((?P<src_host>[^)]+)\\).*?FTP session opened"
+    static_fields:
+      action: session-opened
+      category: network
+
+  - name: proftpd-session-closed
+    parent: proftpd
+    prematch: "FTP session closed"
+    regex: "(?P<src_ip>[^(]+)\\((?P<src_host>[^)]+)\\).*?FTP session closed"
+    static_fields:
+      action: session-closed
+      category: network
+
+  # ── vsftpd ────────────────────────────────────────────────────────────────────
+
+  - name: vsftpd
+    program: "^vsftpd$"
+    description: "Root vsftpd decoder"
+
+  - name: vsftpd-login-ok
+    parent: vsftpd
+    prematch: "OK LOGIN"
+    regex: "OK LOGIN: Client \"(?P<src_ip>[^\"]+)\", anon_password \"(?P<anon_pass>[^\"]*)\""
+    static_fields:
+      action: login-success
+      category: authentication
+
+  - name: vsftpd-login-failed
+    parent: vsftpd
+    prematch: "FAIL LOGIN"
+    regex: "FAIL LOGIN: Client \"(?P<src_ip>[^\"]+)\""
+    static_fields:
+      action: login-failed
+      category: authentication
+
+  - name: vsftpd-upload
+    parent: vsftpd
+    prematch: "OK UPLOAD"
+    regex: "OK UPLOAD: Client \"(?P<src_ip>[^\"]+)\", \"(?P<file_path>[^\"]+)\", (?P<bytes>\\d+) bytes"
+    static_fields:
+      action: file-upload
+      category: ftp
+
+  - name: vsftpd-download
+    parent: vsftpd
+    prematch: "OK DOWNLOAD"
+    regex: "OK DOWNLOAD: Client \"(?P<src_ip>[^\"]+)\", \"(?P<file_path>[^\"]+)\", (?P<bytes>\\d+) bytes"
+    static_fields:
+      action: file-download
+      category: ftp
+
+  - name: vsftpd-delete
+    parent: vsftpd
+    prematch: "OK DELETE"
+    regex: "OK DELETE: Client \"(?P<src_ip>[^\"]+)\", \"(?P<file_path>[^\"]+)\""
+    static_fields:
+      action: file-delete
+      category: ftp
+
+  # ── pure-ftpd ─────────────────────────────────────────────────────────────────
+
+  - name: pure-ftpd
+    program: "^pure-ftpd$"
+    description: "Root pure-ftpd decoder"
+
+  - name: pure-ftpd-login-ok
+    parent: pure-ftpd
+    prematch: "Authenticated"
+    regex: "(?P<user>\\S+) is now logged in"
+    static_fields:
+      action: login-success
+      category: authentication
+
+  - name: pure-ftpd-login-failed
+    parent: pure-ftpd
+    prematch: "Authentication failed"
+    regex: "Authentication failed for user \\[(?P<user>[^\\]]+)\\] from (?P<src_ip>\\S+)"
+    static_fields:
+      action: login-failed
+      category: authentication
+
+  - name: pure-ftpd-upload
+    parent: pure-ftpd
+    prematch: "Uploaded"
+    regex: "(?P<src_ip>\\S+) Uploaded (?P<bytes>\\d+) bytes to \"(?P<file_path>[^\"]+)\""
+    static_fields:
+      action: file-upload
+      category: ftp
+
+  - name: pure-ftpd-download
+    parent: pure-ftpd
+    prematch: "Downloaded"
+    regex: "(?P<src_ip>\\S+) Downloaded (?P<bytes>\\d+) bytes from \"(?P<file_path>[^\"]+)\""
+    static_fields:
+      action: file-download
+      category: ftp

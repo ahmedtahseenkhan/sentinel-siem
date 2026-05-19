@@ -1,0 +1,77 @@
+group: sudo
+description: "sudo and su privilege escalation events"
+
+decoders:
+  - name: sudo
+    program: "^sudo$"
+    description: "Root sudo decoder"
+
+  - name: sudo-command
+    parent: sudo
+    prematch: "TTY="
+    regex: "(?P<user>\\S+)\\s*:.*?TTY=(?P<tty>\\S+).*?PWD=(?P<cwd>\\S+).*?USER=(?P<runas_user>\\S+).*?COMMAND=(?P<command>.+)"
+    static_fields:
+      action: sudo-command
+      category: privilege-escalation
+
+  - name: sudo-failed
+    parent: sudo
+    prematch: "incorrect password"
+    regex: "(?P<user>\\S+)\\s*:.*?(?P<attempts>\\d+) incorrect password attempt"
+    static_fields:
+      action: sudo-failed
+      category: privilege-escalation
+
+  - name: sudo-session-opened
+    parent: sudo
+    prematch: "session opened"
+    regex: "pam_unix\\(sudo[^)]*\\):session opened for user (?P<user>\\S+) by (?P<src_user>[^(]+)"
+    static_fields:
+      action: session-opened
+      category: privilege-escalation
+
+  - name: sudo-session-closed
+    parent: sudo
+    prematch: "session closed"
+    regex: "pam_unix\\(sudo[^)]*\\):session closed for user (?P<user>\\S+)"
+    static_fields:
+      action: session-closed
+      category: privilege-escalation
+
+  # ── su ──────────────────────────────────────────────────────────────────────
+
+  - name: su
+    program: "^su(-l)?$"
+    description: "Root su decoder"
+
+  - name: su-success
+    parent: su
+    prematch: "Successful su"
+    regex: "Successful su for (?P<user>\\S+) by (?P<src_user>\\S+)"
+    static_fields:
+      action: su-success
+      category: privilege-escalation
+
+  - name: su-failed
+    parent: su
+    prematch: "FAILED su"
+    regex: "FAILED su for (?P<user>\\S+) by (?P<src_user>\\S+)"
+    static_fields:
+      action: su-failed
+      category: privilege-escalation
+
+  - name: su-session-opened
+    parent: su
+    prematch: "session opened"
+    regex: "pam_unix\\(su[^)]*\\):session opened for user (?P<user>\\S+)"
+    static_fields:
+      action: session-opened
+      category: privilege-escalation
+
+  - name: su-session-closed
+    parent: su
+    prematch: "session closed"
+    regex: "pam_unix\\(su[^)]*\\):session closed for user (?P<user>\\S+)"
+    static_fields:
+      action: session-closed
+      category: privilege-escalation

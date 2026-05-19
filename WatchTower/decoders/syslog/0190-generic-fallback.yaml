@@ -1,0 +1,129 @@
+group: generic-fallback
+description: "Generic fallback decoders — catch-all patterns for unrecognized applications"
+
+decoders:
+  # ── Generic root — matches any app_name not matched by specific decoders ───────
+  # These are intentionally broad. Place them last (highest file number) so more
+  # specific decoders in lower-numbered files take precedence.
+
+  - name: generic
+    program: "^.*$"
+    description: "Generic catch-all root decoder for unrecognized syslog sources"
+
+  # Generic: user=X from=IP pattern (common in many daemons)
+  - name: generic-user-from-ip
+    parent: generic
+    prematch: "user="
+    regex: "user=(?P<user>\\S+).*?from=(?P<src_ip>[\\d.a-fA-F:]+)"
+    static_fields:
+      action: generic-user-from-ip
+      category: authentication
+
+  # Generic: user X from IP (no equals, space delimited)
+  - name: generic-user-space-ip
+    parent: generic
+    prematch: "for user"
+    regex: "for user[: ]+(?P<user>\\S+)[^\\d]+(from |at )(?P<src_ip>[\\d.a-fA-F:]+)"
+    static_fields:
+      action: generic-user-from-ip
+      category: authentication
+
+  # Generic: failed for user X
+  - name: generic-failed-for-user
+    parent: generic
+    prematch: "failed for"
+    regex: "(?P<reason>\\S+) failed for (?:(?:user|account) )?'?(?P<user>[^'\\s]+)'?(?:.*?from (?P<src_ip>[\\d.a-fA-F:]+))?"
+    static_fields:
+      action: generic-auth-failed
+      category: authentication
+
+  # Generic: authentication failure
+  - name: generic-auth-failure
+    parent: generic
+    prematch: "authentication failure"
+    regex: "authentication failure.*?(?:logname=(?P<logname>\\S*))?.*?(?:uid=(?P<uid>\\d+))?.*?(?:user=(?P<user>\\S+))?.*?(?:rhost=(?P<src_ip>\\S+))?"
+    static_fields:
+      action: generic-auth-failed
+      category: authentication
+
+  # Generic: HTTP access log pattern (CLF/ELF)
+  # 1.2.3.4 - user [01/Jan/2024:00:00:00 +0000] "GET /path HTTP/1.1" 200 1234
+  - name: generic-http-access
+    parent: generic
+    prematch: "HTTP/"
+    regex: "(?P<src_ip>[\\d.a-fA-F:]+) \\S+ (?P<user>\\S+) \\[[^\\]]+\\] \"(?P<http_method>\\S+) (?P<url>\\S+) HTTP/(?P<http_version>[^\"]+)\" (?P<http_status>\\d+) (?P<bytes>\\d+)"
+    static_fields:
+      action: http-access
+      category: web
+
+  # Generic: error: message pattern
+  - name: generic-error
+    parent: generic
+    prematch: "error:"
+    regex: "(?:(?P<process>\\S+)\\[(?P<pid>\\d+)\\]: )?(?:error|ERROR): (?P<error_msg>.+)"
+    static_fields:
+      action: generic-error
+      category: system
+
+  # Generic: warning: message pattern
+  - name: generic-warning
+    parent: generic
+    prematch: "warning:"
+    regex: "(?:(?P<process>\\S+)\\[(?P<pid>\\d+)\\]: )?(?:warning|WARNING): (?P<warn_msg>.+)"
+    static_fields:
+      action: generic-warning
+      category: system
+
+  # Generic: connection from IP
+  - name: generic-connection-from
+    parent: generic
+    prematch: "connection from"
+    regex: "[Cc]onnection from (?P<src_ip>[\\d.a-fA-F:]+)(?::(?P<src_port>\\d+))?"
+    static_fields:
+      action: generic-connection
+      category: network
+
+  # Generic: accepted connection
+  - name: generic-accepted-connection
+    parent: generic
+    prematch: "accepted"
+    regex: "[Aa]ccepted (?:connection )?from (?P<src_ip>[\\d.a-fA-F:]+)(?::(?P<src_port>\\d+))?"
+    static_fields:
+      action: generic-connection-accepted
+      category: network
+
+  # Generic: refused connection
+  - name: generic-refused-connection
+    parent: generic
+    prematch: "refused"
+    regex: "[Rr]efused (?:connection )?from (?P<src_ip>[\\d.a-fA-F:]+)(?::(?P<src_port>\\d+))?"
+    static_fields:
+      action: generic-connection-refused
+      category: network
+
+  # Generic: cmd= or command= pattern (catch privilege escalation attempts)
+  - name: generic-command-exec
+    parent: generic
+    prematch: "cmd="
+    regex: "(?P<user>\\S+).*?cmd=(?P<command>.+)"
+    static_fields:
+      action: generic-command
+      category: process
+
+  # Generic: src=IP dst=IP (firewall-like)
+  - name: generic-src-dst
+    parent: generic
+    prematch: "src="
+    regex: "src=(?P<src_ip>[\\d.a-fA-F:]+).*?dst=(?P<dst_ip>[\\d.a-fA-F:]+)(?:.*?sport=(?P<src_port>\\d+))?(?:.*?dport=(?P<dst_port>\\d+))?"
+    static_fields:
+      action: generic-network-event
+      category: network
+
+  # Generic: OUT OF MEMORY / OOM fallback
+  - name: generic-oom
+    parent: generic
+    prematch: "Out of memory"
+    regex: "Out of memory: Kill process (?P<pid>\\d+) \\((?P<process>[^)]+)\\) score (?P<oom_score>\\d+)"
+    static_fields:
+      action: oom-kill
+      category: system

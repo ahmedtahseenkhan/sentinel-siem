@@ -1,0 +1,133 @@
+group: mail
+description: "Mail server log decoders — sendmail, exim, dovecot"
+
+decoders:
+  # ── sendmail ──────────────────────────────────────────────────────────────────
+
+  - name: sendmail
+    program: "^sendmail$"
+    description: "Root sendmail decoder"
+
+  - name: sendmail-delivery-ok
+    parent: sendmail
+    prematch: "stat=Sent"
+    regex: "(?P<queue_id>[A-Za-z0-9]+): to=<(?P<mail_to>[^>]+)>, .*?relay=(?P<relay>[^,]+).*?stat=Sent \\((?P<smtp_msg>[^)]+)\\)"
+    static_fields:
+      action: mail-delivery-ok
+      category: email
+
+  - name: sendmail-delivery-failed
+    parent: sendmail
+    prematch: "stat=Service"
+    regex: "(?P<queue_id>[A-Za-z0-9]+): to=<(?P<mail_to>[^>]+)>, .*?stat=(?P<mail_status>Service unavailable|Deferred|User unknown.*)"
+    static_fields:
+      action: mail-delivery-failed
+      category: email
+
+  - name: sendmail-bounce
+    parent: sendmail
+    prematch: "MAILER-DAEMON"
+    regex: "(?P<queue_id>[A-Za-z0-9]+): .*?from=<>, to=<(?P<mail_to>[^>]+)>, .*?stat=(?P<mail_status>.+)"
+    static_fields:
+      action: mail-bounce
+      category: email
+
+  - name: sendmail-auth-failure
+    parent: sendmail
+    prematch: "AUTH failure"
+    regex: "(?P<src_ip>[^:]+).*?AUTH failure \\((?P<auth_mechanism>[^)]+)\\): (?P<reason>.+)"
+    static_fields:
+      action: mail-auth-failed
+      category: authentication
+
+  - name: sendmail-reject
+    parent: sendmail
+    prematch: "ruleset=check_rcpt"
+    regex: "ruleset=check_rcpt.*?arg1=<(?P<mail_to>[^>]+)>.*?reject=(?P<reject_code>\\d+) (?P<reject_msg>.+)"
+    static_fields:
+      action: mail-rejected
+      category: email
+
+  # ── Exim ──────────────────────────────────────────────────────────────────────
+
+  - name: exim
+    program: "^exim$"
+    description: "Root Exim MTA decoder"
+
+  - name: exim-delivery-ok
+    parent: exim
+    prematch: "=> "
+    regex: "(?P<queue_id>\\S+) => (?P<mail_to>\\S+) .* R=(?P<router>\\S+) T=(?P<transport>\\S+)"
+    static_fields:
+      action: mail-delivery-ok
+      category: email
+
+  - name: exim-delivery-failed
+    parent: exim
+    prematch: "** "
+    regex: "(?P<queue_id>\\S+) \\*\\* (?P<mail_to>\\S+).*?: (?P<error_msg>.+)"
+    static_fields:
+      action: mail-delivery-failed
+      category: email
+
+  - name: exim-connect
+    parent: exim
+    prematch: "<= "
+    regex: "(?P<queue_id>\\S+) <= (?P<mail_from>\\S+) H=(?P<src_hostname>\\S+) \\[(?P<src_ip>[^\\]]+)\\]"
+    static_fields:
+      action: mail-received
+      category: email
+
+  - name: exim-auth-failed
+    parent: exim
+    prematch: "authenticator failed"
+    regex: "authenticator failed for (?P<src_hostname>\\S+) \\[(?P<src_ip>[^\\]]+)\\].*?535"
+    static_fields:
+      action: mail-auth-failed
+      category: authentication
+
+  - name: exim-spam-detected
+    parent: exim
+    prematch: "identified as spam"
+    regex: "(?P<queue_id>\\S+).*?identified as spam.*?score=(?P<spam_score>[\\d.]+)"
+    static_fields:
+      action: spam-detected
+      category: email
+
+  # ── Dovecot ───────────────────────────────────────────────────────────────────
+
+  - name: dovecot
+    program: "^dovecot$"
+    description: "Root Dovecot IMAP/POP3 server decoder"
+
+  - name: dovecot-login-ok
+    parent: dovecot
+    prematch: "Login:"
+    regex: "(?:imap|pop3)-login: Login: user=<(?P<user>[^>]+)>, method=(?P<auth_method>\\S+), rip=(?P<src_ip>[^,]+), lip=(?P<dst_ip>[^,]+)"
+    static_fields:
+      action: login-success
+      category: authentication
+
+  - name: dovecot-login-failed
+    parent: dovecot
+    prematch: "Aborted login"
+    regex: "(?:imap|pop3)-login: Aborted login: user=<(?P<user>[^>]*)>, rip=(?P<src_ip>[^,]+).*?(?P<reason>no auth attempts|auth failed)"
+    static_fields:
+      action: login-failed
+      category: authentication
+
+  - name: dovecot-auth-failed
+    parent: dovecot
+    prematch: "auth failed"
+    regex: "(?:imap|pop3)-login: (?P<reason>Disconnected.*?auth failed.*?): user=<(?P<user>[^>]*)>, rip=(?P<src_ip>[^,]+)"
+    static_fields:
+      action: login-failed
+      category: authentication
+
+  - name: dovecot-sasl-auth
+    parent: dovecot
+    prematch: "dovecot: auth:"
+    regex: "auth: passdb\\((?P<user>[^,]+),(?P<src_ip>[^)]+)\\): (?P<sasl_result>Password mismatch|unknown user)"
+    static_fields:
+      action: sasl-auth-failed
+      category: authentication

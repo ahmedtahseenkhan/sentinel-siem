@@ -66,6 +66,114 @@ func (n *Notifier) OnAlert(alert *models.Alert, event *models.Event) {
 	go n.dispatch(alert)
 }
 
+// NotifyAgentDisconnect fires an asynchronous notification to all enabled
+// destinations when an agent transitions from active/streaming to disconnected.
+// It bypasses the min_level filter so the message always reaches destinations
+// (agent health is separate from alert severity).
+func (n *Notifier) NotifyAgentDisconnect(agent *models.Agent) {
+	if !n.cfg.Enabled || agent == nil {
+		return
+	}
+	go n.dispatchDisconnect(agent)
+}
+
+func (n *Notifier) dispatchDisconnect(agent *models.Agent) {
+	lastSeen := time.UnixMilli(agent.LastHeartbeat)
+	ago := time.Since(lastSeen).Round(time.Second)
+	title := fmt.Sprintf("Agent disconnected: %s", agent.Hostname)
+	body := fmt.Sprintf(
+		"Agent ID: %s\nHostname: %s\nLast heartbeat: %s (%s ago)",
+		agent.ID, agent.Hostname,
+		lastSeen.UTC().Format(time.RFC3339), ago,
+	)
+
+	for _, dest := range n.cfg.Destinations {
+		if !dest.Enabled {
+			continue
+		}
+		if !n.allowSend(dest.Type + ":" + dest.URL) {
+			n.logger.Warn("notifier rate-limited (disconnect)",
+				zap.String("dest_type", dest.Type),
+				zap.String("agent_id", agent.ID),
+			)
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		var err error
+		switch dest.Type {
+		case "slack":
+			err = n.sendSlackText(ctx, dest, title, body, "#6c757d")
+		case "teams":
+			err = n.sendTeamsText(ctx, dest, title, body, "6c757d")
+		case "webhook":
+			payload := map[string]interface{}{
+				"event":          "agent_disconnected",
+				"agent_id":       agent.ID,
+				"hostname":       agent.Hostname,
+				"last_heartbeat": agent.LastHeartbeat,
+				"ago_seconds":    int(ago.Seconds()),
+			}
+			err = n.postJSON(ctx, dest.URL, payload)
+		case "email":
+			err = n.sendEmailText(dest, title, body)
+		default:
+			err = fmt.Errorf("unknown destination type: %s", dest.Type)
+		}
+		cancel()
+		if err != nil {
+			n.logger.Warn("notifier dispatch failed (disconnect)",
+				zap.String("dest_type", dest.Type),
+				zap.String("agent_id", agent.ID),
+				zap.Error(err),
+			)
+		}
+	}
+}
+
+func (n *Notifier) sendSlackText(ctx context.Context, dest Destination, title, body, color string) error {
+	payload := map[string]interface{}{
+		"text": title,
+		"attachments": []map[string]interface{}{
+			{
+				"color":  color,
+				"title":  title,
+				"text":   body,
+				"footer": "Sentinel SIEM",
+			},
+		},
+	}
+	return n.postJSON(ctx, dest.URL, payload)
+}
+
+func (n *Notifier) sendTeamsText(ctx context.Context, dest Destination, title, body, color string) error {
+	payload := map[string]interface{}{
+		"@type":      "MessageCard",
+		"@context":   "https://schema.org/extensions",
+		"themeColor": color,
+		"summary":    title,
+		"title":      title,
+		"text":       body,
+	}
+	return n.postJSON(ctx, dest.URL, payload)
+}
+
+func (n *Notifier) sendEmailText(dest Destination, subject, body string) error {
+	if dest.SMTPHost == "" || dest.From == "" || len(dest.To) == 0 {
+		return fmt.Errorf("email destination missing required fields")
+	}
+	if dest.SMTPPort == 0 {
+		dest.SMTPPort = 587
+	}
+	addr := fmt.Sprintf("%s:%d", dest.SMTPHost, dest.SMTPPort)
+	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: [Sentinel SIEM] %s\r\n\r\n%s",
+		dest.From, strings.Join(dest.To, ", "), subject, body)
+	var auth smtp.Auth
+	if dest.SMTPUser != "" {
+		auth = smtp.PlainAuth("", dest.SMTPUser, dest.SMTPPass, dest.SMTPHost)
+	}
+	return smtp.SendMail(addr, auth, dest.From, dest.To, []byte(msg))
+}
+
 func (n *Notifier) dispatch(alert *models.Alert) {
 	for _, dest := range n.cfg.Destinations {
 		if !dest.Enabled || alert.Level < dest.MinLevel {

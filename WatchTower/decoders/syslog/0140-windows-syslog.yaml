@@ -1,0 +1,110 @@
+group: windows-syslog
+description: "Windows Security Events forwarded via syslog (NXLog/WinRM format)"
+
+decoders:
+  # ── Windows Event root ────────────────────────────────────────────────────────
+  # NXLog typically sets app_name to MSWinEventLog, WinEvtLog, or the channel name.
+
+  - name: windows-evtlog
+    program: "^(MSWinEventLog|WinEvtLog|Microsoft-Windows-Security-Auditing|Security)$"
+    description: "Root Windows event log via syslog decoder"
+
+  # EventID 4624 — Successful logon
+  - name: windows-4624-logon
+    parent: windows-evtlog
+    prematch: "EventID: 4624"
+    regex: "EventID: 4624.*?Account Name:\\s*(?P<user>[^\\s\\n]+).*?Account Domain:\\s*(?P<domain>[^\\s\\n]+).*?Logon Type:\\s*(?P<logon_type>\\d+).*?Source Network Address:\\s*(?P<src_ip>[^\\s\\n]+)"
+    static_fields:
+      action: login-success
+      category: authentication
+      event_id: "4624"
+
+  # EventID 4625 — Failed logon
+  - name: windows-4625-logon-failed
+    parent: windows-evtlog
+    prematch: "EventID: 4625"
+    regex: "EventID: 4625.*?Account Name:\\s*(?P<user>[^\\s\\n]+).*?Account Domain:\\s*(?P<domain>[^\\s\\n]+).*?Failure Reason:\\s*(?P<reason>[^\\n]+?)\\s*(?:Sub Status|Source Network Address).*?Source Network Address:\\s*(?P<src_ip>[^\\s\\n]+)"
+    static_fields:
+      action: login-failed
+      category: authentication
+      event_id: "4625"
+
+  # EventID 4688 — Process creation
+  - name: windows-4688-process
+    parent: windows-evtlog
+    prematch: "EventID: 4688"
+    regex: "EventID: 4688.*?Subject.*?Account Name:\\s*(?P<user>[^\\s\\n]+).*?New Process Name:\\s*(?P<process_path>[^\\n]+?)\\s*(?:Process Command Line|Token Elevation).*?Process Command Line:\\s*(?P<cmdline>[^\\n]+)"
+    static_fields:
+      action: process-created
+      category: process
+      event_id: "4688"
+
+  # EventID 4698 — Scheduled task created
+  - name: windows-4698-task-created
+    parent: windows-evtlog
+    prematch: "EventID: 4698"
+    regex: "EventID: 4698.*?Account Name:\\s*(?P<user>[^\\s\\n]+).*?Task Name:\\s*(?P<task_name>[^\\n]+)"
+    static_fields:
+      action: scheduled-task-created
+      category: persistence
+      event_id: "4698"
+
+  # EventID 4720 — User account created
+  - name: windows-4720-account-created
+    parent: windows-evtlog
+    prematch: "EventID: 4720"
+    regex: "EventID: 4720.*?New Account.*?Account Name:\\s*(?P<target_user>[^\\s\\n]+).*?Account Domain:\\s*(?P<domain>[^\\s\\n]+).*?Subject.*?Account Name:\\s*(?P<user>[^\\s\\n]+)"
+    static_fields:
+      action: user-account-created
+      category: account-management
+      event_id: "4720"
+
+  # EventID 4740 — Account lockout
+  - name: windows-4740-account-lockout
+    parent: windows-evtlog
+    prematch: "EventID: 4740"
+    regex: "EventID: 4740.*?Account Name:\\s*(?P<target_user>[^\\s\\n]+).*?Caller Computer Name:\\s*(?P<src_host>[^\\s\\n]+)"
+    static_fields:
+      action: account-locked
+      category: authentication
+      event_id: "4740"
+
+  # EventID 4776 — NTLM auth attempt
+  - name: windows-4776-ntlm
+    parent: windows-evtlog
+    prematch: "EventID: 4776"
+    regex: "EventID: 4776.*?Account Name:\\s*(?P<user>[^\\s\\n]+).*?Workstation:\\s*(?P<src_host>[^\\s\\n]+).*?Error Code:\\s*(?P<error_code>0x[0-9A-Fa-f]+)"
+    static_fields:
+      action: ntlm-auth
+      category: authentication
+      event_id: "4776"
+
+  # EventID 4732 — User added to local group
+  - name: windows-4732-group-member-added
+    parent: windows-evtlog
+    prematch: "EventID: 4732"
+    regex: "EventID: 4732.*?Member.*?Account Name:\\s*(?P<target_user>[^\\s\\n]+).*?Group Name:\\s*(?P<group_name>[^\\s\\n]+).*?Subject.*?Account Name:\\s*(?P<user>[^\\s\\n]+)"
+    static_fields:
+      action: group-member-added
+      category: account-management
+      event_id: "4732"
+
+  # EventID 7045 — New service installed
+  - name: windows-7045-service-installed
+    parent: windows-evtlog
+    prematch: "EventID: 7045"
+    regex: "EventID: 7045.*?Service Name:\\s*(?P<service_name>[^\\n]+?)\\s*Service File Name:\\s*(?P<service_path>[^\\n]+)"
+    static_fields:
+      action: service-installed
+      category: persistence
+      event_id: "7045"
+
+  # EventID 4648 — Explicit credential logon
+  - name: windows-4648-explicit-creds
+    parent: windows-evtlog
+    prematch: "EventID: 4648"
+    regex: "EventID: 4648.*?Account Name:\\s*(?P<user>[^\\s\\n]+).*?Target Server Name:\\s*(?P<target_host>[^\\s\\n]+).*?Target Account Name:\\s*(?P<target_user>[^\\s\\n]+).*?Network Address:\\s*(?P<src_ip>[^\\s\\n]+)"
+    static_fields:
+      action: explicit-credential-logon
+      category: authentication
+      event_id: "4648"

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/watchtower/watchtower/internal/engine/decoder"
 	"github.com/watchtower/watchtower/internal/models"
 	"go.uber.org/zap"
 )
@@ -29,6 +30,7 @@ type Server struct {
 	addr    string
 	maxSize int
 	sink    EventSink
+	decoder *decoder.SyslogEngine
 	logger  *zap.Logger
 	stopCh  chan struct{}
 }
@@ -44,6 +46,11 @@ func New(addr string, maxSize int, sink EventSink, logger *zap.Logger) *Server {
 		logger:  logger,
 		stopCh:  make(chan struct{}),
 	}
+}
+
+// SetDecoder attaches the syslog decoder engine to the server.
+func (s *Server) SetDecoder(e *decoder.SyslogEngine) {
+	s.decoder = e
 }
 
 // Start launches UDP and TCP listeners in background goroutines.
@@ -133,7 +140,7 @@ func (s *Server) handle(raw, srcIP string) {
 	if strings.TrimSpace(raw) == "" {
 		return
 	}
-	event := parse(raw, srcIP)
+	event := s.parse(raw, srcIP)
 	s.sink.Ingest(event)
 }
 
@@ -145,7 +152,7 @@ var rfc3164RE = regexp.MustCompile(`^<(\d+)>(\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2})\s+
 // RFC 5424: <PRI>VERSION TIMESTAMP HOSTNAME APP-NAME PROCID MSGID SD MSG
 var rfc5424RE = regexp.MustCompile(`^<(\d+)>(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s*(.*)$`)
 
-func parse(raw, srcIP string) *models.Event {
+func (s *Server) parse(raw, srcIP string) *models.Event {
 	ts := time.Now().UnixMilli()
 	fields := map[string]interface{}{
 		"raw_message": raw,
@@ -190,6 +197,11 @@ func parse(raw, srcIP string) *models.Event {
 	fields["message"]  = message
 	fields["facility"] = facility
 	fields["severity"] = severity
+
+	// Decode message body using the YAML-driven syslog decoder engine.
+	if s.decoder != nil {
+		s.decoder.Decode(appName, message, fields)
+	}
 
 	return &models.Event{
 		ID:        uuid.New().String(),

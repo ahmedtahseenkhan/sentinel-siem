@@ -1,0 +1,121 @@
+group: asterisk
+description: "Asterisk VoIP PBX log decoders — SIP REGISTER, INVITE, auth, calls"
+
+decoders:
+  # ── Asterisk root ─────────────────────────────────────────────────────────────
+  # Asterisk logs to syslog with app_name "asterisk" or logs via its own file
+  # and is forwarded. Log format: [LEVEL][YYYY-MM-DD HH:MM:SS] channel: message
+
+  - name: asterisk
+    program: "^asterisk$"
+    description: "Root Asterisk PBX decoder"
+
+  # SIP REGISTER events
+  - name: asterisk-sip-register-ok
+    parent: asterisk
+    prematch: "Registered SIP"
+    regex: "Registered SIP '(?P<sip_user>[^']+)' at (?P<src_ip>[^:]+):(?P<src_port>\\d+)"
+    static_fields:
+      action: sip-register-ok
+      category: voip
+
+  - name: asterisk-sip-register-failed
+    parent: asterisk
+    prematch: "Registration from"
+    regex: "Registration from '(?P<sip_user>[^']+)' failed for '(?P<src_ip>[^:]+):(?P<src_port>\\d+)' - (?P<reason>.+)"
+    static_fields:
+      action: sip-register-failed
+      category: authentication
+
+  - name: asterisk-sip-unregister
+    parent: asterisk
+    prematch: "Unregistered SIP"
+    regex: "Unregistered SIP '(?P<sip_user>[^']+)'"
+    static_fields:
+      action: sip-unregister
+      category: voip
+
+  # SIP INVITE / call events
+  - name: asterisk-sip-invite
+    parent: asterisk
+    prematch: "SIP/2.0 INVITE"
+    regex: "(?P<channel>SIP/[^-]+-[0-9a-f]+) (?P<src_ip>[^:]+):(?P<src_port>\\d+).*?INVITE sip:(?P<dst_number>[^@]+)@"
+    static_fields:
+      action: sip-invite
+      category: voip
+
+  - name: asterisk-call-connected
+    parent: asterisk
+    prematch: "Accepting call"
+    regex: "Accepting call from '(?P<src_ip>[^']+)' to '(?P<dst_number>[^']+)' on channel '(?P<channel>[^']+)'"
+    static_fields:
+      action: call-connected
+      category: voip
+
+  - name: asterisk-call-hangup
+    parent: asterisk
+    prematch: "Hanging up"
+    regex: "Hanging up call (?P<channel>\\S+) - (?P<reason>.+)"
+    static_fields:
+      action: call-hangup
+      category: voip
+
+  - name: asterisk-call-duration
+    parent: asterisk
+    prematch: "CDR"
+    regex: "CDR.*?src=(?P<src_number>[^,]+),dst=(?P<dst_number>[^,]+),.*?duration=(?P<duration>\\d+),.*?disposition=(?P<disposition>[A-Z ]+)"
+    static_fields:
+      action: call-detail-record
+      category: voip
+
+  # Authentication failures
+  - name: asterisk-auth-failed
+    parent: asterisk
+    prematch: "Failed to authenticate"
+    regex: "Failed to authenticate (?:user|peer) '(?P<sip_user>[^']+)'(?:.*?from (?P<src_ip>\\S+))?"
+    static_fields:
+      action: sip-auth-failed
+      category: authentication
+
+  - name: asterisk-invalid-password
+    parent: asterisk
+    prematch: "Wrong password"
+    regex: "Wrong password in authentication for (?P<sip_user>\\S+) from (?P<src_ip>\\S+)"
+    static_fields:
+      action: sip-wrong-password
+      category: authentication
+
+  - name: asterisk-security-event
+    parent: asterisk
+    prematch: "SecurityEvent="
+    regex: "SecurityEvent=(?P<security_event>\\S+).*?Service=(?P<service>\\S+).*?AccountID=(?P<sip_user>[^,]+).*?RemoteAddress=[^/]+/[^/]+/(?P<src_ip>[^/]+)/(?P<src_port>\\d+)"
+    static_fields:
+      action: security-event
+      category: authentication
+
+  # Conference / meetme
+  - name: asterisk-meetme-join
+    parent: asterisk
+    prematch: "MeetMe"
+    regex: "MeetMe (?P<conference>\\S+): participant (?P<channel>\\S+) (?:joined|left)"
+    static_fields:
+      action: conference-event
+      category: voip
+
+  # Queue events
+  - name: asterisk-queue-abandon
+    parent: asterisk
+    prematch: "abandon"
+    regex: "(?P<queue>\\S+) (?P<channel>\\S+) abandon.*?position (?P<position>\\d+).*?after (?P<wait_time>\\d+) seconds"
+    static_fields:
+      action: queue-abandon
+      category: voip
+
+  # AMI / AGI errors
+  - name: asterisk-agi-error
+    parent: asterisk
+    prematch: "AGI error"
+    regex: "AGI error on channel (?P<channel>\\S+): (?P<error_msg>.+)"
+    static_fields:
+      action: agi-error
+      category: voip

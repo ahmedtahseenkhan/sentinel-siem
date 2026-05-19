@@ -113,6 +113,9 @@
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
             SOAR Playbooks
           </a>
+          <a href="#" class="sb2-item nav-item" data-page="decoders">
+            <i class="sb2-icon">&#9881;</i> Decoders
+          </a>
           <a href="#" class="sb2-item nav-item" data-page="ticketing">
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V8z"/></svg>
             Ticketing
@@ -1125,9 +1128,9 @@
           <!-- KQL search toolbar -->
           <div class="toolbar">
             <select id="discoverIndex" class="fld" style="min-width:160px;font-family:var(--font-mono);font-size:11px">
-              <option value="watchvault-events-*">watchvault-events-*</option>
-              <option value="watchvault-alerts-*">watchvault-alerts-*</option>
-              <option value="watchvault-system-*">watchvault-system-*</option>
+              <option value="watchvault-alerts-*" selected>watchvault-alerts-* (security)</option>
+              <option value="watchvault-events-*">watchvault-events-* (raw telemetry)</option>
+              <option value="watchvault-system-*">watchvault-system-* (metrics)</option>
               <option value="watchvault-*">watchvault-* (all)</option>
             </select>
             <div class="fld-wrap" style="flex:1;min-width:240px">
@@ -1355,79 +1358,150 @@
         </section>
 
         <section id="page-decoders" class="page page-v2">
+          <!-- Header -->
           <div class="ag2-header">
             <div class="ag2-header-left">
-              <h2 class="ag2-title">Decoders <span class="ag2-fleet-badge">Parsing</span></h2>
-              <p class="ag2-subtitle">Manage decoder files for log parsing and field extraction</p>
+              <h2 class="ag2-title">Decoders <span class="ag2-fleet-badge">Syslog Parsing</span></h2>
+              <p class="ag2-subtitle">Manage syslog decoder rules for log parsing and field extraction</p>
             </div>
             <div class="ag2-header-right">
-              <span class="ag2-updated"><span id="decodersTotal">0</span> decoders</span>
-              <button type="button" id="decodersAddFile" class="act-btn primary">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
-                Add decoders file
+              <button type="button" id="sdReloadBtn" class="act-btn">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg>
+                Reload
               </button>
-              <button type="button" id="decodersRefresh" class="act-btn">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5"/></svg>
-                Refresh
+              <button type="button" id="sdAddBtn" class="act-btn primary">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
+                Add Custom Decoder
               </button>
             </div>
           </div>
-          <div class="card">
+
+          <!-- Stats bar -->
+          <div class="ov2-kpi-row" style="margin-bottom:14px">
+            <div class="ov2-kpi-card">
+              <div class="ov2-kpi-val" id="sdStatTotal">0</div>
+              <div class="ov2-kpi-label">Total Decoders</div>
+            </div>
+            <div class="ov2-kpi-card">
+              <div class="ov2-kpi-val" id="sdStatBuiltin" style="color:var(--accent)">0</div>
+              <div class="ov2-kpi-label">Built-in</div>
+            </div>
+            <div class="ov2-kpi-card">
+              <div class="ov2-kpi-val" id="sdStatCustom" style="color:var(--ok)">0</div>
+              <div class="ov2-kpi-label">Custom</div>
+            </div>
+            <div class="ov2-kpi-card">
+              <div class="ov2-kpi-val" id="sdStatGroups">0</div>
+              <div class="ov2-kpi-label">Groups</div>
+            </div>
+          </div>
+
+          <!-- Table card -->
+          <div class="card" style="margin-bottom:14px">
             <div class="card-h">
-              <h3 class="card-h-title"><span class="dot" style="background:var(--low)"></span>DECODERS LIBRARY</h3>
-              <div class="fld-wrap" style="width:240px">
-                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-                <input type="search" id="decodersSearch" class="fld search" placeholder="Search decoders…">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--low)"></span>DECODER LIBRARY</h3>
+              <div style="display:flex;gap:8px;align-items:center">
+                <div class="fld-wrap" style="width:220px">
+                  <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                  <input type="search" id="sdSearch" class="fld search" placeholder="Search decoders…">
+                </div>
+                <select id="sdFilterType" class="fld" style="height:28px;font-size:11px;width:120px">
+                  <option value="">All types</option>
+                  <option value="builtin">Built-in</option>
+                  <option value="custom">Custom</option>
+                </select>
               </div>
             </div>
             <div class="tbl">
-              <div class="tbl-h" style="grid-template-columns:1fr 140px 80px 140px 1fr 44px">
-                <span>Name</span><span>Program Name</span><span>Order</span><span>File</span><span>Path</span><span></span>
+              <div class="tbl-h" style="grid-template-columns:1fr 110px 120px 160px 90px 100px">
+                <span>Name</span><span>Group</span><span>Parent</span><span>Program</span><span>Type</span><span>Actions</span>
               </div>
-              <div id="decodersBody"></div>
-            </div>
-            <div class="tbl-foot">
-              <span id="decodersTableInfo">Showing 0 of 0</span>
-              <div class="right">
-                <button type="button" id="decodersPrev" class="act-btn" style="height:24px;padding:0 8px;font-size:11px" disabled>← Prev</button>
-                <span id="decodersPageInfo" style="font-size:11px;color:var(--fg-3);padding:0 6px">Page 1</span>
-                <button type="button" id="decodersNext" class="act-btn" style="height:24px;padding:0 8px;font-size:11px">Next →</button>
-              </div>
+              <div id="sdTableBody"></div>
             </div>
           </div>
-          <div id="decodersModal" class="modal-overlay hidden">
-            <div class="modal rules-modal">
-              <div class="modal-header">
-                <h3>Add new decoders file</h3>
-                <button type="button" id="decodersModalClose" class="modal-close" aria-label="Close">×</button>
+
+          <!-- Test Decoder panel -->
+          <div class="card">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--med)"></span>TEST DECODER</h3>
+            </div>
+            <div style="padding:14px;display:grid;grid-template-columns:180px 1fr auto;gap:10px;align-items:start">
+              <div>
+                <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">App Name</label>
+                <input type="text" id="sdTestAppName" class="fld" placeholder="e.g. sshd" style="width:100%;box-sizing:border-box">
               </div>
-              <div class="modal-body">
-                <label for="decodersModalFilename">Filename (e.g. local_decoders.xml)</label>
-                <input type="text" id="decodersModalFilename" class="global-search" placeholder="local_decoders.xml">
-                <label for="decodersModalContent">XML content</label>
-                <textarea id="decodersModalContent" class="rules-xml-textarea" placeholder="<decoder name=\"my-decoder\">&#10;  <program_name>myprogram</program_name>&#10;  <prematch>^my:</prematch>&#10;  ...&#10;</decoder>" rows="12"></textarea>
-                <p class="rules-modal-hint">Custom decoder files are stored under etc/decoders/. Use a unique filename (e.g. local_decoders.xml).</p>
+              <div>
+                <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Message</label>
+                <textarea id="sdTestMessage" class="fld" rows="1" placeholder="Accepted publickey for root from 10.0.0.1 port 22 ssh2" style="width:100%;box-sizing:border-box;resize:vertical;min-height:32px"></textarea>
               </div>
-              <div class="modal-footer">
-                <button type="button" id="decodersModalCancel" class="global-btn">Cancel</button>
-                <button type="button" id="decodersModalSave" class="btn-primary">Save decoders file</button>
+              <div style="padding-top:18px">
+                <button type="button" id="sdTestBtn" class="act-btn primary">Test</button>
               </div>
             </div>
-          </div>
-          <div id="decodersDetailPanel" class="agent-detail-panel hidden">
-            <div class="agent-detail-header">
-              <h2 id="decodersDetailTitle">Decoder details</h2>
-              <button type="button" id="decodersDetailClose" class="agent-detail-close" aria-label="Close">×</button>
-            </div>
-            <div class="agent-detail-content">
-              <div id="decodersDetailTableWrap"></div>
-              <div class="rules-detail-file-section">
-                <button type="button" id="decodersDetailViewFile" class="global-btn">View decoder file content</button>
-                <pre id="decodersDetailFileContent" class="rules-file-content hidden"></pre>
-              </div>
+            <div id="sdTestResult" style="display:none;padding:0 14px 14px">
+              <div id="sdTestResultInner"></div>
             </div>
           </div>
         </section>
+
+        <!-- Add Custom Decoder Modal -->
+        <div id="sdAddModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:flex-start;justify-content:center;padding-top:40px;overflow-y:auto">
+          <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:28px;width:600px;max-width:95vw;margin-bottom:40px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+              <h3 style="margin:0">Add Custom Decoder</h3>
+              <button id="sdAddModalClose" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;line-height:1" aria-label="Close">&times;</button>
+            </div>
+            <div style="display:grid;gap:12px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div>
+                  <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Name <span style="color:var(--crit)">*</span></label>
+                  <input type="text" id="sdFormName" class="fld" placeholder="my-decoder" style="width:100%;box-sizing:border-box">
+                </div>
+                <div>
+                  <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Description</label>
+                  <input type="text" id="sdFormDesc" class="fld" placeholder="Optional description" style="width:100%;box-sizing:border-box">
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div>
+                  <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Parent</label>
+                  <input type="text" id="sdFormParent" class="fld" placeholder="parent decoder name (or blank)" style="width:100%;box-sizing:border-box">
+                </div>
+                <div>
+                  <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Program (regex for app_name)</label>
+                  <input type="text" id="sdFormProgram" class="fld" placeholder="^myapp$" style="width:100%;box-sizing:border-box">
+                </div>
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Prematch (fast filter string)</label>
+                <input type="text" id="sdFormPrematch" class="fld" placeholder="fast filter to skip non-matching lines" style="width:100%;box-sizing:border-box">
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Regex (named capture groups)</label>
+                <textarea id="sdFormRegex" class="fld" rows="3" placeholder="extract (?P&lt;user&gt;\S+) from (?P&lt;src_ip&gt;\S+)" style="width:100%;box-sizing:border-box;resize:vertical"></textarea>
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Static Fields (key=value, one per line)</label>
+                <textarea id="sdFormStaticFields" class="fld" rows="3" placeholder="action=login&#10;category=auth" style="width:100%;box-sizing:border-box;resize:vertical"></textarea>
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+              <button id="sdAddModalCancel" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px 18px;border-radius:6px;cursor:pointer">Cancel</button>
+              <button id="sdAddModalSubmit" class="btn btn-primary">Create Decoder</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- View Decoder Details Modal -->
+        <div id="sdViewModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:flex-start;justify-content:center;padding-top:40px;overflow-y:auto">
+          <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:28px;width:560px;max-width:95vw;margin-bottom:40px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+              <h3 style="margin:0" id="sdViewModalTitle">Decoder Details</h3>
+              <button id="sdViewModalClose" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;line-height:1" aria-label="Close">&times;</button>
+            </div>
+            <div id="sdViewModalBody"></div>
+          </div>
+        </div>
 
         <section id="page-vulnerabilities" class="page page-v2">
 

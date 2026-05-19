@@ -60,6 +60,11 @@ func main() {
 		logger.Warn("failed to apply ISM lifecycle policy", zap.Error(err))
 	}
 
+	// Index retention scheduler — deletes indices older than cfg.Indices.RetentionDays.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	idxMgr.StartRetentionScheduler(ctx)
+
 	// Ingestion pipeline
 	pipe := pipeline.New(cfg.Pipeline, cfg.Indices, osClient, logger)
 	pipe.Start()

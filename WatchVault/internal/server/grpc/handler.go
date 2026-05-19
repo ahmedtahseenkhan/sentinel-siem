@@ -171,25 +171,35 @@ func protoAlertToDoc(pa *pb.IndexAlert) map[string]interface{} {
 	if len(pa.GetEventData()) > 0 {
 		var ed map[string]interface{}
 		if err := json.Unmarshal(pa.GetEventData(), &ed); err == nil {
-			doc["event_data"] = ed
-			// Extract key security fields to top level so they are
-			// searchable and aggregatable in Discover and dashboards.
+			// Flatten all event fields directly to the top level — do NOT store
+			// the nested event_data object so OpenSearch Discover shows clean
+			// field names instead of event_data.fields.* clutter.
 			normalizeAlertFields(doc, ed)
-		} else {
-			doc["event_data"] = string(pa.GetEventData())
 		}
 	}
 	return doc
 }
 
-// normalizeAlertFields extracts IPs, usernames, and process names from the
-// nested event_data.fields object to top-level keyword fields so OpenSearch
-// can aggregate and filter on them directly.
+// normalizeAlertFields flattens event_data.fields to the top level so all
+// fields are readable in OpenSearch Discover, then applies semantic aliases
+// for common security fields (src_ip, username, etc.).
 func normalizeAlertFields(doc map[string]interface{}, ed map[string]interface{}) {
 	fields, _ := ed["fields"].(map[string]interface{})
 	if fields == nil {
-		// Some events store fields at the event_data root level
 		fields = ed
+	}
+
+	// Flatten all raw event fields to the top level so they are visible and
+	// searchable in Discover without the event_data.fields.* nesting.
+	for k, v := range fields {
+		if _, exists := doc[k]; !exists {
+			doc[k] = v
+		}
+	}
+
+	// Event type from nested data (e.g. "network.connection", "process.new")
+	if t, _ := ed["type"].(string); t != "" {
+		doc["event_category"] = t
 	}
 
 	strField := func(key string) string {
@@ -199,8 +209,8 @@ func normalizeAlertFields(doc map[string]interface{}, ed map[string]interface{})
 		return ""
 	}
 
-	// Source IP — Windows login (4624/4625) uses win_IpAddress,
-	// network events use raddr, syslog events use src_ip / source_ip.
+	// Semantic aliases — overwrite with normalized names so dashboards and
+	// alerts can filter on a consistent field regardless of event source.
 	if ip := strField("win_IpAddress"); ip != "" {
 		doc["src_ip"] = ip
 	} else if ip := strField("src_ip"); ip != "" {
@@ -211,7 +221,6 @@ func normalizeAlertFields(doc map[string]interface{}, ed map[string]interface{})
 		doc["src_ip"] = ip
 	}
 
-	// Destination IP
 	if ip := strField("dst_ip"); ip != "" {
 		doc["dst_ip"] = ip
 	} else if ip := strField("dest_ip"); ip != "" {
@@ -220,7 +229,6 @@ func normalizeAlertFields(doc map[string]interface{}, ed map[string]interface{})
 		doc["dst_ip"] = ip
 	}
 
-	// Username — Windows events use win_TargetUserName, Linux uses user
 	if u := strField("win_TargetUserName"); u != "" {
 		doc["username"] = u
 	} else if u := strField("user"); u != "" {
@@ -229,28 +237,20 @@ func normalizeAlertFields(doc map[string]interface{}, ed map[string]interface{})
 		doc["username"] = u
 	}
 
-	// Process name
 	if p := strField("name"); p != "" {
 		doc["process_name"] = p
 	} else if p := strField("process"); p != "" {
 		doc["process_name"] = p
 	}
 
-	// Hostname / workstation
 	if h := strField("win_WorkstationName"); h != "" {
 		doc["src_hostname"] = h
 	} else if h := strField("hostname"); h != "" {
 		doc["src_hostname"] = h
 	}
 
-	// Windows Event ID — useful for filtering in Discover
 	if eid, ok := fields["win_event_id"]; ok {
 		doc["win_event_id"] = eid
-	}
-
-	// Event type from nested data (e.g. "network.connection", "process.new")
-	if t, _ := ed["type"].(string); t != "" {
-		doc["event_category"] = t
 	}
 }
 

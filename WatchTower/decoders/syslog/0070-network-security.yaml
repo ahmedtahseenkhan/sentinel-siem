@@ -1,0 +1,148 @@
+group: network-security
+description: "Firewall, VPN, and network security device log decoders"
+
+decoders:
+  # ── UFW (Uncomplicated Firewall) ──────────────────────────────────────────────
+
+  - name: ufw
+    program: "^kernel$"
+    prematch: "\\[UFW "
+    description: "Ubuntu UFW firewall events"
+
+  - name: ufw-block
+    parent: ufw
+    prematch: "\\[UFW BLOCK\\]"
+    regex: "\\[UFW BLOCK\\] IN=(?P<in_iface>\\S*) OUT=(?P<out_iface>\\S*) SRC=(?P<src_ip>\\S+) DST=(?P<dst_ip>\\S+) .*?PROTO=(?P<protocol>\\S+)(?:.*?SPT=(?P<src_port>\\d+))?(?:.*?DPT=(?P<dst_port>\\d+))?"
+    static_fields:
+      action: firewall-block
+      fw_action: BLOCK
+      category: network
+
+  - name: ufw-allow
+    parent: ufw
+    prematch: "\\[UFW ALLOW\\]"
+    regex: "\\[UFW ALLOW\\] IN=(?P<in_iface>\\S*) OUT=(?P<out_iface>\\S*) SRC=(?P<src_ip>\\S+) DST=(?P<dst_ip>\\S+)"
+    static_fields:
+      action: firewall-allow
+      fw_action: ALLOW
+      category: network
+
+  - name: ufw-audit
+    parent: ufw
+    prematch: "\\[UFW AUDIT\\]"
+    regex: "\\[UFW AUDIT\\].*?SRC=(?P<src_ip>\\S+) DST=(?P<dst_ip>\\S+)"
+    static_fields:
+      action: firewall-audit
+      category: network
+
+  # ── firewalld ─────────────────────────────────────────────────────────────────
+
+  - name: firewalld
+    program: "^firewalld$"
+    description: "firewalld events"
+
+  - name: firewalld-drop
+    parent: firewalld
+    prematch: "FINAL_REJECT"
+    regex: "FINAL_REJECT.*?SRC=(?P<src_ip>\\S+).*?DST=(?P<dst_ip>\\S+).*?PROTO=(?P<protocol>\\S+)(?:.*?DPT=(?P<dst_port>\\d+))?"
+    static_fields:
+      action: firewall-reject
+      category: network
+
+  # ── OpenVPN ───────────────────────────────────────────────────────────────────
+
+  - name: openvpn
+    program: "^(openvpn|ovpn)$"
+    description: "OpenVPN connection events"
+
+  - name: openvpn-connected
+    parent: openvpn
+    prematch: "MULTI: Learn"
+    regex: "MULTI: Learn: (?P<vpn_ip>\\S+) -> (?P<common_name>\\S+)/(?P<src_ip>[^:]+):(?P<src_port>\\d+)"
+    static_fields:
+      action: vpn-connected
+      category: network
+
+  - name: openvpn-auth-failed
+    parent: openvpn
+    prematch: "AUTH_FAILED"
+    regex: "(?P<src_ip>[^:]+):(?P<src_port>\\d+).*?AUTH_FAILED"
+    static_fields:
+      action: vpn-auth-failed
+      category: authentication
+
+  - name: openvpn-client-connected
+    parent: openvpn
+    prematch: "PUSH_REPLY"
+    regex: "(?P<common_name>\\S+)/(?P<src_ip>[^:]+):(?P<src_port>\\d+) PUSH_REPLY"
+    static_fields:
+      action: vpn-push-reply
+      category: network
+
+  - name: openvpn-disconnected
+    parent: openvpn
+    prematch: "client-instance exiting"
+    regex: "(?P<common_name>\\S+)/(?P<src_ip>[^:]+):(?P<src_port>\\d+) client-instance exiting"
+    static_fields:
+      action: vpn-disconnected
+      category: network
+
+  # ── Cisco ASA / PIX ───────────────────────────────────────────────────────────
+
+  - name: cisco-asa
+    program: "^(%ASA|%PIX|CISCO-ASA)$"
+    description: "Cisco ASA firewall events"
+
+  - name: cisco-asa-connection
+    parent: cisco-asa
+    prematch: "Built"
+    regex: "Built (?P<direction>inbound|outbound) (?P<protocol>\\S+) connection \\d+ for (?P<src_iface>\\S+):(?P<src_ip>[^/]+)/(?P<src_port>\\d+).*?to (?P<dst_iface>\\S+):(?P<dst_ip>[^/]+)/(?P<dst_port>\\d+)"
+    static_fields:
+      action: connection-built
+      category: network
+
+  - name: cisco-asa-denied
+    parent: cisco-asa
+    prematch: "Deny"
+    regex: "Deny (?P<protocol>\\S+) src (?P<src_iface>\\S+):(?P<src_ip>[^/]+)/(?P<src_port>\\d+) dst (?P<dst_iface>\\S+):(?P<dst_ip>[^/]+)/(?P<dst_port>\\d+)"
+    static_fields:
+      action: connection-denied
+      category: network
+
+  - name: cisco-asa-vpn
+    parent: cisco-asa
+    prematch: "Group User"
+    regex: "Group <(?P<vpn_group>[^>]+)> User <(?P<user>[^>]+)> IP <(?P<src_ip>[^>]+)>"
+    static_fields:
+      action: vpn-event
+      category: network
+
+  # ── Postfix ────────────────────────────────────────────────────────────────────
+
+  - name: postfix
+    program: "^postfix"
+    description: "Postfix mail server events"
+
+  - name: postfix-smtp-delivery
+    parent: postfix
+    prematch: "status="
+    regex: "from=<(?P<mail_from>[^>]*)>, to=<(?P<mail_to>[^>]*)>.*?relay=(?P<relay>[^,]+).*?status=(?P<mail_status>\\S+)"
+    static_fields:
+      action: mail-delivery
+      category: email
+
+  - name: postfix-rejected
+    parent: postfix
+    prematch: "NOQUEUE: reject"
+    regex: "NOQUEUE: reject: (?P<smtp_stage>\\S+) from (?P<src_hostname>[^[]+)\\[(?P<src_ip>[^\\]]+)\\]:.*?from=<(?P<mail_from>[^>]*)> to=<(?P<mail_to>[^>]*)>"
+    static_fields:
+      action: mail-rejected
+      category: email
+
+  - name: postfix-connect
+    parent: postfix
+    prematch: "connect from"
+    regex: "connect from (?P<src_hostname>[^[]+)\\[(?P<src_ip>[^\\]]+)\\]"
+    static_fields:
+      action: smtp-connect
+      category: email

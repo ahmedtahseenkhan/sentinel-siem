@@ -1,0 +1,127 @@
+group: docker
+description: "Docker daemon and containerd log decoders"
+
+decoders:
+  # ── Docker daemon ─────────────────────────────────────────────────────────────
+
+  - name: dockerd
+    program: "^(dockerd|docker)$"
+    description: "Root Docker daemon decoder"
+
+  - name: dockerd-container-start
+    parent: dockerd
+    prematch: "container start"
+    regex: "container start.*?name=(?P<container_name>\\S+).*?image=(?P<image>\\S+).*?id=(?P<container_id>[0-9a-f]+)"
+    static_fields:
+      action: container-start
+      category: container
+
+  - name: dockerd-container-stop
+    parent: dockerd
+    prematch: "container stop"
+    regex: "container stop.*?name=(?P<container_name>\\S+).*?id=(?P<container_id>[0-9a-f]+)"
+    static_fields:
+      action: container-stop
+      category: container
+
+  - name: dockerd-container-die
+    parent: dockerd
+    prematch: "container die"
+    regex: "container die.*?name=(?P<container_name>\\S+).*?exitCode=(?P<exit_code>\\d+).*?id=(?P<container_id>[0-9a-f]+)"
+    static_fields:
+      action: container-die
+      category: container
+
+  - name: dockerd-container-kill
+    parent: dockerd
+    prematch: "container kill"
+    regex: "container kill.*?name=(?P<container_name>\\S+).*?signal=(?P<signal>\\S+).*?id=(?P<container_id>[0-9a-f]+)"
+    static_fields:
+      action: container-kill
+      category: container
+
+  - name: dockerd-container-oom
+    parent: dockerd
+    prematch: "container oom"
+    regex: "container oom.*?name=(?P<container_name>\\S+).*?id=(?P<container_id>[0-9a-f]+)"
+    static_fields:
+      action: container-oom
+      category: container
+
+  - name: dockerd-image-pull
+    parent: dockerd
+    prematch: "Pulling"
+    regex: "Pulling (?:from )?(?P<image>[^\\s:]+)(?::(?P<image_tag>\\S+))?"
+    static_fields:
+      action: image-pull
+      category: container
+
+  - name: dockerd-network-create
+    parent: dockerd
+    prematch: "network create"
+    regex: "network create.*?name=(?P<network_name>\\S+).*?type=(?P<network_type>\\S+).*?id=(?P<network_id>[0-9a-f]+)"
+    static_fields:
+      action: network-create
+      category: container
+
+  - name: dockerd-volume-mount
+    parent: dockerd
+    prematch: "volume mount"
+    regex: "volume mount.*?name=(?P<volume_name>\\S+).*?container=(?P<container_id>[0-9a-f]+)"
+    static_fields:
+      action: volume-mount
+      category: container
+
+  - name: dockerd-api-error
+    parent: dockerd
+    prematch: "level=error"
+    regex: "level=error.*?msg=\"(?P<error_msg>[^\"]+)\"(?:.*?container=(?P<container_id>\\S+))?"
+    static_fields:
+      action: daemon-error
+      category: container
+
+  # ── containerd ────────────────────────────────────────────────────────────────
+
+  - name: containerd
+    program: "^containerd$"
+    description: "Root containerd decoder"
+
+  - name: containerd-container-create
+    parent: containerd
+    prematch: "CreateContainer"
+    regex: "CreateContainer.*?containerID=(?P<container_id>\\S+).*?rootDir=(?P<root_dir>\\S+)"
+    static_fields:
+      action: container-create
+      category: container
+
+  - name: containerd-container-start
+    parent: containerd
+    prematch: "StartContainer"
+    regex: "StartContainer.*?containerID=(?P<container_id>\\S+)"
+    static_fields:
+      action: container-start
+      category: container
+
+  - name: containerd-task-exit
+    parent: containerd
+    prematch: "TaskExit"
+    regex: "TaskExit.*?containerID=(?P<container_id>\\S+).*?pid=(?P<pid>\\d+).*?exitStatus=(?P<exit_code>\\d+)"
+    static_fields:
+      action: container-exit
+      category: container
+
+  - name: containerd-image-pull
+    parent: containerd
+    prematch: "PullImage"
+    regex: "PullImage.*?image=(?P<image>[^,\\s]+)(?:.*?tag=(?P<image_tag>\\S+))?"
+    static_fields:
+      action: image-pull
+      category: container
+
+  - name: containerd-snapshot
+    parent: containerd
+    prematch: "snapshotter"
+    regex: "snapshotter=(?P<snapshotter>\\S+).*?key=(?P<snapshot_key>\\S+)"
+    static_fields:
+      action: container-snapshot
+      category: container

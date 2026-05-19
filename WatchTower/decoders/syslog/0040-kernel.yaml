@@ -1,0 +1,99 @@
+group: kernel
+description: "Linux kernel messages — iptables, OOM killer, USB, segfaults"
+
+decoders:
+  - name: kernel
+    program: "^kernel$"
+    description: "Root kernel decoder"
+
+  - name: kernel-iptables
+    parent: kernel
+    prematch: "IN="
+    regex: "(?P<fw_action>DROP|REJECT|ACCEPT|LOG).*?IN=(?P<in_iface>\\S*).*?OUT=(?P<out_iface>\\S*).*?SRC=(?P<src_ip>\\S+).*?DST=(?P<dst_ip>\\S+).*?PROTO=(?P<protocol>\\S+)(?:.*?SPT=(?P<src_port>\\d+))?(?:.*?DPT=(?P<dst_port>\\d+))?"
+    static_fields:
+      action: firewall-event
+      category: network
+
+  - name: kernel-oom-kill
+    parent: kernel
+    prematch: "Out of memory"
+    regex: "Out of memory: Kill process (?P<pid>\\d+) \\((?P<process>[^)]+)\\) score (?P<oom_score>\\d+)"
+    static_fields:
+      action: oom-kill
+      category: system
+
+  - name: kernel-segfault
+    parent: kernel
+    prematch: "segfault"
+    regex: "(?P<process>\\S+)\\[(?P<pid>\\d+)\\]: segfault at (?P<address>\\S+) ip (?P<ip>\\S+) sp (?P<sp>\\S+)"
+    static_fields:
+      action: segfault
+      category: system
+
+  - name: kernel-usb-device
+    parent: kernel
+    prematch: "usb"
+    regex: "usb (?P<usb_bus>[^:]+): (?P<usb_event>.+)"
+    static_fields:
+      action: usb-event
+      category: hardware
+
+  - name: kernel-link-down
+    parent: kernel
+    prematch: "Link is Down"
+    regex: "(?P<interface>\\S+): Link is Down"
+    static_fields:
+      action: link-down
+      category: network
+
+  - name: kernel-link-up
+    parent: kernel
+    prematch: "Link is Up"
+    regex: "(?P<interface>\\S+): Link is Up.*?(?P<speed>\\d+ Mbps)?"
+    static_fields:
+      action: link-up
+      category: network
+
+  - name: kernel-nf-conntrack-table-full
+    parent: kernel
+    prematch: "nf_conntrack: table full"
+    regex: "nf_conntrack: table full, dropping packet"
+    static_fields:
+      action: conntrack-table-full
+      category: network
+
+  - name: kernel-audit
+    program: "^audit$"
+    description: "Linux audit daemon messages"
+
+  - name: kernel-audit-syscall
+    parent: kernel-audit
+    prematch: "type=SYSCALL"
+    regex: "type=SYSCALL.*?pid=(?P<pid>\\d+).*?uid=(?P<uid>\\d+).*?auid=(?P<auid>\\d+).*?exe=\"(?P<exe>[^\"]+)\".*?key=\"(?P<audit_key>[^\"]+)\""
+    static_fields:
+      action: syscall
+      category: audit
+
+  - name: kernel-audit-user-auth
+    parent: kernel-audit
+    prematch: "type=USER_AUTH"
+    regex: "type=USER_AUTH.*?pid=(?P<pid>\\d+).*?uid=(?P<uid>\\d+).*?acct=\"(?P<user>[^\"]+)\".*?res=(?P<result>\\S+)"
+    static_fields:
+      action: user-auth
+      category: audit
+
+  - name: kernel-audit-add-user
+    parent: kernel-audit
+    prematch: "type=ADD_USER"
+    regex: "type=ADD_USER.*?pid=(?P<pid>\\d+).*?acct=\"(?P<user>[^\"]+)\".*?res=(?P<result>\\S+)"
+    static_fields:
+      action: add-user
+      category: audit
+
+  - name: kernel-audit-del-user
+    parent: kernel-audit
+    prematch: "type=DEL_USER"
+    regex: "type=DEL_USER.*?pid=(?P<pid>\\d+).*?acct=\"(?P<user>[^\"]+)\".*?res=(?P<result>\\S+)"
+    static_fields:
+      action: del-user
+      category: audit

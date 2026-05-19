@@ -1,0 +1,125 @@
+group: databases
+description: "MySQL, PostgreSQL, MongoDB, and Redis log decoders"
+
+decoders:
+  # ── MySQL / MariaDB ───────────────────────────────────────────────────────────
+
+  - name: mysql
+    program: "^(mysql|mysqld|mariadbd|mariadb)$"
+    description: "Root MySQL/MariaDB decoder"
+
+  - name: mysql-access-denied
+    parent: mysql
+    prematch: "Access denied"
+    regex: "Access denied for user '(?P<user>[^']+)'@'(?P<src_ip>[^']+)' \\(using password: (?P<password_used>YES|NO)\\)"
+    static_fields:
+      action: access-denied
+      category: authentication
+
+  - name: mysql-connect
+    parent: mysql
+    prematch: "Connect"
+    regex: "(?P<user>\\S+)\\[(?P<user2>\\S+)\\] @ (?P<hostname>\\S+) \\[(?P<src_ip>[^\\]]+)\\]"
+    static_fields:
+      action: connect
+      category: authentication
+
+  - name: mysql-new-connection
+    parent: mysql
+    prematch: "New connection"
+    regex: "New connection.*?host: (?P<src_ip>[^,]+).*?user: (?P<user>\\S+)"
+    static_fields:
+      action: new-connection
+      category: authentication
+
+  - name: mysql-init-db
+    parent: mysql
+    prematch: "Init DB"
+    regex: "Init DB (?P<database>\\S+)"
+    static_fields:
+      action: init-db
+      category: database
+
+  - name: mysql-create-db
+    parent: mysql
+    prematch: "Create DB"
+    regex: "Create DB (?P<database>\\S+)"
+    static_fields:
+      action: create-db
+      category: database
+
+  - name: mysql-drop-db
+    parent: mysql
+    prematch: "Drop DB"
+    regex: "Drop DB (?P<database>\\S+)"
+    static_fields:
+      action: drop-db
+      category: database
+
+  - name: mysql-slow-query
+    parent: mysql
+    prematch: "Query_time"
+    regex: "Query_time: (?P<query_time>[\\d.]+).*?Lock_time: (?P<lock_time>[\\d.]+).*?Rows_sent: (?P<rows_sent>\\d+).*?Rows_examined: (?P<rows_examined>\\d+)"
+    static_fields:
+      action: slow-query
+      category: performance
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────────
+
+  - name: postgresql
+    program: "^(postgres|postgresql|postmaster)$"
+    description: "Root PostgreSQL decoder"
+
+  - name: postgresql-auth-failed
+    parent: postgresql
+    prematch: "authentication failed"
+    regex: "FATAL:  password authentication failed for user \"(?P<user>[^\"]+)\""
+    static_fields:
+      action: auth-failed
+      category: authentication
+
+  - name: postgresql-connect
+    parent: postgresql
+    prematch: "connection received"
+    regex: "connection received: host=(?P<src_ip>\\S+) port=(?P<src_port>\\d+)"
+    static_fields:
+      action: connection-received
+      category: authentication
+
+  - name: postgresql-disconnect
+    parent: postgresql
+    prematch: "disconnection"
+    regex: "disconnection: session time: (?P<session_time>[\\d:.]+) user=(?P<user>\\S+) database=(?P<database>\\S+) host=(?P<src_ip>\\S+)"
+    static_fields:
+      action: disconnected
+      category: authentication
+
+  - name: postgresql-error
+    parent: postgresql
+    prematch: "ERROR:"
+    regex: "ERROR:  (?P<error_msg>.+)"
+    static_fields:
+      action: db-error
+      category: database
+
+  # ── MongoDB ───────────────────────────────────────────────────────────────────
+
+  - name: mongodb
+    program: "^mongod$"
+    description: "Root MongoDB decoder"
+
+  - name: mongodb-auth-failed
+    parent: mongodb
+    prematch: "Authentication"
+    regex: "Unauthorized.*?db: (?P<database>\\S+).*?user: (?P<user>\\S+)"
+    static_fields:
+      action: auth-failed
+      category: authentication
+
+  - name: mongodb-connect
+    parent: mongodb
+    prematch: "connection accepted"
+    regex: "connection accepted from (?P<src_ip>[^:]+):(?P<src_port>\\d+)"
+    static_fields:
+      action: connected
+      category: network

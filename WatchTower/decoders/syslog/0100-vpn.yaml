@@ -1,0 +1,131 @@
+group: vpn
+description: "VPN log decoders — racoon/IKE, strongSwan, L2TP, PPTP, WireGuard"
+
+decoders:
+  # ── racoon / IKEv1 ───────────────────────────────────────────────────────────
+
+  - name: racoon
+    program: "^racoon$"
+    description: "Root racoon IKE daemon decoder"
+
+  - name: racoon-sa-established
+    parent: racoon
+    prematch: "ISAKMP-SA established"
+    regex: "ISAKMP-SA established (?P<src_ip>[^\\[]+)\\[(?P<src_port>\\d+)\\]-(?P<dst_ip>[^\\[]+)\\[(?P<dst_port>\\d+)\\]"
+    static_fields:
+      action: vpn-sa-established
+      category: vpn
+
+  - name: racoon-sa-deleted
+    parent: racoon
+    prematch: "ISAKMP-SA deleted"
+    regex: "ISAKMP-SA deleted (?P<src_ip>[^\\[]+)\\[(?P<src_port>\\d+)\\]-(?P<dst_ip>[^\\[]+)\\[(?P<dst_port>\\d+)\\]"
+    static_fields:
+      action: vpn-sa-deleted
+      category: vpn
+
+  - name: racoon-auth-failed
+    parent: racoon
+    prematch: "phase1 negotiation failed"
+    regex: "phase1 negotiation failed due to (?P<reason>.+) from (?P<src_ip>[^\\[]+)\\[(?P<src_port>\\d+)\\]"
+    static_fields:
+      action: vpn-auth-failed
+      category: authentication
+
+  - name: racoon-ipsec-sa
+    parent: racoon
+    prematch: "IPsec-SA established"
+    regex: "IPsec-SA established.*?ESP (?P<spi_in>\\S+)->(?P<spi_out>\\S+) from (?P<src_ip>[^\\[]+)"
+    static_fields:
+      action: vpn-ipsec-sa-established
+      category: vpn
+
+  # ── strongSwan ────────────────────────────────────────────────────────────────
+
+  - name: charon
+    program: "^charon$"
+    description: "Root strongSwan charon IKE daemon decoder"
+
+  - name: charon-ike-established
+    parent: charon
+    prematch: "IKE_SA"
+    regex: "IKE_SA (?P<ike_sa_name>[^\\[]+)\\[(?P<ike_sa_id>\\d+)\\] established between (?P<local_ip>[^\\[]+)\\[(?P<local_id>[^\\]]+)\\].*?(?P<src_ip>[^\\[]+)\\[(?P<remote_id>[^\\]]+)\\]"
+    static_fields:
+      action: vpn-ike-established
+      category: vpn
+
+  - name: charon-ike-destroyed
+    parent: charon
+    prematch: "deleting IKE_SA"
+    regex: "deleting IKE_SA (?P<ike_sa_name>[^\\[]+)\\[(?P<ike_sa_id>\\d+)\\] between (?P<local_ip>[^\\[]+)\\[.*?\\].*?(?P<src_ip>[^\\[]+)\\["
+    static_fields:
+      action: vpn-ike-deleted
+      category: vpn
+
+  - name: charon-child-sa-up
+    parent: charon
+    prematch: "CHILD_SA"
+    regex: "CHILD_SA (?P<child_sa_name>[^{]+)\\{(?P<child_sa_id>\\d+)\\} established.*?=== (?P<local_ts>\\S+).*?(?P<remote_ts>\\S+)"
+    static_fields:
+      action: vpn-child-sa-established
+      category: vpn
+
+  - name: charon-auth-failed
+    parent: charon
+    prematch: "authentication of"
+    regex: "authentication of '(?P<peer_id>[^']+)' with (?P<auth_method>\\S+) (?P<auth_result>failed|successful)"
+    static_fields:
+      action: vpn-auth-event
+      category: authentication
+
+  # ── L2TP (xl2tpd) ────────────────────────────────────────────────────────────
+
+  - name: xl2tpd
+    program: "^xl2tpd$"
+    description: "Root L2TP daemon decoder"
+
+  - name: xl2tpd-tunnel-established
+    parent: xl2tpd
+    prematch: "Established L2TP tunnel"
+    regex: "Established L2TP tunnel id (?P<tunnel_id>\\d+) with (?P<src_ip>\\S+)"
+    static_fields:
+      action: vpn-tunnel-established
+      category: vpn
+
+  - name: xl2tpd-call-established
+    parent: xl2tpd
+    prematch: "Call established"
+    regex: "Call established with (?P<src_ip>\\S+), Local: (?P<local_ip>\\S+), Remote: (?P<remote_ip>\\S+)"
+    static_fields:
+      action: vpn-call-established
+      category: vpn
+
+  - name: xl2tpd-disconnected
+    parent: xl2tpd
+    prematch: "Connection closed"
+    regex: "Connection closed to (?P<src_ip>\\S+), (?P<reason>.+)"
+    static_fields:
+      action: vpn-disconnected
+      category: vpn
+
+  # ── WireGuard ─────────────────────────────────────────────────────────────────
+
+  - name: wireguard
+    program: "^wireguard$"
+    description: "Root WireGuard VPN decoder"
+
+  - name: wireguard-peer-connected
+    parent: wireguard
+    prematch: "peer"
+    regex: "peer \\((?P<peer_pubkey>[^)]+)\\): sending handshake initiation"
+    static_fields:
+      action: vpn-handshake-init
+      category: vpn
+
+  - name: wireguard-handshake-done
+    parent: wireguard
+    prematch: "Receiving handshake"
+    regex: "peer \\((?P<peer_pubkey>[^)]+)\\): received handshake initiation from (?P<src_ip>[^:]+):(?P<src_port>\\d+)"
+    static_fields:
+      action: vpn-handshake-received
+      category: vpn

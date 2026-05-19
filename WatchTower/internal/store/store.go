@@ -152,13 +152,30 @@ func (s *Store) UpdateAgentHeartbeat(id, status string) error {
 
 // MarkDisconnectedBefore sets all active/streaming agents whose last_heartbeat
 // is older than cutoffMs to disconnected in a single query — O(1) vs O(n).
-func (s *Store) MarkDisconnectedBefore(cutoffMs int64) error {
-	_, err := s.pool.Exec(context.Background(), `
+// It returns the list of agents that JUST transitioned to disconnected so
+// callers can fire per-agent hooks (e.g. notifications, audit events).
+func (s *Store) MarkDisconnectedBefore(cutoffMs int64) ([]*models.Agent, error) {
+	rows, err := s.pool.Query(context.Background(), `
 		UPDATE agents SET status = 'disconnected'
 		WHERE status IN ('active', 'streaming')
 		AND last_heartbeat > 0
-		AND last_heartbeat < $1`, cutoffMs)
-	return err
+		AND last_heartbeat < $1
+		RETURNING id, hostname, os, platform, version, group_id, labels, status,
+		          ip_address, last_heartbeat, registered_at`, cutoffMs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var agents []*models.Agent
+	for rows.Next() {
+		a, err := scanAgentRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		agents = append(agents, a)
+	}
+	return agents, rows.Err()
 }
 
 func (s *Store) UpdateAgentGroup(id, groupID string) error {

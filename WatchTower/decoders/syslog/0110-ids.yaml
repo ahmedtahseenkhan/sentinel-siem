@@ -1,0 +1,110 @@
+group: ids
+description: "Intrusion Detection System log decoders — Snort and Suricata"
+
+decoders:
+  # ── Snort ─────────────────────────────────────────────────────────────────────
+  # Snort alert format (full):
+  #   [**] [1:1000001:1] MALWARE-CNC Win.Trojan.Agent outbound connection [**]
+  #   [Classification: A Network Trojan was Detected] [Priority: 1]
+  #   {TCP} 192.168.1.5:49200 -> 203.0.113.10:443
+
+  - name: snort
+    program: "^snort$"
+    description: "Root Snort IDS decoder"
+
+  - name: snort-alert
+    parent: snort
+    prematch: "[**]"
+    regex: "\\[\\*\\*\\] \\[(?P<gid>\\d+):(?P<sid>\\d+):(?P<rev>\\d+)\\] (?P<alert_msg>[^[]+) \\[\\*\\*\\]"
+    static_fields:
+      action: ids-alert
+      category: ids
+
+  - name: snort-alert-full
+    parent: snort
+    prematch: "[Classification:"
+    regex: "\\[Classification: (?P<classification>[^\\]]+)\\] \\[Priority: (?P<priority>\\d+)\\] \\{(?P<protocol>\\S+)\\} (?P<src_ip>[^:]+):(?P<src_port>\\d+) -> (?P<dst_ip>[^:]+):(?P<dst_port>\\d+)"
+    static_fields:
+      action: ids-alert
+      category: ids
+
+  - name: snort-icmp-alert
+    parent: snort
+    prematch: "{ICMP}"
+    regex: "\\{ICMP\\} (?P<src_ip>\\S+) -> (?P<dst_ip>\\S+)"
+    static_fields:
+      action: ids-alert
+      protocol: ICMP
+      category: ids
+
+  - name: snort-dropped
+    parent: snort
+    prematch: "Drop"
+    regex: "Drop: \\[(?P<gid>\\d+):(?P<sid>\\d+):(?P<rev>\\d+)\\] (?P<alert_msg>.+)"
+    static_fields:
+      action: ids-drop
+      category: ids
+
+  # ── Suricata ──────────────────────────────────────────────────────────────────
+  # Suricata can log in EVE JSON or in a fast-log text format.
+  # Fast-log format: timestamp  [**] [GID:SID:REV] msg [**] [Classification: X] [Priority: N] {PROTO} src:port -> dst:port
+
+  - name: suricata
+    program: "^(suricata|Suricata)$"
+    description: "Root Suricata IDS/IPS decoder"
+
+  - name: suricata-fast-alert
+    parent: suricata
+    prematch: "[**]"
+    regex: "\\[\\*\\*\\] \\[(?P<gid>\\d+):(?P<sid>\\d+):(?P<rev>\\d+)\\] (?P<alert_msg>[^[]+) \\[\\*\\*\\].*?\\[Priority: (?P<priority>\\d+)\\] \\{(?P<protocol>\\S+)\\} (?P<src_ip>[^:]+):(?P<src_port>\\d+) -> (?P<dst_ip>[^:]+):(?P<dst_port>\\d+)"
+    static_fields:
+      action: ids-alert
+      category: ids
+
+  - name: suricata-eve-alert
+    parent: suricata
+    prematch: "\"event_type\":\"alert\""
+    regex: "\"src_ip\":\"(?P<src_ip>[^\"]+)\".*?\"src_port\":(?P<src_port>\\d+).*?\"dest_ip\":\"(?P<dst_ip>[^\"]+)\".*?\"dest_port\":(?P<dst_port>\\d+).*?\"signature\":\"(?P<alert_msg>[^\"]+)\".*?\"severity\":(?P<priority>\\d+)"
+    static_fields:
+      action: ids-alert
+      category: ids
+
+  - name: suricata-eve-drop
+    parent: suricata
+    prematch: "\"event_type\":\"drop\""
+    regex: "\"src_ip\":\"(?P<src_ip>[^\"]+)\".*?\"src_port\":(?P<src_port>\\d+).*?\"dest_ip\":\"(?P<dst_ip>[^\"]+)\".*?\"dest_port\":(?P<dst_port>\\d+)"
+    static_fields:
+      action: ids-drop
+      category: ids
+
+  - name: suricata-eve-dns
+    parent: suricata
+    prematch: "\"event_type\":\"dns\""
+    regex: "\"src_ip\":\"(?P<src_ip>[^\"]+)\".*?\"rrname\":\"(?P<query_name>[^\"]+)\".*?\"rrtype\":\"(?P<query_type>[^\"]+)\""
+    static_fields:
+      action: dns-query
+      category: dns
+
+  - name: suricata-eve-http
+    parent: suricata
+    prematch: "\"event_type\":\"http\""
+    regex: "\"src_ip\":\"(?P<src_ip>[^\"]+)\".*?\"hostname\":\"(?P<http_host>[^\"]+)\".*?\"url\":\"(?P<url>[^\"]+)\".*?\"status\":(?P<http_status>\\d+)"
+    static_fields:
+      action: http-request
+      category: web
+
+  - name: suricata-eve-flow
+    parent: suricata
+    prematch: "\"event_type\":\"flow\""
+    regex: "\"src_ip\":\"(?P<src_ip>[^\"]+)\".*?\"src_port\":(?P<src_port>\\d+).*?\"dest_ip\":\"(?P<dst_ip>[^\"]+)\".*?\"dest_port\":(?P<dst_port>\\d+).*?\"proto\":\"(?P<protocol>[^\"]+)\""
+    static_fields:
+      action: network-flow
+      category: network
+
+  - name: suricata-tls
+    parent: suricata
+    prematch: "\"event_type\":\"tls\""
+    regex: "\"src_ip\":\"(?P<src_ip>[^\"]+)\".*?\"dest_ip\":\"(?P<dst_ip>[^\"]+)\".*?\"sni\":\"(?P<tls_sni>[^\"]+)\".*?\"version\":\"(?P<tls_version>[^\"]+)\""
+    static_fields:
+      action: tls-handshake
+      category: network

@@ -66,6 +66,16 @@ func (s *Server) routes() *chi.Mux {
 		r.Route("/decoders", func(r chi.Router) {
 			r.Get("/", dh.List)
 			r.Post("/", dh.Create)
+
+			// Wazuh-like syslog decoder pipeline — program/prematch/regex/parent chaining.
+			sdh := handlers.NewSyslogDecoderHandler(s)
+			r.Route("/syslog", func(r chi.Router) {
+				r.Get("/", sdh.List)
+				r.Post("/", sdh.Create)
+				r.Delete("/{name}", sdh.Delete)
+				r.Post("/test", sdh.Test)
+				r.Post("/reload", sdh.Reload)
+			})
 		})
 
 		ch := handlers.NewCDBHandler(s.engine.CDB())

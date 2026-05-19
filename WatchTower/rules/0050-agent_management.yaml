@@ -1,0 +1,105 @@
+---
+# Agent lifecycle rules — mirrors Wazuh rules 500-510.
+# These fire on agent connect, disconnect, and reconnect events so the SOC
+# always knows the health of the monitored fleet without checking dashboards.
+
+rules:
+  # ── Agent connected (first registration or reconnect) ────────────────────────
+
+  - id: 501
+    name: "Agent enrolled"
+    description: "A new WatchNode agent registered with the manager for the first time."
+    level: 3
+    groups: ["agent", "enrollment"]
+    mitre:
+      tactic_id: ""
+      tactic_name: ""
+      technique_id: ""
+      technique_name: ""
+    match:
+      event_type: "agent.enrolled"
+
+  - id: 502
+    name: "Agent connected"
+    description: "A WatchNode agent established its gRPC stream and is actively sending telemetry."
+    level: 3
+    groups: ["agent", "connected"]
+    match:
+      event_type: "agent.connected"
+
+  - id: 503
+    name: "Agent reconnected after disconnection"
+    description: "A previously disconnected WatchNode agent came back online."
+    level: 5
+    groups: ["agent", "reconnected"]
+    match:
+      event_type: "agent.reconnected"
+
+  # ── Agent disconnected ────────────────────────────────────────────────────────
+
+  - id: 504
+    name: "Agent disconnected"
+    description: >
+      A WatchNode agent stopped sending heartbeats and has been marked disconnected.
+      This may indicate the endpoint went offline, the agent crashed, or a network
+      outage occurred. Investigate if the endpoint should be reachable.
+    level: 7
+    groups: ["agent", "disconnected", "availability"]
+    match:
+      event_type: "agent.disconnected"
+
+  - id: 505
+    name: "Agent disconnected — multiple agents"
+    description: >
+      Five or more agents disconnected within a short window. This may indicate
+      a network outage, a server-side issue, or a coordinated attack cutting off
+      monitoring (defense evasion).
+    level: 12
+    groups: ["agent", "disconnected", "availability", "defense-evasion"]
+    threshold:
+      count: 5
+      period_secs: 300
+      group_by: ""
+    match:
+      event_type: "agent.disconnected"
+    mitre:
+      tactic_id: "TA0005"
+      tactic_name: "Defense Evasion"
+      technique_id: "T1562"
+      technique_name: "Impair Defenses"
+
+  # ── Agent version / config ────────────────────────────────────────────────────
+
+  - id: 506
+    name: "Agent version mismatch"
+    description: "An agent reported a version that does not match the expected deployment version."
+    level: 5
+    groups: ["agent", "version", "compliance"]
+    match:
+      event_type: "agent.version_mismatch"
+
+  - id: 507
+    name: "Agent config changed remotely"
+    description: "The manager pushed a new configuration to an agent."
+    level: 3
+    groups: ["agent", "config"]
+    match:
+      event_type: "agent.config_pushed"
+
+  # ── Agent active response ─────────────────────────────────────────────────────
+
+  - id: 508
+    name: "Active response executed on agent"
+    description: "An active response command was sent and executed on an endpoint."
+    level: 5
+    groups: ["agent", "active-response"]
+    match:
+      event_type: "active_response.executed"
+
+  - id: 509
+    name: "Active response failed on agent"
+    description: "An active response command failed to execute on an endpoint. Manual intervention may be required."
+    level: 9
+    groups: ["agent", "active-response", "failure"]
+    match:
+      event_type: "active_response.failed"

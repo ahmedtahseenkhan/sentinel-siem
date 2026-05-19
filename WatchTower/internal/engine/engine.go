@@ -59,6 +59,12 @@ type UebaHook interface {
 	OnEvent(event *models.Event)
 }
 
+// AgentResolver looks up an agent's hostname by ID so it can be stamped
+// onto every event and alert that flows through the engine.
+type AgentResolver interface {
+	GetAgent(id string) (*models.Agent, error)
+}
+
 type Engine struct {
 	cfg       config.EngineConfig
 	logger    *zap.Logger
@@ -66,14 +72,15 @@ type Engine struct {
 	rules     *rules.Matcher
 	cdb       *cdb.Manager
 	alertOut  *alert.Output
-	forwarder EventForwarder
-	store     AlertStore
+	forwarder    EventForwarder
+	store        AlertStore
 	responder    ActiveResponseOrchestrator
 	vulnChecker  VulnChecker
 	playbookHook PlaybookHook
 	rbaHook      RBAHook
 	uebaHook     UebaHook
 	notifierHook NotifierHook
+	agentResolver AgentResolver
 	deduper      *dedup.Manager
 	correlation  *correlation.Manager
 	eventCh      chan *models.Event
@@ -180,6 +187,14 @@ func (e *Engine) worker() {
 }
 
 func (e *Engine) process(event *models.Event) {
+	// Resolve agent hostname if not already set — fills agent_name on every
+	// indexed document so Discover always shows a readable name, not just an ID.
+	if event.AgentName == "" && event.AgentID != "" && e.agentResolver != nil {
+		if a, err := e.agentResolver.GetAgent(event.AgentID); err == nil && a != nil {
+			event.AgentName = a.Hostname
+		}
+	}
+
 	decoded := e.decoders.Decode(event)
 	event.Decoded = decoded
 
@@ -223,6 +238,7 @@ func (e *Engine) generateAlert(event *models.Event, rule *models.Rule) {
 		RuleID:      rule.ID,
 		Level:       rule.Level,
 		AgentID:     event.AgentID,
+		AgentName:   event.AgentName, // already resolved in process()
 		Timestamp:   time.Now().UnixMilli(),
 		Title:       rule.Alert.Title,
 		Description: rule.Description,
@@ -296,6 +312,10 @@ func (e *Engine) SetUebaHook(h UebaHook) {
 
 func (e *Engine) SetNotifierHook(h NotifierHook) {
 	e.notifierHook = h
+}
+
+func (e *Engine) SetAgentResolver(r AgentResolver) {
+	e.agentResolver = r
 }
 
 func (e *Engine) Rules() *rules.Matcher     { return e.rules }

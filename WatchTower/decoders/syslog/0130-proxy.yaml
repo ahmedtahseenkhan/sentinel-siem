@@ -1,0 +1,115 @@
+group: proxy
+description: "Web proxy log decoders — Squid and tinyproxy"
+
+decoders:
+  # ── Squid ─────────────────────────────────────────────────────────────────────
+  # Native squid access.log format (logged via syslog):
+  #   1234567890.123    456 192.168.1.10 TCP_MISS/200 12345 GET http://example.com/ user DIRECT/93.184.216.34 text/html
+  # Cache log format:
+  #   kid1| 2024/01/15 10:00:00| ERROR: ...
+
+  - name: squid
+    program: "^squid$"
+    description: "Root Squid proxy decoder"
+
+  - name: squid-access
+    parent: squid
+    prematch: "TCP_"
+    regex: "(?P<timestamp>[\\d.]+)\\s+(?P<elapsed>\\d+) (?P<src_ip>\\S+) (?P<squid_action>[^/]+)/(?P<http_status>\\d+) (?P<bytes>\\d+) (?P<http_method>\\S+) (?P<url>\\S+) (?P<user>\\S+) (?P<hier_code>[^/]+)/(?P<dst_ip>\\S+) (?P<content_type>\\S+)"
+    static_fields:
+      action: proxy-access
+      category: web
+
+  - name: squid-access-udp
+    parent: squid
+    prematch: "UDP_"
+    regex: "(?P<timestamp>[\\d.]+)\\s+(?P<elapsed>\\d+) (?P<src_ip>\\S+) (?P<squid_action>[^/]+)/(?P<http_status>\\d+) (?P<bytes>\\d+) (?P<http_method>\\S+) (?P<url>\\S+)"
+    static_fields:
+      action: proxy-access-udp
+      category: web
+
+  - name: squid-denied
+    parent: squid
+    prematch: "TCP_DENIED"
+    regex: "(?P<timestamp>[\\d.]+)\\s+(?P<elapsed>\\d+) (?P<src_ip>\\S+) TCP_DENIED/(?P<http_status>\\d+) (?P<bytes>\\d+) (?P<http_method>\\S+) (?P<url>\\S+) (?P<user>\\S+)"
+    static_fields:
+      action: proxy-denied
+      category: web
+
+  - name: squid-tunnel
+    parent: squid
+    prematch: "CONNECT"
+    regex: "(?P<timestamp>[\\d.]+)\\s+(?P<elapsed>\\d+) (?P<src_ip>\\S+) (?P<squid_action>\\S+) (?P<bytes>\\d+) CONNECT (?P<url>\\S+) (?P<user>\\S+)"
+    static_fields:
+      action: proxy-connect
+      category: web
+
+  - name: squid-cache-error
+    parent: squid
+    prematch: "ERROR"
+    regex: "(?:kid\\d+\\| )?(?P<timestamp>[\\d/: ]+)\\| ERROR: (?P<error_msg>.+)"
+    static_fields:
+      action: proxy-error
+      category: web
+
+  - name: squid-icap-reqmod
+    parent: squid
+    prematch: "REQMOD"
+    regex: "(?P<src_ip>\\S+) REQMOD (?P<url>\\S+) (?P<icap_status>\\d+)/(?P<http_status>\\d+)"
+    static_fields:
+      action: proxy-icap-reqmod
+      category: web
+
+  - name: squid-cache-hit
+    parent: squid
+    prematch: "TCP_HIT"
+    regex: "(?P<timestamp>[\\d.]+)\\s+(?P<elapsed>\\d+) (?P<src_ip>\\S+) TCP_HIT/(?P<http_status>\\d+) (?P<bytes>\\d+) (?P<http_method>\\S+) (?P<url>\\S+)"
+    static_fields:
+      action: proxy-cache-hit
+      category: web
+
+  - name: squid-refresh-hit
+    parent: squid
+    prematch: "TCP_REFRESH_HIT"
+    regex: "(?P<timestamp>[\\d.]+)\\s+(?P<elapsed>\\d+) (?P<src_ip>\\S+) TCP_REFRESH_HIT/(?P<http_status>\\d+) (?P<bytes>\\d+) (?P<http_method>\\S+) (?P<url>\\S+)"
+    static_fields:
+      action: proxy-cache-refresh-hit
+      category: web
+
+  # ── tinyproxy ─────────────────────────────────────────────────────────────────
+
+  - name: tinyproxy
+    program: "^tinyproxy$"
+    description: "Root tinyproxy decoder"
+
+  - name: tinyproxy-connect
+    parent: tinyproxy
+    prematch: "Connect"
+    regex: "(?:CONNECT|Connect): (?:Trying to connect to|Connected to) (?P<dst_host>[^:]+):(?P<dst_port>\\d+) for (?P<src_ip>\\S+)"
+    static_fields:
+      action: proxy-connect
+      category: web
+
+  - name: tinyproxy-request
+    parent: tinyproxy
+    prematch: "Request"
+    regex: "(?:REQUEST|Request): (?P<http_method>\\S+) (?P<url>\\S+) (?P<http_version>HTTP/\\S+)"
+    static_fields:
+      action: proxy-request
+      category: web
+
+  - name: tinyproxy-denied
+    parent: tinyproxy
+    prematch: "Denied"
+    regex: "(?:DENIED|Denied): (?P<src_ip>\\S+) - request for (?P<url>\\S+) denied"
+    static_fields:
+      action: proxy-denied
+      category: web
+
+  - name: tinyproxy-stats
+    parent: tinyproxy
+    prematch: "Stats"
+    regex: "(?:STATS|Stats): Number of open connections: (?P<open_conns>\\d+)"
+    static_fields:
+      action: proxy-stats
+      category: web

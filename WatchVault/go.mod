@@ -15,6 +15,9 @@ require (
 
 require (
 	github.com/golang/protobuf v1.5.3 // indirect
+	github.com/klauspost/compress v1.17.8 // indirect
+	github.com/pierrec/lz4/v4 v4.1.21 // indirect
+	github.com/twmb/franz-go/pkg/kmsg v1.8.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/net v0.20.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
