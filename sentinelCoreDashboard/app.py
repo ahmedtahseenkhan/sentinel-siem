@@ -58,6 +58,8 @@ from watchtower_client import (
     get_alerts_list,
     get_discover_fields,
     get_discover_field_values,
+    get_discover_field_stats,
+    get_discover_correlate,
     get_hipaa_stats,
     get_hipaa_by_requirement,
     get_hipaa_requirements_high_level,
@@ -273,6 +275,68 @@ def index():
     if _check_login() is None:
         return redirect(url_for("login"))
     return render_template("index.html")
+
+
+# ── Agent deployment page ───────────────────────────────────────────────────
+# Renders an install page showing copy-paste commands for Windows/Linux/macOS,
+# pre-filled with the current server IP and enrollment token. Also serves the
+# agent binaries so endpoints can `curl ... | sudo bash` directly.
+
+AGENT_BIN_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..", "WatchNode",
+)
+
+DEFAULT_ENROLL_TOKEN = "sentinel-enroll-secret-2024"
+
+
+@app.route("/deploy")
+def deploy_page():
+    if _check_login() is None:
+        return redirect(url_for("login"))
+    server_ip = request.host.split(":")[0]
+    enroll_token = os.getenv("WATCHNODE_ENROLL_TOKEN", DEFAULT_ENROLL_TOKEN)
+    return render_template(
+        "deploy.html",
+        server_ip=server_ip,
+        enroll_token=enroll_token,
+    )
+
+
+@app.route("/deploy/agent/<platform>")
+def deploy_download(platform):
+    if _check_login() is None:
+        return redirect(url_for("login"))
+    from flask import send_from_directory, abort
+    mapping = {
+        "windows": ("SentinelAgent.zip", "SentinelAgent.zip"),
+        "linux":   ("cmd/agent/watchnode-linux", "watchnode-linux"),
+    }
+    if platform not in mapping:
+        abort(404)
+    rel, download_name = mapping[platform]
+    full = os.path.normpath(os.path.join(AGENT_BIN_DIR, rel))
+    if not full.startswith(os.path.normpath(AGENT_BIN_DIR)):
+        abort(403)
+    if not os.path.isfile(full):
+        abort(404, description=f"Agent binary not built: {rel}")
+    directory = os.path.dirname(full)
+    filename = os.path.basename(full)
+    return send_from_directory(
+        directory, filename, as_attachment=True, download_name=download_name
+    )
+
+
+@app.route("/deploy/install.sh")
+def deploy_install_script():
+    """Serve the one-line Linux installer (unauthenticated so curl can fetch it)."""
+    script_path = os.path.normpath(os.path.join(
+        AGENT_BIN_DIR, "scripts", "install-oneline.sh"
+    ))
+    if not os.path.isfile(script_path):
+        return "Installer script not found on server", 404
+    from flask import send_file
+    return send_file(script_path, mimetype="text/x-shellscript")
 
 
 @app.route("/favicon.ico")
@@ -1020,6 +1084,44 @@ def api_discover_field_values():
         index = request.args.get("index", f"{INDEX_PREFIX}-alerts-*", type=str)
         values = get_discover_field_values(field=field, size=size, time_from=time_from, time_to=time_to, index_pattern=index)
         return jsonify({"values": values})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/discover/field-stats")
+def api_discover_field_stats():
+    """Return top field values with counts and percentages for the Discover field stats popover."""
+    try:
+        field = request.args.get("field", type=str)
+        if not field:
+            return jsonify({"error": "field required"}), 400
+        size = request.args.get("size", 15, type=int)
+        time_from = request.args.get("time_from", type=str) or None
+        time_to = request.args.get("time_to", type=str) or None
+        index = request.args.get("index", f"{INDEX_PREFIX}-alerts-*", type=str)
+        result = get_discover_field_stats(field=field, size=size, time_from=time_from, time_to=time_to, index_pattern=index)
+        return jsonify(result)
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/discover/correlate", methods=["POST"])
+def api_discover_correlate():
+    """Find events related to a given alert by shared field values."""
+    try:
+        body = request.get_json(silent=True) or {}
+        fields = body.get("fields", {})
+        exclude_id = body.get("exclude_id")
+        time_from = body.get("time_from")
+        time_to = body.get("time_to")
+        index = body.get("index", f"{INDEX_PREFIX}-alerts-*")
+        size = body.get("size", 20)
+        result = get_discover_correlate(
+            fields=fields, exclude_id=exclude_id,
+            time_from=time_from, time_to=time_to,
+            index_pattern=index, size=size,
+        )
+        return jsonify(result)
     except Exception as e:
         return _api_error(e)
 

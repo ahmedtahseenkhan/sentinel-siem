@@ -2267,8 +2267,10 @@ const GEO_CONTINENTS = [
     const min_level = document.getElementById('discoverSeverity')?.value ? parseInt(document.getElementById('discoverSeverity').value, 10) : undefined;
     const agent_id = document.getElementById('discoverAgent')?.value || undefined;
     const rule_group = document.getElementById('discoverGroup')?.value || undefined;
+    const mitre = document.getElementById('discoverMitre')?.value || undefined;
+    const compliance = document.getElementById('discoverCompliance')?.value || undefined;
     const search = (document.getElementById('discoverSearch')?.value || '').trim() || undefined;
-    return { range, time_from, time_to, min_level, agent_id, rule_group, search };
+    return { range, time_from, time_to, min_level, agent_id, rule_group, mitre, compliance, search };
   }
 
   function getByPath(obj, path) {
@@ -2328,7 +2330,6 @@ const GEO_CONTINENTS = [
     if (params.time_from && params.time_to) {
       must.push({ range: { timestamp: { gte: params.time_from, lte: params.time_to } } });
     }
-    // Always merge toolbar params into DSL so they are never silently dropped
     if (params.min_level != null) {
       must.push({ range: { rule_level: { gte: params.min_level } } });
     }
@@ -2342,14 +2343,40 @@ const GEO_CONTINENTS = [
         { match: { 'rule_groups': params.rule_group } },
       ], minimum_should_match: 1 } });
     }
-    if (params.search && params.search.trim()) {
-      must.push({ multi_match: {
-        query: params.search.trim(),
-        fields: ['rule_description^3', 'rule_groups^2', 'agent_name^2', 'agent_id', 'event_data.srcip', 'event_data.dstuser'],
-        type: 'best_fields', operator: 'or',
-      }});
+    // MITRE ATT&CK filter
+    if (params.mitre) {
+      must.push({ bool: { should: [
+        { term: { 'rule_groups.keyword': params.mitre } },
+        { match: { 'rule_groups': params.mitre } },
+        { term: { 'mitre.id': params.mitre } },
+        { term: { 'mitre.technique_id': params.mitre } },
+        { term: { 'mitre.tactic': params.mitre } },
+      ], minimum_should_match: 1 } });
     }
-    discoverDslFilters.forEach((f) => {
+    // Compliance filter
+    if (params.compliance) {
+      must.push({ exists: { field: params.compliance } });
+    }
+    // Search: try KQL parser first, fall back to multi_match
+    if (params.search && params.search.trim()) {
+      const kqlClause = parseKqlQuery(params.search.trim());
+      if (kqlClause) {
+        must.push(kqlClause);
+      } else {
+        must.push({ multi_match: {
+          query: params.search.trim(),
+          fields: ['rule_description^3', 'title^3', 'rule_groups^2', 'agent_name^2', 'agent_id',
+                   'src_ip^2', 'dst_ip', 'username^2', 'process_name^2',
+                   'event_data.srcip^2', 'event_data.dstuser', 'event_data.commandline'],
+          type: 'best_fields', operator: 'or',
+        }});
+      }
+    }
+    // Pinned + session filters
+    const allFilters = [...discoverPinnedFilters.filter(f => !discoverDslFilters.some(df => df.field === f.field && df.value === f.value)), ...discoverDslFilters];
+    allFilters.forEach((f) => {
+      // IOC special filter
+      if (f._ioc && f._dsl) { must.push(f._dsl); return; }
       let clause = null;
       const field = f.field;
       const type = f.type;
@@ -2372,6 +2399,8 @@ const GEO_CONTINENTS = [
         if (terms.length) clause = { terms: { [exactField]: terms } };
       } else if (op === 'starts with' && val !== '') {
         clause = { prefix: { [exactField]: val } };
+      } else if (op === 'matches' && val !== '') {
+        clause = { wildcard: { [exactField]: { value: val, case_insensitive: true } } };
       } else if (op === '>' && val !== '') {
         clause = { range: { [field]: { gt: isNaN(Number(val)) ? val : Number(val) } } };
       } else if (op === '<' && val !== '') {
@@ -2398,8 +2427,13 @@ const GEO_CONTINENTS = [
   function renderDiscoverFilterPills() {
     const params = getDiscoverParams();
     const pills = [];
+    // Pinned filters first
+    discoverPinnedFilters.forEach((f, i) => {
+      const label = (f.field || '') + ' ' + (f.op || '') + (f.value ? ' ' + f.value : '');
+      pills.push({ label: label.slice(0, 40) + (label.length > 40 ? '…' : ''), pinned: true, clear: () => { discoverPinnedFilters.splice(i, 1); try { localStorage.setItem('disc_pinned_filters', JSON.stringify(discoverPinnedFilters)); } catch(e){} renderDiscoverFilterPills(); discoverOffset = 0; loadDiscover(); } });
+    });
     discoverDslFilters.forEach((f, i) => {
-      const label = f.negate ? 'NOT ' + f.field + ' ' + f.op + (f.value ? ' ' + f.value : '') : f.field + ' ' + f.op + (f.value ? ' ' + f.value : '');
+      const label = f._ioc ? 'IOC: ' + f.value : (f.negate ? 'NOT ' + f.field + ' ' + f.op + (f.value ? ' ' + f.value : '') : (f.field || '') + ' ' + (f.op || '') + (f.value ? ' ' + f.value : ''));
       pills.push({ label: label.slice(0, 40) + (label.length > 40 ? '…' : ''), clear: () => { discoverDslFilters.splice(i, 1); renderDiscoverFilterPills(); discoverOffset = 0; loadDiscover(); } });
     });
     if (params.range && params.range !== '24h') {
@@ -2413,10 +2447,12 @@ const GEO_CONTINENTS = [
       pills.push({ label: 'Agent: ' + agentLabel, clear: () => { const el = document.getElementById('discoverAgent'); if (el) el.value = ''; loadDiscover(); } });
     }
     if (params.rule_group) pills.push({ label: 'Group: ' + params.rule_group, clear: () => { const el = document.getElementById('discoverGroup'); if (el) el.value = ''; loadDiscover(); } });
+    if (params.mitre) pills.push({ label: 'MITRE: ' + params.mitre, clear: () => { const el = document.getElementById('discoverMitre'); if (el) el.value = ''; loadDiscover(); } });
+    if (params.compliance) pills.push({ label: 'Compliance: ' + params.compliance, clear: () => { const el = document.getElementById('discoverCompliance'); if (el) el.value = ''; loadDiscover(); } });
     if (params.search) pills.push({ label: 'Search: ' + params.search.slice(0, 20) + (params.search.length > 20 ? '…' : ''), clear: () => { const el = document.getElementById('discoverSearch'); if (el) el.value = ''; loadDiscover(); } });
     const el = document.getElementById('discoverFilterPills');
     if (!el) return;
-    el.innerHTML = pills.length ? pills.map(p => '<span class="filter-pill">' + escapeHtml(p.label) + ' <button type="button" class="filter-pill-remove" aria-label="Remove">×</button></span>').join('') : '';
+    el.innerHTML = pills.length ? pills.map(p => '<span class="filter-pill' + (p.pinned ? ' pinned' : '') + '">' + escapeHtml(p.label) + ' <button type="button" class="filter-pill-remove" aria-label="Remove">×</button></span>').join('') : '';
     el.querySelectorAll('.filter-pill-remove').forEach((btn, i) => { btn.addEventListener('click', () => pills[i].clear()); });
   }
 
@@ -2451,50 +2487,67 @@ const GEO_CONTINENTS = [
     const act  = isSelected ? '−' : '+';
     const cls  = isSelected ? 'v2-field-row selected' : 'v2-field-row';
     return `<div class="${cls}" data-field="${escapeHtml(name)}" data-selected="${isSelected}">
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(name)}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
       <span class="v2-field-type">${type}</span>
+      <button type="button" class="disc-fsp-trigger" title="Field statistics" style="background:none;border:none;color:var(--fg-4);cursor:pointer;font-size:10px;padding:0 2px;line-height:1" data-statsfield="${escapeHtml(name)}">≡</button>
       <span class="v2-field-act">${act}</span>
     </div>`;
   }
 
   function renderDiscoverFieldsSidebar() {
-    const available = discoverAvailableFieldsList.filter((f) => !discoverSelectedFields.includes(f.name));
+    const fieldSearchVal = (document.getElementById('discoverFieldSearch')?.value || '').toLowerCase();
+    const filterBySearch = (name) => !fieldSearchVal || name.toLowerCase().includes(fieldSearchVal);
+    const available = discoverAvailableFieldsList.filter((f) => !discoverSelectedFields.includes(f.name) && filterBySearch(f.name));
     const selectedEl  = document.getElementById('discoverSelectedFields');
     const popularEl   = document.getElementById('discoverPopularFields');
     const availableEl = document.getElementById('discoverAvailableFields');
 
+    const wireStats = (container) => {
+      container.querySelectorAll('.disc-fsp-trigger').forEach(btn => {
+        btn.addEventListener('click', (e) => { e.stopPropagation(); showFieldStats(btn.getAttribute('data-statsfield'), btn); });
+      });
+    };
+
     if (selectedEl) {
-      selectedEl.innerHTML = discoverSelectedFields.length
-        ? discoverSelectedFields.map(n => _discFieldRow(n, true)).join('')
-        : '<div style="padding:6px 12px;font-size:11px;color:var(--fg-4)">None selected</div>';
+      const selFiltered = discoverSelectedFields.filter(filterBySearch);
+      selectedEl.innerHTML = selFiltered.length
+        ? selFiltered.map(n => _discFieldRow(n, true)).join('')
+        : (discoverSelectedFields.length ? '<div style="padding:6px 12px;font-size:11px;color:var(--fg-4)">No match</div>' : '<div style="padding:6px 12px;font-size:11px;color:var(--fg-4)">None selected</div>');
       selectedEl.querySelectorAll('.v2-field-row.selected').forEach((row, i) => {
         row.querySelector('.v2-field-act')?.addEventListener('click', () => {
-          discoverSelectedFields.splice(i, 1);
+          const name = selFiltered[i];
+          const idx = discoverSelectedFields.indexOf(name);
+          if (idx >= 0) discoverSelectedFields.splice(idx, 1);
           renderDiscoverFieldsSidebar(); renderDiscoverThead(); discoverOffset = 0; loadDiscover();
         });
       });
+      wireStats(selectedEl);
+      const selCntEl = document.getElementById('discoverSelectedCount');
+      if (selCntEl) selCntEl.textContent = discoverSelectedFields.length;
     }
-    const popFiltered = DISCOVER_POPULAR_FIELDS.filter(n => !discoverSelectedFields.includes(n));
+    const popFiltered = DISCOVER_POPULAR_FIELDS.filter(n => !discoverSelectedFields.includes(n) && filterBySearch(n));
     if (popularEl) {
-      popularEl.innerHTML = popFiltered.map(n => _discFieldRow(n, false)).join('');
+      popularEl.innerHTML = popFiltered.length ? popFiltered.map(n => _discFieldRow(n, false)).join('') : '<div style="padding:4px 12px;font-size:11px;color:var(--fg-4)">—</div>';
       popularEl.querySelectorAll('.v2-field-row').forEach((row, i) => {
         row.querySelector('.v2-field-act')?.addEventListener('click', () => {
           const name = popFiltered[i];
           if (name && !discoverSelectedFields.includes(name)) { discoverSelectedFields.push(name); renderDiscoverFieldsSidebar(); renderDiscoverThead(); discoverOffset = 0; loadDiscover(); }
         });
       });
+      wireStats(popularEl);
     }
     if (availableEl) {
-      const avList = available.length ? available.slice(0, 60) : [
+      const avList = available.length ? available.slice(0, 80) : (!fieldSearchVal ? [
         {name:'agent.name'},{name:'agent.ip'},{name:'host.os'},{name:'user.name'},{name:'rule.mitre.id'},{name:'rule.mitre.tactic'},{name:'data.win.event'},{name:'data.srcip'},{name:'data.dstport'},{name:'file.hash.sha256'},
-      ];
-      availableEl.innerHTML = avList.map(f => _discFieldRow(f.name || f, false)).join('');
+      ].filter(f => filterBySearch(f.name)) : []);
+      availableEl.innerHTML = avList.map(f => _discFieldRow(f.name || f, false)).join('') || '<div style="padding:4px 12px;font-size:11px;color:var(--fg-4)">No matching fields</div>';
       availableEl.querySelectorAll('.v2-field-row').forEach((row, i) => {
         row.querySelector('.v2-field-act')?.addEventListener('click', () => {
-          const name = (avList[i].name || avList[i]);
+          const name = (avList[i] && (avList[i].name || avList[i]));
           if (name && !discoverSelectedFields.includes(name)) { discoverSelectedFields.push(name); renderDiscoverFieldsSidebar(); renderDiscoverThead(); discoverOffset = 0; loadDiscover(); }
         });
       });
+      wireStats(availableEl);
       const cntEl = document.getElementById('discoverAvailCount');
       if (cntEl) cntEl.textContent = avList.length;
     }
@@ -2599,7 +2652,14 @@ const GEO_CONTINENTS = [
         }
         return '<span class="discover-td">' + formatVal(v, path) + '</span>';
       });
-      cells.push('<span class="discover-td-action"><button type="button" class="btn-disc-detail" title="Inspect event">⊕</button></span>');
+      const tags = discoverGetTags(a);
+      const tagBadges = tags.map(t => '<span class="disc-tag-badge">' + escapeHtml(t) + '</span>').join('');
+      const bookmarked = discoverBookmarks.has(_alertId(a));
+      cells.push('<span class="discover-td-action">' +
+        '<button type="button" class="disc-bookmark-btn' + (bookmarked ? ' active' : '') + '" title="' + (bookmarked ? 'Remove bookmark' : 'Bookmark event') + '" data-index="' + i + '">★</button>' +
+        (tagBadges ? '<span style="display:flex;gap:2px;flex-wrap:wrap">' + tagBadges + '</span>' : '') +
+        '<button type="button" class="btn-disc-detail" title="Inspect event (click row or this button)">⊕</button>' +
+        '</span>');
       return '<div class="' + rowClass + '" data-index="' + i + '" style="grid-template-columns:' + colWidths + '">' + cells.join('') + '</div>';
     }).join('');
   }
@@ -2715,32 +2775,49 @@ const GEO_CONTINENTS = [
       }
       jsonEl.classList.add('hidden');
     }
+    // Reset timeline
+    const timelineEl = document.getElementById('discoverDetailTimeline');
+    if (timelineEl) { timelineEl.innerHTML = ''; timelineEl.classList.add('hidden'); }
     contentEl.classList.remove('hidden');
     document.querySelectorAll('.discover-detail-tab').forEach((t) => {
       t.classList.toggle('active', t.getAttribute('data-tab') === 'table');
     });
+    // Wire detail action buttons
+    document.getElementById('discoverDetailCopyJson')?.addEventListener('click', () => {
+      const json = JSON.stringify(alert.source || {}, null, 2);
+      if (navigator.clipboard) navigator.clipboard.writeText(json).then(() => showDiscoverToast('JSON copied'));
+      else { const t=document.createElement('textarea');t.value=json;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);showDiscoverToast('JSON copied'); }
+    }, { once: true });
+    document.getElementById('discoverDetailTagBtn')?.addEventListener('click', () => discoverShowTagModal(alert), { once: true });
+    document.getElementById('discoverDetailCorrelateBtn')?.addEventListener('click', () => { discoverShowCorrelation(alert); closeDiscoverDetail(); }, { once: true });
+    document.getElementById('discoverDetailViewRule')?.addEventListener('click', () => {
+      const ruleId = (alert.source || {}).rule_id || alert.rule_id;
+      if (ruleId) { closeDiscoverDetail(); goToPage('rules'); setTimeout(() => { const el = document.getElementById('rulesSearch'); if (el) { el.value = String(ruleId); el.dispatchEvent(new Event('input')); } }, 200); }
+      else showDiscoverToast('No rule ID for this event');
+    }, { once: true });
   }
 
   function setDiscoverDetailTab(tab) {
     const contentEl = document.getElementById('discoverDetailContent');
     const jsonEl = document.getElementById('discoverDetailJson');
     const aiEl = document.getElementById('discoverDetailAi');
+    const timelineEl = document.getElementById('discoverDetailTimeline');
     document.querySelectorAll('.discover-detail-tab').forEach((t) => {
       t.classList.toggle('active', t.getAttribute('data-tab') === tab);
     });
+    if (contentEl) contentEl.classList.add('hidden');
+    if (jsonEl) jsonEl.classList.add('hidden');
+    if (aiEl) aiEl.classList.add('hidden');
+    if (timelineEl) timelineEl.classList.add('hidden');
     if (tab === 'json') {
-      if (contentEl) contentEl.classList.add('hidden');
       if (jsonEl) jsonEl.classList.remove('hidden');
-      if (aiEl) aiEl.classList.add('hidden');
     } else if (tab === 'ai') {
-      if (contentEl) contentEl.classList.add('hidden');
-      if (jsonEl) jsonEl.classList.add('hidden');
       if (aiEl) aiEl.classList.remove('hidden');
       if (_discoverCurrentAlert) loadAiSummary(_discoverCurrentAlert);
+    } else if (tab === 'timeline') {
+      if (timelineEl) { timelineEl.classList.remove('hidden'); if (_discoverCurrentAlert) discoverLoadTimeline(_discoverCurrentAlert); }
     } else {
       if (contentEl) contentEl.classList.remove('hidden');
-      if (jsonEl) jsonEl.classList.add('hidden');
-      if (aiEl) aiEl.classList.add('hidden');
     }
   }
 
@@ -2914,6 +2991,9 @@ const GEO_CONTINENTS = [
     document.getElementById('discoverNext').disabled = discoverOffset + DISCOVER_PAGE_SIZE >= displayTotal;
     renderDiscoverFilterPills();
     drawDiscoverHistogram(listRes.histogram || []);
+    discoverUpdateStatsSummary(listAlerts);
+    discoverSaveSession();
+    discoverSetUrlState();
   }
 
   function drawDiscoverHistogram(histogram) {
@@ -3045,6 +3125,530 @@ const GEO_CONTINENTS = [
   }
 
   function closeDiscoverDetail() { document.getElementById('discoverDetailPanel')?.classList.add('hidden'); }
+
+  // ── Discover: Extended feature state ──────────────────────────────────────
+  let discoverPinnedFilters = [];
+  let discoverDensity = 'default';
+  let discoverAutoRefreshActive = false;
+  let discoverAutoRefreshTimerId = null;
+  let discoverAutoRefreshSeconds = 30;
+  let discoverSearchHistory = [];
+  let discoverSavedSearches = [];
+  let discoverTaggedEvents = {};
+  let discoverBookmarks = new Set();
+  let _discoverFieldStatsCache = {};
+
+  (function _discoverBootstrap() {
+    try { discoverPinnedFilters = JSON.parse(localStorage.getItem('disc_pinned_filters') || '[]'); } catch(e){}
+    try { discoverDensity = localStorage.getItem('disc_density') || 'default'; } catch(e){}
+    try { discoverSearchHistory = JSON.parse(localStorage.getItem('disc_search_history') || '[]'); } catch(e){}
+    try { discoverSavedSearches = JSON.parse(localStorage.getItem('disc_saved_searches') || '[]'); } catch(e){}
+    try { discoverTaggedEvents = JSON.parse(localStorage.getItem('disc_tags') || '{}'); } catch(e){}
+    try { discoverBookmarks = new Set(JSON.parse(localStorage.getItem('disc_bookmarks') || '[]')); } catch(e){}
+  })();
+
+  // ── KQL / Lucene parser ────────────────────────────────────────────────────
+  function parseKqlQuery(q) {
+    if (!q || !q.trim()) return null;
+    q = q.trim();
+    if (!/[\w.]+\s*:/.test(q) && !/\b(AND|OR|NOT)\b/i.test(q)) return null;
+    try { return _kqlParse(q); } catch(e) { return null; }
+  }
+  function _kqlParse(expr) {
+    expr = expr.trim();
+    const orParts = _kqlSplit(expr, 'OR');
+    if (orParts.length > 1) {
+      const s = orParts.map(p => _kqlParse(p.trim())).filter(Boolean);
+      return s.length === 1 ? s[0] : { bool: { should: s, minimum_should_match: 1 } };
+    }
+    const andParts = _kqlSplit(expr, 'AND');
+    if (andParts.length > 1) {
+      const m = andParts.map(p => _kqlParse(p.trim())).filter(Boolean);
+      return m.length === 1 ? m[0] : { bool: { must: m } };
+    }
+    if (/^NOT\s+/i.test(expr)) {
+      const c = _kqlParse(expr.replace(/^NOT\s+/i, ''));
+      return c ? { bool: { must_not: [c] } } : null;
+    }
+    if (expr.startsWith('(') && expr.endsWith(')')) return _kqlParse(expr.slice(1, -1));
+    const m = expr.match(/^([\w.]+)\s*:\s*(.+)$/);
+    if (m) return _kqlFieldValue(m[1], m[2].trim());
+    return { multi_match: { query: expr, fields: ['rule_description^3','title^2','agent_name^2','src_ip','username'], type: 'best_fields' } };
+  }
+  function _kqlFieldValue(field, val) {
+    const rm = val.match(/^\[(.+)\s+TO\s+(.+)\]$/i);
+    if (rm) return { range: { [field]: { gte: _kqlNum(rm[1]), lte: _kqlNum(rm[2]) } } };
+    if (/^".*"$/.test(val)) return { match_phrase: { [field]: val.slice(1, -1) } };
+    if (val.startsWith('>=')) return { range: { [field]: { gte: _kqlNum(val.slice(2).trim()) } } };
+    if (val.startsWith('<=')) return { range: { [field]: { lte: _kqlNum(val.slice(2).trim()) } } };
+    if (val.startsWith('>')) return { range: { [field]: { gt: _kqlNum(val.slice(1).trim()) } } };
+    if (val.startsWith('<')) return { range: { [field]: { lt: _kqlNum(val.slice(1).trim()) } } };
+    if (val === '*') return { exists: { field } };
+    if (val.includes('*') || val.includes('?')) return { wildcard: { [field + '.keyword']: { value: val, case_insensitive: true } } };
+    if (val.includes(',')) { const terms = val.split(',').map(s=>s.trim()).filter(Boolean); if (terms.length > 1) return { terms: { [field + '.keyword']: terms } }; }
+    if (/~\d?$/.test(val)) return { fuzzy: { [field]: { value: val.replace(/~\d?$/, ''), fuzziness: 1 } } };
+    return { term: { [field]: val } };
+  }
+  function _kqlSplit(expr, op) { return expr.split(new RegExp('\\s+' + op + '\\s+', 'i')); }
+  function _kqlNum(s) { const n = Number(s.trim()); return isNaN(n) ? s.trim() : n; }
+
+  // ── Session persistence ────────────────────────────────────────────────────
+  function _discoverStateToObj() {
+    return {
+      search: document.getElementById('discoverSearch')?.value || '',
+      timeRange: document.getElementById('discoverTimeRange')?.value || '24h',
+      severity: document.getElementById('discoverSeverity')?.value || '',
+      agent: document.getElementById('discoverAgent')?.value || '',
+      group: document.getElementById('discoverGroup')?.value || '',
+      mitre: document.getElementById('discoverMitre')?.value || '',
+      compliance: document.getElementById('discoverCompliance')?.value || '',
+      index: document.getElementById('discoverIndex')?.value || 'watchvault-alerts-*',
+      fields: [...discoverSelectedFields],
+      sortField: discoverSortField,
+      sortOrder: discoverSortOrder,
+      filters: discoverDslFilters.filter(f => !f._ioc),
+      density: discoverDensity,
+    };
+  }
+  function _discoverApplyState(state) {
+    if (!state) return;
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+    set('discoverSearch', state.search);
+    set('discoverTimeRange', state.timeRange);
+    set('discoverSeverity', state.severity);
+    set('discoverAgent', state.agent);
+    set('discoverGroup', state.group);
+    set('discoverMitre', state.mitre);
+    set('discoverCompliance', state.compliance);
+    set('discoverIndex', state.index);
+    if (Array.isArray(state.fields) && state.fields.length) discoverSelectedFields = [...state.fields];
+    if (state.sortField) discoverSortField = state.sortField;
+    if (state.sortOrder) discoverSortOrder = state.sortOrder;
+    if (Array.isArray(state.filters)) discoverDslFilters = [...state.filters];
+    if (state.density) discoverSetDensity(state.density);
+  }
+  function discoverSaveSession() {
+    try { localStorage.setItem('disc_session', JSON.stringify(_discoverStateToObj())); } catch(e){}
+  }
+  function discoverLoadSession() {
+    try { const s = localStorage.getItem('disc_session'); if (s) _discoverApplyState(JSON.parse(s)); } catch(e){}
+    try { const p = localStorage.getItem('disc_pinned_filters'); if (p) discoverPinnedFilters = JSON.parse(p); } catch(e){}
+  }
+
+  // ── URL state sharing ──────────────────────────────────────────────────────
+  function discoverGetUrlHash() {
+    try {
+      const s = _discoverStateToObj();
+      return '#discover:' + btoa(unescape(encodeURIComponent(JSON.stringify({ q:s.search,t:s.timeRange,sev:s.severity,ag:s.agent,gr:s.group,mt:s.mitre,co:s.compliance,idx:s.index,f:s.fields,sf:s.sortField,so:s.sortOrder,fl:s.filters }))));
+    } catch(e) { return '#discover'; }
+  }
+  function discoverSetUrlState() {
+    try { history.replaceState(null, '', window.location.pathname + window.location.search + discoverGetUrlHash()); } catch(e){}
+  }
+  function discoverRestoreUrlState() {
+    try {
+      const hash = window.location.hash;
+      if (!hash.startsWith('#discover:')) return false;
+      const state = JSON.parse(decodeURIComponent(escape(atob(hash.slice(10)))));
+      _discoverApplyState({ search:state.q,timeRange:state.t,severity:state.sev,agent:state.ag,group:state.gr,mitre:state.mt,compliance:state.co,index:state.idx,fields:state.f,sortField:state.sf,sortOrder:state.so,filters:state.fl||[] });
+      return true;
+    } catch(e) { return false; }
+  }
+  function discoverShareUrl() {
+    discoverSetUrlState();
+    const url = window.location.href.split('#')[0] + discoverGetUrlHash();
+    if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => showDiscoverToast('Share URL copied to clipboard'));
+    else { const t=document.createElement('textarea');t.value=url;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);showDiscoverToast('URL copied'); }
+  }
+
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  function showDiscoverToast(msg) {
+    const toast = document.getElementById('discoverToast');
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => toast.classList.remove('show'), 2600);
+  }
+
+  // ── Search history ─────────────────────────────────────────────────────────
+  function discoverAddToHistory(q) {
+    if (!q || !q.trim()) return;
+    discoverSearchHistory = [q, ...discoverSearchHistory.filter(h => h !== q)].slice(0, 20);
+    try { localStorage.setItem('disc_search_history', JSON.stringify(discoverSearchHistory)); } catch(e){}
+  }
+  function discoverShowHistory() {
+    const drop = document.getElementById('discoverSearchHistoryDrop');
+    if (!drop) return;
+    if (drop.classList.contains('hidden')) {
+      if (!discoverSearchHistory.length) {
+        drop.innerHTML = '<div class="disc-drop-empty">No recent searches</div>';
+      } else {
+        drop.innerHTML = '<div class="disc-drop-hdr">Recent searches <button class="disc-drop-clear" id="discHistClear">Clear all</button></div>' +
+          discoverSearchHistory.map(h => '<div class="disc-drop-item disc-hist-item" data-q="' + escapeHtml(h) + '"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> ' + escapeHtml(h.length > 50 ? h.slice(0,50)+'…' : h) + '</div>').join('');
+      }
+      drop.classList.remove('hidden');
+      drop.querySelectorAll('.disc-hist-item').forEach(el => {
+        el.addEventListener('click', () => {
+          document.getElementById('discoverSearch').value = el.getAttribute('data-q');
+          drop.classList.add('hidden');
+          discoverOffset = 0; loadDiscover();
+        });
+      });
+      document.getElementById('discHistClear')?.addEventListener('click', () => {
+        discoverSearchHistory = [];
+        try { localStorage.removeItem('disc_search_history'); } catch(e){}
+        drop.classList.add('hidden');
+      });
+    } else { drop.classList.add('hidden'); }
+  }
+
+  // ── Saved searches ─────────────────────────────────────────────────────────
+  function discoverSaveSearch(name) {
+    if (!name || !name.trim()) return;
+    const id = Date.now().toString(36);
+    discoverSavedSearches.push({ id, name: name.trim(), state: _discoverStateToObj(), created: new Date().toISOString() });
+    try { localStorage.setItem('disc_saved_searches', JSON.stringify(discoverSavedSearches)); } catch(e){}
+    showDiscoverToast('Search saved: ' + name.trim());
+    discoverRenderSavedSearches();
+  }
+  function discoverLoadSearch(id) {
+    const s = discoverSavedSearches.find(x => x.id === id);
+    if (!s) return;
+    _discoverApplyState(s.state);
+    discoverOffset = 0;
+    renderDiscoverFieldsSidebar(); renderDiscoverFilterPills();
+    loadDiscover();
+    document.getElementById('discoverSavedModal')?.classList.add('hidden');
+    showDiscoverToast('Loaded: ' + s.name);
+  }
+  function discoverDeleteSearch(id) {
+    discoverSavedSearches = discoverSavedSearches.filter(x => x.id !== id);
+    try { localStorage.setItem('disc_saved_searches', JSON.stringify(discoverSavedSearches)); } catch(e){}
+    discoverRenderSavedSearches();
+  }
+  function discoverRenderSavedSearches() {
+    const list = document.getElementById('discoverSavedList');
+    if (!list) return;
+    if (!discoverSavedSearches.length) { list.innerHTML = '<div class="disc-drop-empty">No saved searches yet</div>'; return; }
+    list.innerHTML = discoverSavedSearches.map(s =>
+      '<div class="disc-saved-item"><div class="disc-saved-info"><span class="disc-saved-name">' + escapeHtml(s.name) + '</span><span class="disc-saved-meta">' + new Date(s.created).toLocaleDateString() + ' · ' + (s.state.timeRange||'24h') + '</span></div>' +
+      '<div class="disc-saved-actions"><button class="act-btn" data-load="' + s.id + '">Load</button><button class="act-btn" data-del="' + s.id + '">Delete</button></div></div>'
+    ).join('');
+    list.querySelectorAll('[data-load]').forEach(btn => btn.addEventListener('click', () => discoverLoadSearch(btn.getAttribute('data-load'))));
+    list.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', () => discoverDeleteSearch(btn.getAttribute('data-del'))));
+  }
+  function discoverShowSavedModal() {
+    discoverRenderSavedSearches();
+    document.getElementById('discoverSavedModal')?.classList.remove('hidden');
+  }
+
+  // ── Auto-refresh / Live mode ───────────────────────────────────────────────
+  function discoverToggleAutoRefresh() {
+    if (discoverAutoRefreshActive) discoverStopAutoRefresh();
+    else { const s = parseInt(document.getElementById('discoverAutoRefreshInterval')?.value || '30', 10); discoverStartAutoRefresh(s); }
+  }
+  function discoverStartAutoRefresh(secs) {
+    discoverStopAutoRefresh();
+    discoverAutoRefreshActive = true;
+    discoverAutoRefreshSeconds = secs;
+    const btn = document.getElementById('discoverAutoRefreshBtn');
+    if (btn) { btn.innerHTML = '⏹ ' + secs + 's'; btn.classList.add('active'); }
+    document.getElementById('discoverLiveIndicator')?.classList.remove('hidden');
+    document.getElementById('discoverAutoRefreshInterval')?.classList.remove('hidden');
+    loadDiscover();
+    discoverAutoRefreshTimerId = setInterval(() => {
+      if (document.getElementById('page-discover')?.classList.contains('active')) loadDiscover();
+    }, secs * 1000);
+    showDiscoverToast('Live: refreshing every ' + secs + 's');
+  }
+  function discoverStopAutoRefresh() {
+    if (discoverAutoRefreshTimerId) clearInterval(discoverAutoRefreshTimerId);
+    discoverAutoRefreshTimerId = null;
+    discoverAutoRefreshActive = false;
+    const btn = document.getElementById('discoverAutoRefreshBtn');
+    if (btn) { btn.innerHTML = '▶ Live'; btn.classList.remove('active'); }
+    document.getElementById('discoverLiveIndicator')?.classList.add('hidden');
+    document.getElementById('discoverAutoRefreshInterval')?.classList.add('hidden');
+  }
+
+  // ── Inspector ─────────────────────────────────────────────────────────────
+  function discoverShowInspector() {
+    const modal = document.getElementById('discoverInspectorModal');
+    if (!modal) return;
+    const dsl = buildDiscoverDsl();
+    const body = document.getElementById('discoverInspectorBody');
+    if (body) body.textContent = JSON.stringify(dsl, null, 2);
+    modal.classList.remove('hidden');
+  }
+
+  // ── Density ───────────────────────────────────────────────────────────────
+  function discoverSetDensity(mode) {
+    discoverDensity = mode;
+    const wrap = document.getElementById('discoverResultsWrap');
+    if (wrap) { wrap.classList.remove('disc-density-compact', 'disc-density-comfortable'); if (mode !== 'default') wrap.classList.add('disc-density-' + mode); }
+    try { localStorage.setItem('disc_density', mode); } catch(e){}
+  }
+
+  // ── Field statistics popover ───────────────────────────────────────────────
+  async function showFieldStats(fieldName, anchorEl) {
+    const pop = document.getElementById('discoverFieldStatsPop');
+    if (!pop) return;
+    const rect = anchorEl.getBoundingClientRect();
+    pop.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+    pop.style.left = Math.min(rect.left + window.scrollX, window.innerWidth - 380) + 'px';
+    pop.innerHTML = '<div class="disc-fsp-title">' + escapeHtml(fieldName) + '</div><div class="disc-fsp-loading">Loading…</div>';
+    pop.classList.remove('hidden');
+    const closeH = (e) => { if (!pop.contains(e.target)) { pop.classList.add('hidden'); document.removeEventListener('click', closeH); } };
+    setTimeout(() => document.addEventListener('click', closeH), 80);
+    const cacheKey = fieldName + ':' + (document.getElementById('discoverTimeRange')?.value || '24h');
+    if (_discoverFieldStatsCache[cacheKey]) { renderFieldStatsPop(pop, fieldName, _discoverFieldStatsCache[cacheKey]); return; }
+    const params = getDiscoverParams();
+    const url = '/api/discover/field-stats?' + new URLSearchParams({ field: fieldName, size: 15, time_from: params.time_from || '', time_to: params.time_to || '', index: document.getElementById('discoverIndex')?.value || 'watchvault-alerts-*' });
+    try {
+      const data = await fetch(url).then(r => r.json());
+      _discoverFieldStatsCache[cacheKey] = data;
+      renderFieldStatsPop(pop, fieldName, data);
+    } catch(e) { pop.innerHTML = '<div class="disc-fsp-title">' + escapeHtml(fieldName) + '</div><div class="disc-fsp-error">Failed to load</div>'; }
+  }
+  function renderFieldStatsPop(pop, fieldName, data) {
+    const values = (data.values || []).slice(0, 12);
+    const total = data.total || 1;
+    if (!values.length) { pop.innerHTML = '<div class="disc-fsp-title">' + escapeHtml(fieldName) + '</div><div class="disc-fsp-empty">No data in time range</div>'; return; }
+    const rows = values.map(v => {
+      const pct = v.pct != null ? v.pct : Math.round((v.count||0) / total * 100);
+      const dv = v.value != null ? String(v.value) : '(empty)';
+      const dv2 = dv.length > 28 ? dv.slice(0,28)+'…' : dv;
+      return '<div class="disc-fsp-row" data-f="' + escapeHtml(fieldName) + '" data-v="' + escapeHtml(String(v.value)) + '">' +
+        '<span class="disc-fsp-val" title="' + escapeHtml(dv) + '">' + escapeHtml(dv2) + '</span>' +
+        '<div class="disc-fsp-bar-wrap"><div class="disc-fsp-bar" style="width:' + Math.min(pct, 100) + '%"></div></div>' +
+        '<span class="disc-fsp-pct">' + pct + '%</span><span class="disc-fsp-count">' + (v.count||0).toLocaleString() + '</span>' +
+        '<button class="disc-fsp-add" title="Filter for">+</button><button class="disc-fsp-exc" title="Filter out">−</button></div>';
+    }).join('');
+    pop.innerHTML = '<div class="disc-fsp-title">' + escapeHtml(fieldName) + ' <span class="disc-fsp-subtitle">' + total.toLocaleString() + ' docs</span></div>' + rows;
+    pop.querySelectorAll('.disc-fsp-add').forEach(btn => { const row = btn.closest('.disc-fsp-row'); btn.addEventListener('click', () => { discoverDslFilters.push({ field: row.getAttribute('data-f'), op: 'is', value: row.getAttribute('data-v') }); renderDiscoverFilterPills(); discoverOffset = 0; loadDiscover(); pop.classList.add('hidden'); }); });
+    pop.querySelectorAll('.disc-fsp-exc').forEach(btn => { const row = btn.closest('.disc-fsp-row'); btn.addEventListener('click', () => { discoverDslFilters.push({ field: row.getAttribute('data-f'), op: 'is not', value: row.getAttribute('data-v') }); renderDiscoverFilterPills(); discoverOffset = 0; loadDiscover(); pop.classList.add('hidden'); }); });
+  }
+
+  // ── IOC Quick Search ───────────────────────────────────────────────────────
+  function discoverIOCQuickSearch(ioc) {
+    if (!ioc || !ioc.trim()) return;
+    const q = ioc.trim();
+    const el = document.getElementById('discoverSearch');
+    if (el) el.value = q;
+    discoverDslFilters = discoverDslFilters.filter(f => !f._ioc);
+    discoverDslFilters.push({ _ioc: true, value: q, field: '_all', op: 'ioc',
+      _dsl: { multi_match: { query: q, fields: ['src_ip^3','dst_ip^3','username^2','process_name^2','event_data.srcip^3','event_data.dstip^2','event_data.parentprocessname','event_data.commandline','event_data.dstuser','rule_description','title','agent_name'], type: 'best_fields' } }
+    });
+    discoverOffset = 0;
+    renderDiscoverFilterPills(); loadDiscover();
+    document.getElementById('discoverIOCModal')?.classList.add('hidden');
+    discoverAddToHistory('IOC: ' + q);
+    showDiscoverToast('IOC hunting: ' + q);
+  }
+
+  // ── Correlation ────────────────────────────────────────────────────────────
+  async function discoverShowCorrelation(alert) {
+    const card = document.getElementById('discoverCorrelationCard');
+    const content = document.getElementById('discoverCorrelationContent');
+    if (!card || !content) return;
+    card.style.display = '';
+    content.innerHTML = '<div class="disc-drop-empty">Loading related events…</div>';
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const src = alert.source || {};
+    const corrFields = {};
+    ['src_ip','username','agent_id','agent_name','process_name','win_event_id','rule_id'].forEach(f => {
+      const v = getByPath(src, f) || getByPath(src, 'event_data.' + f);
+      if (v && String(v) !== '—' && String(v).trim() && String(v) !== 'undefined') corrFields[f] = String(v);
+    });
+    if (!Object.keys(corrFields).length) { content.innerHTML = '<div class="disc-drop-empty">No correlatable fields in this event</div>'; return; }
+    const params = getDiscoverParams();
+    try {
+      const data = await fetch('/api/discover/correlate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: corrFields, exclude_id: src._id || src.id, time_from: params.time_from, time_to: params.time_to, index: document.getElementById('discoverIndex')?.value || 'watchvault-alerts-*', size: 20 })
+      }).then(r => r.json());
+      const hits = (data.hits || []).map(h => { const s = h._source||{}; return { timestamp:s.timestamp, rule_level:s.rule_level||0, title:s.title||s.rule_description||'—', agent_name:s.agent_name||s.agent?.name||'—', source:s }; });
+      if (!hits.length) { content.innerHTML = '<div class="disc-drop-empty">No related events found (matched on: ' + escapeHtml(Object.keys(corrFields).join(', ')) + ')</div>'; return; }
+      content.innerHTML = '<div class="disc-corr-header"><span>' + (data.total||hits.length) + ' related events</span><span class="disc-corr-fields">Matched on: ' + escapeHtml(Object.keys(corrFields).join(', ')) + '</span></div>' +
+        '<div class="disc-corr-list">' + hits.map(h => {
+          const lvl = Number(h.rule_level||0);
+          return '<div class="disc-corr-row' + (lvl>=12?' row-crit':lvl>=8?' row-high':'') + '"><span class="disc-lvl disc-lvl-' + (lvl>=12?'crit':lvl>=8?'high':lvl>=4?'med':'low') + '">' + lvl + '</span><span class="disc-corr-ts">' + (h.timestamp ? new Date(h.timestamp).toLocaleString() : '—') + '</span><span class="disc-corr-title">' + escapeHtml(h.title) + '</span><span class="disc-corr-agent">' + escapeHtml(h.agent_name) + '</span></div>';
+        }).join('') + '</div>';
+    } catch(e) { content.innerHTML = '<div class="disc-drop-empty">Correlation request failed</div>'; }
+  }
+
+  // ── Event tagging ─────────────────────────────────────────────────────────
+  function _alertId(alert) {
+    const s = alert.source||{};
+    return s._id || s.id || ((s.timestamp||'') + ':' + (s.rule_id||''));
+  }
+  function discoverTagEvent(alert, tag) {
+    const id = _alertId(alert);
+    if (!id || !tag) return;
+    if (!discoverTaggedEvents[id]) discoverTaggedEvents[id] = [];
+    if (!discoverTaggedEvents[id].includes(tag)) discoverTaggedEvents[id].push(tag);
+    try { localStorage.setItem('disc_tags', JSON.stringify(discoverTaggedEvents)); } catch(e){}
+  }
+  function discoverGetTags(alert) {
+    return discoverTaggedEvents[_alertId(alert)] || [];
+  }
+  function discoverRemoveTag(alert, tag) {
+    const id = _alertId(alert);
+    if (!discoverTaggedEvents[id]) return;
+    discoverTaggedEvents[id] = discoverTaggedEvents[id].filter(t => t !== tag);
+    if (!discoverTaggedEvents[id].length) delete discoverTaggedEvents[id];
+    try { localStorage.setItem('disc_tags', JSON.stringify(discoverTaggedEvents)); } catch(e){}
+  }
+  function discoverShowTagModal(alert) {
+    const modal = document.getElementById('discoverTagModal');
+    if (!modal) return;
+    const input = document.getElementById('discoverTagInput');
+    if (input) input.value = '';
+    const suggestions = ['false-positive','reviewed','ioc','escalated','benign','investigation','true-positive','critical-asset'];
+    const existing = discoverGetTags(alert);
+    const sugg = document.getElementById('discoverTagSuggestions');
+    if (sugg) {
+      sugg.innerHTML = suggestions.map(s => '<span class="disc-tag-sugg' + (existing.includes(s)?' active':'') + '" data-tag="'+s+'">' + s + '</span>').join('');
+      sugg.querySelectorAll('.disc-tag-sugg').forEach(el => {
+        el.addEventListener('click', () => {
+          const tag = el.getAttribute('data-tag');
+          if (el.classList.contains('active')) { discoverRemoveTag(alert, tag); el.classList.remove('active'); }
+          else { discoverTagEvent(alert, tag); el.classList.add('active'); }
+          renderDiscoverTagCurrentList(alert);
+        });
+      });
+    }
+    renderDiscoverTagCurrentList(alert);
+    modal._alert = alert;
+    modal.classList.remove('hidden');
+  }
+  function renderDiscoverTagCurrentList(alert) {
+    const tags = discoverGetTags(alert);
+    const el = document.getElementById('discoverTagCurrentList');
+    if (!el) return;
+    el.innerHTML = tags.length ? '<div class="disc-tag-current">' + tags.map(t => '<span class="disc-tag-item">' + escapeHtml(t) + '<button data-tag="'+escapeHtml(t)+'">×</button></span>').join('') + '</div>' : '';
+    el.querySelectorAll('[data-tag]').forEach(btn => {
+      btn.addEventListener('click', () => { discoverRemoveTag(alert, btn.getAttribute('data-tag')); renderDiscoverTagCurrentList(alert); const s = document.querySelector('.disc-tag-sugg[data-tag="'+btn.getAttribute('data-tag')+'"]'); if (s) s.classList.remove('active'); });
+    });
+  }
+
+  // ── Bookmarks ─────────────────────────────────────────────────────────────
+  function discoverToggleBookmark(alert) {
+    const id = _alertId(alert);
+    if (discoverBookmarks.has(id)) discoverBookmarks.delete(id);
+    else discoverBookmarks.add(id);
+    try { localStorage.setItem('disc_bookmarks', JSON.stringify([...discoverBookmarks])); } catch(e){}
+  }
+
+  // ── Save as Threat Hunt ────────────────────────────────────────────────────
+  function discoverSaveAsHunt() {
+    const q = document.getElementById('discoverSearch')?.value || '';
+    const name = prompt('Hunt name (will appear in Threat Hunting page):', q || 'New hunt');
+    if (!name) return;
+    const hunts = JSON.parse(localStorage.getItem('saved_hunts') || '[]');
+    hunts.unshift({ name, query: q, filters: discoverDslFilters, created: new Date().toISOString() });
+    try { localStorage.setItem('saved_hunts', JSON.stringify(hunts.slice(0, 50))); } catch(e){}
+    showDiscoverToast('Saved to Threat Hunts: ' + name);
+  }
+
+  // ── Pre-filter navigation ─────────────────────────────────────────────────
+  function navigateToDiscover(filters) {
+    discoverDslFilters = filters || [];
+    discoverOffset = 0;
+    goToPage('discover');
+    setTimeout(() => { renderDiscoverFilterPills(); loadDiscover(); }, 150);
+  }
+
+  // ── Keyboard shortcuts ─────────────────────────────────────────────────────
+  function discoverHandleKeyboard(e) {
+    const onDiscover = document.getElementById('page-discover')?.classList.contains('active');
+    if (!onDiscover) return;
+    if (e.key === 'Escape') {
+      closeDiscoverDetail();
+      ['discoverInspectorModal','discoverSavedModal','discoverShortcutsModal','discoverIOCModal','discoverTagModal'].forEach(id => document.getElementById(id)?.classList.add('hidden'));
+      document.getElementById('discoverFieldStatsPop')?.classList.add('hidden');
+      document.getElementById('discoverSearchHistoryDrop')?.classList.add('hidden');
+      document.getElementById('discoverToolsDrop')?.classList.add('hidden');
+      return;
+    }
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); discoverOffset = 0; const q = document.getElementById('discoverSearch')?.value||''; if (q) discoverAddToHistory(q); loadDiscover(); }
+      return;
+    }
+    if (e.ctrlKey || e.metaKey) {
+      switch(e.key.toLowerCase()) {
+        case '/': e.preventDefault(); document.getElementById('discoverSearch')?.focus(); break;
+        case 'e': e.preventDefault(); discoverExportCsv(); break;
+        case 'i': e.preventDefault(); discoverShowInspector(); break;
+        case 's': e.preventDefault(); discoverShowSavedModal(); break;
+        case 'l': e.preventDefault(); discoverToggleAutoRefresh(); break;
+        case 'k': e.preventDefault(); document.getElementById('discoverIOCModal')?.classList.remove('hidden'); document.getElementById('discoverIOCInput')?.focus(); break;
+      }
+      return;
+    }
+    switch(e.key) {
+      case '?': discoverShowShortcutsModal(); break;
+      case 'ArrowLeft': if (!document.getElementById('discoverPrev')?.disabled) { discoverOffset = Math.max(0, discoverOffset - DISCOVER_PAGE_SIZE); loadDiscover(); } break;
+      case 'ArrowRight': if (!document.getElementById('discoverNext')?.disabled) { discoverOffset += DISCOVER_PAGE_SIZE; loadDiscover(); } break;
+    }
+  }
+  function discoverShowShortcutsModal() { document.getElementById('discoverShortcutsModal')?.classList.remove('hidden'); }
+
+  // ── Timeline tab ──────────────────────────────────────────────────────────
+  async function discoverLoadTimeline(alert) {
+    const el = document.getElementById('discoverDetailTimeline');
+    if (!el) return;
+    el.innerHTML = '<div class="disc-drop-empty">Loading timeline…</div>';
+    const src = alert.source || {};
+    const agentId = src.agent_id || src.agent?.id;
+    const ts = src.timestamp || alert.timestamp;
+    if (!ts) { el.innerHTML = '<div class="disc-drop-empty">No timestamp available</div>'; return; }
+    const t = new Date(typeof ts === 'number' ? ts : ts);
+    const from = new Date(t.getTime() - 15*60*1000).toISOString();
+    const to   = new Date(t.getTime() + 15*60*1000).toISOString();
+    const must = [{ range: { timestamp: { gte: from, lte: to } } }];
+    if (agentId) must.push({ bool: { should: [{ term: { agent_id: agentId } }, { term: { 'agent.id': agentId } }], minimum_should_match: 1 } });
+    const dsl = { query: { bool: { must } }, sort: [{ timestamp: { order: 'asc' } }] };
+    try {
+      const res = await fetch('/api/alerts/list?size=60&offset=0', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ dsl, index: document.getElementById('discoverIndex')?.value||'watchvault-alerts-*' }) }).then(r=>r.json());
+      const hits = res.alerts || [];
+      if (!hits.length) { el.innerHTML = '<div class="disc-drop-empty">No events in ±15 min window</div>'; return; }
+      el.innerHTML = '<div class="disc-timeline-hdr">Events ±15 min · agent: ' + escapeHtml(src.agent_name || agentId || 'all') + ' · ' + hits.length + ' events</div><div class="disc-timeline-list">' +
+        hits.map(h => {
+          const s = h.source||{};
+          const isCurrent = s.timestamp === ts || (src._id && s._id === src._id);
+          const lvl = Number(s.rule_level||0);
+          return '<div class="disc-tl-row' + (isCurrent?' current':'') + (lvl>=12?' row-crit':lvl>=8?' row-high':'') + '">' +
+            (isCurrent?'<span class="disc-tl-marker">▶</span>':'<span class="disc-tl-marker-empty"></span>') +
+            '<span class="disc-tl-ts">' + (h.timestamp ? new Date(h.timestamp).toLocaleTimeString() : '—') + '</span>' +
+            '<span class="disc-lvl disc-lvl-' + (lvl>=12?'crit':lvl>=8?'high':lvl>=4?'med':'low') + '">' + lvl + '</span>' +
+            '<span class="disc-tl-title">' + escapeHtml(h.title||s.rule_description||'—') + '</span></div>';
+        }).join('') + '</div>';
+    } catch(e) { el.innerHTML = '<div class="disc-drop-empty">Timeline load failed</div>'; }
+  }
+
+  // ── Quick stats summary ───────────────────────────────────────────────────
+  function discoverUpdateStatsSummary(alerts) {
+    const el = document.getElementById('discoverStatsSummary');
+    if (!el || !alerts.length) { if (el) el.innerHTML = ''; return; }
+    let crit = 0, high = 0; const agents = new Set(), rules = new Set();
+    alerts.forEach(a => {
+      const s = a.source||{};
+      const lvl = Number(s.rule_level||0);
+      if (lvl >= 12) crit++;
+      else if (lvl >= 8) high++;
+      const ag = s.agent_name||s.agent?.name; if (ag) agents.add(ag);
+      const r = s.rule_id||s.rule?.id; if (r) rules.add(String(r));
+    });
+    const parts = [];
+    if (crit) parts.push('<span class="disc-stat-crit">' + crit + ' critical</span>');
+    if (high) parts.push('<span class="disc-stat-high">' + high + ' high</span>');
+    if (agents.size) parts.push('<span class="disc-stat-info">' + agents.size + ' agent' + (agents.size>1?'s':'') + '</span>');
+    if (rules.size) parts.push('<span class="disc-stat-info">' + rules.size + ' rule' + (rules.size>1?'s':'') + '</span>');
+    el.innerHTML = parts.join(' · ');
+  }
 
   const RULES_PAGE_SIZE = 20;
   let rulesOffset = 0;
@@ -4121,7 +4725,14 @@ const GEO_CONTINENTS = [
     sca: loadScaPage,
     'threat-hunting': loadThreatHunting,
     alerts: () => { _wireAlertChips(); loadAlerts(); },
-    discover: loadDiscover,
+    discover: () => {
+      // Restore URL state first, then session, then apply density and load
+      if (!discoverRestoreUrlState()) discoverLoadSession();
+      discoverSetDensity(discoverDensity);
+      renderDiscoverFieldsSidebar();
+      renderDiscoverFilterPills();
+      loadDiscover();
+    },
     rules: loadRules,
     decoders: () => { loadDecoders(); (window.loadSyslogDecoders || function(){})(); },
     vulnerabilities: loadVulnerabilities,
@@ -4481,13 +5092,22 @@ const GEO_CONTINENTS = [
   document.getElementById('discoverExportCsv')?.addEventListener('click', discoverExportCsv);
   document.getElementById('discoverPrev')?.addEventListener('click', () => { discoverOffset = Math.max(0, discoverOffset - DISCOVER_PAGE_SIZE); loadDiscover(); });
   document.getElementById('discoverNext')?.addEventListener('click', () => { discoverOffset += DISCOVER_PAGE_SIZE; loadDiscover(); });
-  ['discoverTimeRange', 'discoverSeverity', 'discoverAgent', 'discoverGroup'].forEach(id => {
+  ['discoverTimeRange', 'discoverSeverity', 'discoverAgent', 'discoverGroup', 'discoverMitre', 'discoverCompliance'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', () => { discoverOffset = 0; loadDiscover(); });
   });
   let discoverSearchTimeout = null;
   document.getElementById('discoverSearch')?.addEventListener('input', () => {
     if (discoverSearchTimeout) clearTimeout(discoverSearchTimeout);
     discoverSearchTimeout = setTimeout(() => { discoverOffset = 0; loadDiscover(); }, 400);
+  });
+  document.getElementById('discoverSearch')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+      clearTimeout(discoverSearchTimeout);
+      discoverOffset = 0;
+      const q = document.getElementById('discoverSearch')?.value || '';
+      if (q) discoverAddToHistory(q);
+      loadDiscover();
+    }
   });
   document.getElementById('discoverDetailClose')?.addEventListener('click', closeDiscoverDetail);
   document.querySelectorAll('.discover-detail-tab').forEach((tab) => {
@@ -4500,13 +5120,119 @@ const GEO_CONTINENTS = [
     const value = (document.getElementById('discoverFilterValue')?.value || '').trim();
     if (!field) return;
     const type = fieldSelect?.options[fieldSelect.selectedIndex]?.getAttribute('data-type') || undefined;
-    discoverDslFilters.push({ field, op, value, type });
-    document.getElementById('discoverFilterValue').value = '';
-    renderDiscoverFilterPills();
-    discoverOffset = 0;
-    loadDiscover();
+    const pinned = document.getElementById('discoverFilterPin')?.checked;
+    const filter = { field, op, value, type };
+    if (pinned) {
+      discoverPinnedFilters.push(filter);
+      try { localStorage.setItem('disc_pinned_filters', JSON.stringify(discoverPinnedFilters)); } catch(e){}
+    } else {
+      discoverDslFilters.push(filter);
+    }
+    const valEl = document.getElementById('discoverFilterValue');
+    if (valEl) valEl.value = '';
+    const pinEl = document.getElementById('discoverFilterPin');
+    if (pinEl) pinEl.checked = false;
+    renderDiscoverFilterPills(); discoverOffset = 0; loadDiscover();
+  });
+  document.getElementById('discoverFilterValue')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('discoverFilterAdd')?.click();
   });
   document.getElementById('discoverPageSize')?.addEventListener('change', () => { discoverOffset = 0; loadDiscover(); });
+  // Field search
+  let discoverFieldSearchTimeout = null;
+  document.getElementById('discoverFieldSearch')?.addEventListener('input', () => {
+    clearTimeout(discoverFieldSearchTimeout);
+    discoverFieldSearchTimeout = setTimeout(() => renderDiscoverFieldsSidebar(), 200);
+  });
+  // Search history button
+  document.getElementById('discoverSearchHistBtn')?.addEventListener('click', (e) => { e.stopPropagation(); discoverShowHistory(); });
+  // Auto-refresh
+  document.getElementById('discoverAutoRefreshBtn')?.addEventListener('click', discoverToggleAutoRefresh);
+  document.getElementById('discoverAutoRefreshInterval')?.addEventListener('change', (e) => {
+    if (discoverAutoRefreshActive) { discoverStopAutoRefresh(); discoverStartAutoRefresh(parseInt(e.target.value, 10)); }
+  });
+  // Tools dropdown
+  document.getElementById('discoverToolsBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('discoverToolsDrop')?.classList.toggle('hidden');
+  });
+  document.getElementById('discoverToolsDrop')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.getAttribute('data-action');
+    document.getElementById('discoverToolsDrop')?.classList.add('hidden');
+    if (action === 'save-search') discoverShowSavedModal();
+    else if (action === 'load-search') discoverShowSavedModal();
+    else if (action === 'share-url') discoverShareUrl();
+    else if (action === 'inspector') discoverShowInspector();
+    else if (action === 'density-compact') discoverSetDensity('compact');
+    else if (action === 'density-default') discoverSetDensity('default');
+    else if (action === 'density-comfortable') discoverSetDensity('comfortable');
+    else if (action === 'ioc-hunt') { document.getElementById('discoverIOCModal')?.classList.remove('hidden'); document.getElementById('discoverIOCInput')?.focus(); }
+    else if (action === 'save-hunt') discoverSaveAsHunt();
+    else if (action === 'shortcuts') discoverShowShortcutsModal();
+  });
+  // Inspector modal
+  document.getElementById('discoverInspectorClose')?.addEventListener('click', () => document.getElementById('discoverInspectorModal')?.classList.add('hidden'));
+  document.getElementById('discoverInspectorClose2')?.addEventListener('click', () => document.getElementById('discoverInspectorModal')?.classList.add('hidden'));
+  document.getElementById('discoverInspectorCopy')?.addEventListener('click', () => {
+    const txt = document.getElementById('discoverInspectorBody')?.textContent || '';
+    if (navigator.clipboard) navigator.clipboard.writeText(txt).then(() => showDiscoverToast('DSL copied'));
+    else { const t=document.createElement('textarea');t.value=txt;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);showDiscoverToast('DSL copied'); }
+  });
+  // Saved searches modal
+  document.getElementById('discoverSavedClose')?.addEventListener('click', () => document.getElementById('discoverSavedModal')?.classList.add('hidden'));
+  document.getElementById('discoverSaveCurrentBtn')?.addEventListener('click', () => {
+    const name = document.getElementById('discoverSaveNameInput')?.value || '';
+    if (name.trim()) discoverSaveSearch(name);
+  });
+  document.getElementById('discoverSaveNameInput')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('discoverSaveCurrentBtn')?.click(); });
+  // Shortcuts modal
+  document.getElementById('discoverShortcutsClose')?.addEventListener('click', () => document.getElementById('discoverShortcutsModal')?.classList.add('hidden'));
+  // IOC modal
+  document.getElementById('discoverIOCClose')?.addEventListener('click', () => document.getElementById('discoverIOCModal')?.classList.add('hidden'));
+  document.getElementById('discoverIOCSearch')?.addEventListener('click', () => discoverIOCQuickSearch(document.getElementById('discoverIOCInput')?.value || ''));
+  document.getElementById('discoverIOCInput')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('discoverIOCSearch')?.click(); });
+  // Tag modal
+  document.getElementById('discoverTagClose')?.addEventListener('click', () => document.getElementById('discoverTagModal')?.classList.add('hidden'));
+  document.getElementById('discoverTagCancel')?.addEventListener('click', () => document.getElementById('discoverTagModal')?.classList.add('hidden'));
+  document.getElementById('discoverTagSave')?.addEventListener('click', () => {
+    const modal = document.getElementById('discoverTagModal');
+    const tag = document.getElementById('discoverTagInput')?.value.trim();
+    if (tag && modal?._alert) { discoverTagEvent(modal._alert, tag); renderDiscoverTagCurrentList(modal._alert); document.getElementById('discoverTagInput').value = ''; showDiscoverToast('Tag applied: ' + tag); }
+    if (!tag) modal?.classList.add('hidden');
+  });
+  document.getElementById('discoverTagInput')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('discoverTagSave')?.click(); });
+  // Correlation panel close
+  document.getElementById('discoverCorrelationClose')?.addEventListener('click', () => { const c = document.getElementById('discoverCorrelationCard'); if (c) c.style.display = 'none'; });
+  // Close dropdowns/popover on outside click
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#discoverToolsBtn') && !e.target.closest('#discoverToolsDrop')) document.getElementById('discoverToolsDrop')?.classList.add('hidden');
+    if (!e.target.closest('#discoverSearchHistBtn') && !e.target.closest('#discoverSearchHistoryDrop')) document.getElementById('discoverSearchHistoryDrop')?.classList.add('hidden');
+    if (!e.target.closest('#discoverFieldStatsPop') && !e.target.classList.contains('disc-fsp-trigger')) document.getElementById('discoverFieldStatsPop')?.classList.add('hidden');
+    // Modal overlays — click outside to close
+    ['discoverInspectorModal','discoverSavedModal','discoverShortcutsModal','discoverIOCModal','discoverTagModal'].forEach(id => {
+      const m = document.getElementById(id);
+      if (m && !m.classList.contains('hidden') && e.target === m) m.classList.add('hidden');
+    });
+  });
+  // Keyboard shortcuts global handler
+  document.addEventListener('keydown', discoverHandleKeyboard);
+  // Results table: row click and bookmark click
+  document.getElementById('discoverResultsWrap')?.addEventListener('click', (e) => {
+    const bmBtn = e.target.closest('.disc-bookmark-btn');
+    if (bmBtn) {
+      e.stopPropagation();
+      const idx = bmBtn.getAttribute('data-index');
+      const alert = discoverAlertsCache[idx];
+      if (alert) { discoverToggleBookmark(alert); bmBtn.classList.toggle('active'); bmBtn.title = discoverBookmarks.has(_alertId(alert)) ? 'Remove bookmark' : 'Bookmark event'; }
+      return;
+    }
+    const row = e.target.closest('.discover-row');
+    if (!row) return;
+    const idx = row.getAttribute('data-index');
+    if (discoverAlertsCache[idx] != null) openDiscoverDetail(discoverAlertsCache[idx]);
+  });
 
   document.getElementById('rulesAddFile')?.addEventListener('click', openRulesModal);
   document.getElementById('rulesRefresh')?.addEventListener('click', () => { rulesOffset = 0; loadRules(); });
@@ -4556,13 +5282,6 @@ const GEO_CONTINENTS = [
   document.getElementById('indexMgmtSearch')?.addEventListener('input', () => {
     if (indexMgmtSearchTimeout) clearTimeout(indexMgmtSearchTimeout);
     indexMgmtSearchTimeout = setTimeout(loadIndexManagement, 400);
-  });
-
-  document.getElementById('discoverResultsWrap')?.addEventListener('click', (e) => {
-    const row = e.target.closest('.discover-row');
-    if (!row) return;
-    const idx = row.getAttribute('data-index');
-    if (discoverAlertsCache[idx] != null) openDiscoverDetail(discoverAlertsCache[idx]);
   });
 
   document.querySelectorAll('.hipaa-tab').forEach(el => {

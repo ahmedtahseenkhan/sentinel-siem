@@ -29,6 +29,7 @@ func (s *Server) routes() *chi.Mux {
 		ah := handlers.NewAgentHandler(s.registry)
 		r.Route("/agents", func(r chi.Router) {
 			r.Get("/", ah.List)
+			r.Post("/config", ah.PushConfigBulk)
 			r.Get("/{id}", ah.Get)
 			r.Delete("/{id}", ah.Delete)
 			r.Put("/{id}/group", ah.AssignGroup)

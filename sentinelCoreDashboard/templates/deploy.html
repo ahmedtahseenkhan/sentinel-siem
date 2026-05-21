@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Deploy Agent — Sentinel SIEM</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0e1117; color: #e6edf3; margin: 0; padding: 32px;
+  }
+  .container { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 28px; margin: 0 0 8px; }
+  .subtitle { color: #8b949e; margin-bottom: 32px; }
+  .card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 24px; margin-bottom: 20px;
+  }
+  .card h2 {
+    margin: 0 0 16px; font-size: 18px; display: flex; align-items: center;
+    gap: 10px;
+  }
+  .badge {
+    display: inline-block; background: #1f6feb; color: #fff; padding: 2px 10px;
+    border-radius: 12px; font-size: 11px; font-weight: 600;
+  }
+  pre {
+    background: #0d1117; border: 1px solid #30363d; padding: 16px;
+    border-radius: 6px; overflow-x: auto; font-size: 13px;
+    color: #e6edf3; position: relative;
+  }
+  code { font-family: "SF Mono", Consolas, monospace; }
+  .copy-btn {
+    position: absolute; top: 8px; right: 8px; background: #21262d;
+    border: 1px solid #30363d; color: #c9d1d9; padding: 4px 10px;
+    border-radius: 4px; cursor: pointer; font-size: 12px;
+  }
+  .copy-btn:hover { background: #30363d; }
+  .copy-btn.copied { background: #1f883d; border-color: #1f883d; color: #fff; }
+  .download {
+    display: inline-block; background: #1f883d; color: #fff;
+    padding: 10px 20px; border-radius: 6px; text-decoration: none;
+    font-weight: 600; margin-right: 12px;
+  }
+  .download:hover { background: #1a7e34; }
+  .info-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    margin-bottom: 24px;
+  }
+  .info-grid .card { margin: 0; }
+  .info-row { display: flex; justify-content: space-between; margin: 8px 0; }
+  .info-row .label { color: #8b949e; }
+  .info-row .value { font-family: "SF Mono", Consolas, monospace; color: #58a6ff; }
+  .nav { margin-bottom: 24px; }
+  .nav a { color: #58a6ff; text-decoration: none; margin-right: 16px; }
+  .note { background: #1c2128; border-left: 3px solid #58a6ff;
+    padding: 12px 16px; margin: 16px 0; font-size: 13px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="nav"><a href="/">← Back to Dashboard</a></div>
+  <h1>Deploy Sentinel Agent</h1>
+  <p class="subtitle">Install the agent on any Windows or Linux endpoint. Pre-configured for this server.</p>
+
+  <div class="info-grid">
+    <div class="card">
+      <h2>Server</h2>
+      <div class="info-row"><span class="label">Manager IP</span><span class="value">{{ server_ip }}</span></div>
+      <div class="info-row"><span class="label">gRPC port</span><span class="value">50051</span></div>
+      <div class="info-row"><span class="label">API port</span><span class="value">9400</span></div>
+    </div>
+    <div class="card">
+      <h2>Enrollment</h2>
+      <div class="info-row"><span class="label">Token</span><span class="value">{{ enroll_token }}</span></div>
+      <div class="info-row"><span class="label">Auto-restart</span><span class="value">enabled</span></div>
+      <div class="info-row"><span class="label">Disk queue</span><span class="value">500 MB</span></div>
+    </div>
+  </div>
+
+  <!-- ─── Linux ────────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2><span class="badge">LINUX</span> One-line install</h2>
+    <p>Run this on any Linux server (Ubuntu/Debian/RHEL/CentOS) as root:</p>
+    <pre id="linux-cmd"><button class="copy-btn" data-target="linux-cmd">Copy</button><code>curl -fsSL http://{{ server_ip }}:5050/deploy/install.sh | sudo bash -s -- \
+    --server {{ server_ip }} \
+    --token {{ enroll_token }} \
+    --group production</code></pre>
+    <p style="margin-top: 16px;">
+      <a class="download" href="/deploy/agent/linux">⬇ Download binary only</a>
+      <a class="download" href="/deploy/install.sh" style="background:#21262d;">⬇ Download install script</a>
+    </p>
+    <div class="note">
+      Installs as a systemd service with auto-restart. Re-running upgrades the binary in-place.
+    </div>
+  </div>
+
+  <!-- ─── Windows ──────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2><span class="badge">WINDOWS</span> Install package</h2>
+    <p><strong>Step 1.</strong> Download the agent package:</p>
+    <p><a class="download" href="/deploy/agent/windows">⬇ Download SentinelAgent.zip</a></p>
+
+    <p style="margin-top: 24px;"><strong>Step 2.</strong> Extract and run as Administrator:</p>
+    <pre id="win-cmd"><button class="copy-btn" data-target="win-cmd">Copy</button><code>Expand-Archive SentinelAgent.zip -DestinationPath C:\SentinelAgent
+cd C:\SentinelAgent
+.\install.ps1 -ServerIP {{ server_ip }} -EnrollToken "{{ enroll_token }}"</code></pre>
+
+    <p style="margin-top: 16px;"><strong>Or remote-deploy to a fleet from a domain admin machine:</strong></p>
+    <pre id="win-bulk"><button class="copy-btn" data-target="win-bulk">Copy</button><code>.\deploy-to-all-machines.ps1 -ServerIP {{ server_ip }} -CsvFile machines.csv</code></pre>
+    <div class="note">
+      The installer registers a Windows service with auto-restart on failure (5s/10s/30s backoff).
+    </div>
+  </div>
+
+  <!-- ─── Verify ────────────────────────────────────────────────────────── -->
+  <div class="card">
+    <h2><span class="badge" style="background:#9e6a03;">VERIFY</span> Confirm enrollment</h2>
+    <p>After install, check the agent appeared in the fleet:</p>
+    <pre id="verify-cmd"><button class="copy-btn" data-target="verify-cmd">Copy</button><code>curl -H "Authorization: Bearer $WATCHTOWER_API_KEY" \
+    http://{{ server_ip }}:9400/api/v1/agents | jq '.data[] | {hostname, status}'</code></pre>
+    <p>Or just open the <a href="/" style="color:#58a6ff;">main dashboard</a> — the new agent appears within ~30 seconds.</p>
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('.copy-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const target = document.getElementById(btn.dataset.target);
+    const text = target.querySelector('code').innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'Copy';
+        btn.classList.remove('copied');
+      }, 1500);
+    });
+  });
+});
+</script>
+</body>
+</html>

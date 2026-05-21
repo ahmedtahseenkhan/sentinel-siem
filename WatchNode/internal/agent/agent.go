@@ -217,6 +217,9 @@ func (a *Agent) Start(ctx context.Context) error {
 	a.wg.Add(1)
 	go a.runHeartbeat(interval)
 
+	a.wg.Add(1)
+	go a.runHealthMonitor()
+
 	a.Logger.Info("agent started",
 		zap.String("product", ProductName),
 		zap.String("agent_id", a.Info.ID),
@@ -288,39 +291,29 @@ func (a *Agent) fanIn() {
 					if !ok {
 						return
 					}
-					if err := a.limiter.Check(); err != nil {
-						a.throttledWarn("resource limit exceeded, dropping point", err, 10*time.Second)
-						continue
-					}
 					// Inject agent identity + host context into every event.
 					a.enrichPoint(&p)
 
+					// Resource limits throttle the SENDER (RunStream),
+					// never the collector. Data is always persisted to
+					// the disk queue first — only drop if disk queue is
+					// full and the RAM fallback is also full.
 					if a.diskQueue != nil {
-						if err := a.diskQueue.Write(p); err != nil {
-							// Disk full or queue full — fall back to RAM channel.
+						if err := a.diskQueue.Write(p); err == nil {
+							continue
+						} else {
 							a.throttledWarn("disk queue write failed, using RAM", err, 30*time.Second)
-							select {
-							case a.dataCh <- p:
-							default:
-								dropped := atomic.AddInt64(&a.droppedPts, 1)
-								a.throttledWarn(
-									"data channel full, dropping point",
-									fmt.Errorf("type=%s total_dropped=%d", p.Type, dropped),
-									5*time.Second,
-								)
-							}
 						}
-					} else {
-						select {
-						case a.dataCh <- p:
-						default:
-							dropped := atomic.AddInt64(&a.droppedPts, 1)
-							a.throttledWarn(
-								"data channel full, dropping point",
-								fmt.Errorf("type=%s total_dropped=%d", p.Type, dropped),
-								5*time.Second,
-							)
-						}
+					}
+					select {
+					case a.dataCh <- p:
+					default:
+						dropped := atomic.AddInt64(&a.droppedPts, 1)
+						a.throttledWarn(
+							"data channel full, dropping point",
+							fmt.Errorf("type=%s total_dropped=%d", p.Type, dropped),
+							5*time.Second,
+						)
 					}
 				}
 			}
@@ -333,6 +326,26 @@ func (a *Agent) fanIn() {
 func (a *Agent) runHeartbeat(interval time.Duration) {
 	defer a.wg.Done()
 	a.comm.RunHeartbeat(a.runCtx, a.Info.ID, interval)
+}
+
+// runHealthMonitor periodically samples the resource limiter and logs a
+// warning when sustained usage exceeds configured limits. It NEVER drops
+// data — telemetry persistence is handled by the disk queue and the limiter
+// is purely an observability signal.
+func (a *Agent) runHealthMonitor() {
+	defer a.wg.Done()
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-a.stopCh:
+			return
+		case <-ticker.C:
+			if err := a.limiter.Check(); err != nil {
+				a.throttledWarn("agent health: sustained resource usage", err, 5*time.Minute)
+			}
+		}
+	}
 }
 
 func (a *Agent) throttledWarn(msg string, err error, minInterval time.Duration) {

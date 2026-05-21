@@ -126,6 +126,10 @@
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg>
             Agents
           </a>
+          <a href="/deploy" class="sb2-item">
+            <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg>
+            Deploy Agent
+          </a>
           <a href="#" class="sb2-item nav-item" data-page="fim">
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6z"/><path d="M14 3v6h6"/></svg>
             File Integrity
@@ -1118,44 +1122,107 @@
           <div class="page-h">
             <div class="page-h-title">
               <h1>Discover</h1>
-              <p>Explore alerts with field selector, KQL search, and filters</p>
+              <p>Explore alerts · KQL/Lucene search · field analysis · IOC hunting · event correlation</p>
             </div>
-            <div class="page-h-actions">
+            <div class="page-h-actions" style="display:flex;align-items:center;gap:10px">
+              <span id="discoverLiveIndicator" class="disc-live-dot hidden" title="Live refresh active"></span>
               <span class="page-h-meta">index <b id="discoverIndexBadge">watchvault-alerts*</b></span>
             </div>
           </div>
 
-          <!-- KQL search toolbar -->
-          <div class="toolbar">
+          <!-- Primary toolbar -->
+          <div class="toolbar" style="flex-wrap:wrap;gap:6px">
             <select id="discoverIndex" class="fld" style="min-width:160px;font-family:var(--font-mono);font-size:11px">
               <option value="watchvault-alerts-*" selected>watchvault-alerts-* (security)</option>
               <option value="watchvault-events-*">watchvault-events-* (raw telemetry)</option>
               <option value="watchvault-system-*">watchvault-system-* (metrics)</option>
               <option value="watchvault-*">watchvault-* (all)</option>
             </select>
-            <div class="fld-wrap" style="flex:1;min-width:240px">
-              <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-              <input id="discoverSearch" class="fld search" style="width:100%" placeholder='Search events…'>
+            <div style="position:relative;flex:1;min-width:260px">
+              <div class="fld-wrap" style="width:100%">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                <input id="discoverSearch" class="fld search" style="width:100%;padding-right:32px" placeholder='agent_name: win-* AND rule_level: [8 TO 15]  or plain text…' autocomplete="off">
+                <button type="button" id="discoverSearchHistBtn" class="disc-search-hist-btn" title="Search history (recent queries)">▾</button>
+              </div>
+              <div id="discoverSearchHistoryDrop" class="disc-dropdown hidden"></div>
             </div>
             <select id="discoverTimeRange" class="fld">
               <option value="15m">Last 15m</option>
               <option value="1h">Last 1h</option>
+              <option value="3h">Last 3h</option>
               <option value="24h" selected>Last 24h</option>
               <option value="7d">Last 7d</option>
+              <option value="30d">Last 30d</option>
             </select>
             <select id="discoverSeverity" class="fld">
               <option value="">All severities</option>
-              <option value="12">Critical</option>
-              <option value="8">High</option>
-              <option value="4">Medium</option>
+              <option value="12">Critical (12+)</option>
+              <option value="8">High (8+)</option>
+              <option value="4">Medium (4+)</option>
+              <option value="1">Low (1+)</option>
             </select>
             <select id="discoverAgent" class="fld"><option value="">All agents</option></select>
             <select id="discoverGroup" class="fld"><option value="">All groups</option></select>
-            <button class="act-btn" id="discoverExportCsv">
+            <select id="discoverMitre" class="fld" title="Filter by MITRE ATT&CK technique">
+              <option value="">All MITRE</option>
+              <option value="execution">TA0002 · Execution</option>
+              <option value="persistence">TA0003 · Persistence</option>
+              <option value="privilege_escalation">TA0004 · Privilege Escalation</option>
+              <option value="defense_evasion">TA0005 · Defense Evasion</option>
+              <option value="credential_access">TA0006 · Credential Access</option>
+              <option value="discovery">TA0007 · Discovery</option>
+              <option value="lateral_movement">TA0008 · Lateral Movement</option>
+              <option value="collection">TA0009 · Collection</option>
+              <option value="exfiltration">TA0010 · Exfiltration</option>
+              <option value="command_and_control">TA0011 · C2</option>
+              <option value="impact">TA0040 · Impact</option>
+              <option value="T1059">T1059 · Command Execution</option>
+              <option value="T1078">T1078 · Valid Accounts</option>
+              <option value="T1110">T1110 · Brute Force</option>
+              <option value="T1190">T1190 · Exploit Public App</option>
+              <option value="T1548">T1548 · Privilege Escalation</option>
+              <option value="T1003">T1003 · Credential Dumping</option>
+              <option value="T1021">T1021 · Remote Services</option>
+            </select>
+            <select id="discoverCompliance" class="fld" title="Filter by compliance framework">
+              <option value="">Compliance</option>
+              <option value="hipaa">HIPAA</option>
+              <option value="pci_dss">PCI DSS</option>
+              <option value="gdpr">GDPR</option>
+              <option value="nist_800_53">NIST 800-53</option>
+              <option value="tsc">TSC SOC2</option>
+            </select>
+            <button class="act-btn" id="discoverExportCsv" title="Export current page as CSV (Ctrl+E)">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
               CSV
             </button>
-            <button class="act-btn" id="discoverRefresh">
+            <div style="position:relative">
+              <button class="act-btn" id="discoverAutoRefreshBtn" title="Toggle live auto-refresh (Ctrl+L)">▶ Live</button>
+              <select id="discoverAutoRefreshInterval" class="fld disc-ar-select hidden" title="Refresh interval">
+                <option value="10">10s</option>
+                <option value="30" selected>30s</option>
+                <option value="60">1m</option>
+                <option value="300">5m</option>
+              </select>
+            </div>
+            <div style="position:relative">
+              <button class="act-btn" id="discoverToolsBtn" title="More tools">⋯ Tools</button>
+              <div id="discoverToolsDrop" class="disc-dropdown disc-tools-drop hidden">
+                <button class="disc-drop-item" data-action="save-search"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save search</button>
+                <button class="disc-drop-item" data-action="load-search"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> Saved searches</button>
+                <button class="disc-drop-item" data-action="share-url"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> Share URL</button>
+                <button class="disc-drop-item" data-action="inspector"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="M11 8v3l2 2"/></svg> Query Inspector</button>
+                <div class="disc-drop-div"></div>
+                <button class="disc-drop-item" data-action="density-compact"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="3" y1="14" x2="21" y2="14"/><line x1="3" y1="18" x2="21" y2="18"/></svg> Compact rows</button>
+                <button class="disc-drop-item" data-action="density-default"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg> Default rows</button>
+                <button class="disc-drop-item" data-action="density-comfortable"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="3" y1="8" x2="21" y2="8"/><line x1="3" y1="16" x2="21" y2="16"/></svg> Comfortable rows</button>
+                <div class="disc-drop-div"></div>
+                <button class="disc-drop-item" data-action="ioc-hunt"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg> IOC Quick Search</button>
+                <button class="disc-drop-item" data-action="save-hunt"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> Save as Hunt</button>
+                <button class="disc-drop-item" data-action="shortcuts"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg> Keyboard shortcuts</button>
+              </div>
+            </div>
+            <button class="act-btn" id="discoverRefresh" title="Refresh results">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5"/></svg>
               Refresh
             </button>
@@ -1163,7 +1230,7 @@
 
           <!-- Filter builder -->
           <div class="toolbar filter-bar">
-            <span class="filter-label">Filter</span>
+            <span class="filter-label">+ Filter</span>
             <select id="discoverFilterField" class="fld" style="min-width:140px">
               <option value="">Field…</option>
               <option value="rule_level" data-type="num">rule_level</option>
@@ -1172,38 +1239,60 @@
               <option value="rule_groups" data-type="kw">rule_groups</option>
               <option value="agent_name" data-type="kw">agent_name</option>
               <option value="agent_id" data-type="kw">agent_id</option>
+              <option value="src_ip" data-type="ip">src_ip</option>
+              <option value="dst_ip" data-type="ip">dst_ip</option>
+              <option value="username" data-type="kw">username</option>
+              <option value="process_name" data-type="kw">process_name</option>
+              <option value="win_event_id" data-type="kw">win_event_id</option>
+              <option value="event_category" data-type="kw">event_category</option>
               <option value="event_type" data-type="kw">event_type</option>
               <option value="event_data.srcip" data-type="ip">event_data.srcip</option>
               <option value="event_data.dstuser" data-type="kw">event_data.dstuser</option>
+              <option value="mitre.id" data-type="kw">mitre.id</option>
+              <option value="mitre.tactic" data-type="kw">mitre.tactic</option>
+              <option value="syscheck.path" data-type="kw">syscheck.path</option>
+              <option value="syscheck.event" data-type="kw">syscheck.event</option>
+              <option value="vulnerability.severity" data-type="kw">vulnerability.severity</option>
             </select>
-            <select id="discoverFilterOp" class="fld" style="min-width:80px">
+            <select id="discoverFilterOp" class="fld" style="min-width:90px">
               <option value="is">is</option>
               <option value="is not">is not</option>
-              <option value=">=">≥</option>
-              <option value="<=">≤</option>
-              <option value="matches">matches</option>
+              <option value="is one of">is one of (a,b)</option>
+              <option value="starts with">starts with</option>
+              <option value="exists">exists</option>
+              <option value="does not exist">does not exist</option>
+              <option value=">">&gt;</option>
+              <option value="<">&lt;</option>
+              <option value=">=">&ge;</option>
+              <option value="<=">&le;</option>
+              <option value="between">between (a,b)</option>
             </select>
             <input id="discoverFilterValue" class="fld" placeholder="Value" style="min-width:160px">
-            <button class="act-btn primary" id="discoverFilterAdd" style="margin-left:auto">
+            <label class="disc-pin-label" title="Pin filter — persists across page navigation">
+              <input type="checkbox" id="discoverFilterPin"> Pin
+            </label>
+            <button class="act-btn primary" id="discoverFilterAdd">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
               Add filter
             </button>
           </div>
-          <div id="discoverFilterPills" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+          <div id="discoverFilterPills" style="display:flex;gap:6px;flex-wrap:wrap;min-height:0"></div>
 
           <!-- Two-column: field selector + results -->
           <div class="disc-grid">
 
-            <!-- Field selector -->
+            <!-- Field selector panel -->
             <div class="card field-panel">
+              <div style="padding:6px 10px 4px">
+                <input id="discoverFieldSearch" class="fld" placeholder="Filter fields…" style="font-size:11px;padding:4px 8px;width:100%">
+              </div>
               <div class="field-h">
                 <span>Selected fields</span>
-                <span class="count">6</span>
+                <span class="count" id="discoverSelectedCount">7</span>
               </div>
               <div id="discoverSelectedFields"></div>
               <div class="field-h" style="margin-top:6px">
                 <span>Popular fields</span>
-                <span class="count">8</span>
               </div>
               <div id="discoverPopularFields"></div>
               <div class="field-h" style="margin-top:6px">
@@ -1221,7 +1310,7 @@
                 <div class="card-h">
                   <h3 class="card-h-title">
                     <span class="dot" id="discoverVolDot" style="background:var(--ok)"></span>
-                    Event Volume · 24 h
+                    Event Volume
                   </h3>
                   <span class="card-h-action" id="discoverHitsLabel">No hits</span>
                 </div>
@@ -1237,6 +1326,7 @@
                     <span class="dot" id="discoverResDot" style="background:var(--fg-4,#5E6068)"></span>
                     Results · <span id="discoverHits">0</span> hits
                   </h3>
+                  <span id="discoverStatsSummary" class="disc-stats-summary"></span>
                   <span class="card-h-action" id="discoverTableInfo">Showing 0 of 0</span>
                 </div>
                 <div id="discoverResultsWrap" class="card-body flush">
@@ -1249,12 +1339,25 @@
                       <option value="10">10 / page</option>
                       <option value="25" selected>25 / page</option>
                       <option value="50">50 / page</option>
+                      <option value="100">100 / page</option>
                     </select>
                     <button class="act-btn" id="discoverPrev" style="height:24px;padding:0 8px;font-size:11px" disabled>← Prev</button>
                     <span id="discoverPageInfo" style="font-family:var(--font-mono);color:var(--fg-3);padding:0 6px;font-size:11px">1 / 1</span>
                     <button class="act-btn" id="discoverNext" style="height:24px;padding:0 8px;font-size:11px" disabled>Next →</button>
                   </div>
                 </div>
+              </div>
+
+              <!-- Correlation panel (hidden until triggered) -->
+              <div class="card" id="discoverCorrelationCard" style="display:none">
+                <div class="card-h">
+                  <h3 class="card-h-title">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--low)" stroke-width="1.8" style="margin-right:4px"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                    Related events
+                  </h3>
+                  <button class="card-h-action" id="discoverCorrelationClose" style="cursor:pointer">✕ Close</button>
+                </div>
+                <div id="discoverCorrelationContent" class="card-body" style="padding:10px 14px"></div>
               </div>
 
             </div>
@@ -1264,12 +1367,19 @@
           <div id="discoverDetailPanel" class="agent-detail-panel hidden">
             <div class="agent-detail-header">
               <h2 id="discoverDetailTitle">Event details</h2>
-              <button type="button" id="discoverDetailClose" class="agent-detail-close" aria-label="Close">×</button>
+              <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+                <button type="button" class="act-btn" id="discoverDetailCopyJson" style="font-size:11px;padding:3px 8px" title="Copy raw JSON to clipboard">Copy JSON</button>
+                <button type="button" class="act-btn" id="discoverDetailTagBtn" style="font-size:11px;padding:3px 8px" title="Tag this event">Tag</button>
+                <button type="button" class="act-btn" id="discoverDetailCorrelateBtn" style="font-size:11px;padding:3px 8px" title="Find related events">Correlate</button>
+                <button type="button" class="act-btn" id="discoverDetailViewRule" style="font-size:11px;padding:3px 8px" title="View originating detection rule">View Rule</button>
+                <button type="button" id="discoverDetailClose" class="agent-detail-close" aria-label="Close">×</button>
+              </div>
             </div>
             <div class="discover-detail-tabs">
               <button type="button" class="discover-detail-tab active" data-tab="table">Table</button>
               <button type="button" class="discover-detail-tab" data-tab="json">JSON</button>
               <button type="button" class="discover-detail-tab" data-tab="ai">AI Summary</button>
+              <button type="button" class="discover-detail-tab" data-tab="timeline">Timeline ±15m</button>
             </div>
             <div id="discoverDetailContent" class="agent-detail-content discover-detail-table-wrap"></div>
             <div id="discoverDetailJson" class="agent-detail-content discover-detail-json-wrap hidden"></div>
@@ -1278,7 +1388,123 @@
                 <p class="ai-summary-loading">Loading AI analysis...</p>
               </div>
             </div>
+            <div id="discoverDetailTimeline" class="agent-detail-content hidden" style="padding:1rem;overflow-y:auto;flex:1"></div>
           </div>
+
+          <!-- ── MODALS ─────────────────────────────────────────────── -->
+
+          <!-- Query Inspector -->
+          <div id="discoverInspectorModal" class="modal-overlay hidden">
+            <div class="modal" style="max-width:720px;width:90vw">
+              <div class="modal-header">
+                <h3>Query Inspector</h3>
+                <button type="button" id="discoverInspectorClose" class="modal-close">×</button>
+              </div>
+              <div class="modal-body" style="padding:16px">
+                <p style="font-size:11px;color:var(--fg-3);margin:0 0 8px">OpenSearch DSL sent to the backend. Copy and run in OpenSearch Dev Tools or use for debugging.</p>
+                <pre id="discoverInspectorBody" style="font-family:var(--font-mono);font-size:11px;overflow:auto;max-height:400px;background:var(--bg);padding:12px;border-radius:6px;border:1px solid var(--border);white-space:pre-wrap;word-break:break-all"></pre>
+                <div style="margin-top:10px;display:flex;gap:8px">
+                  <button class="act-btn primary" id="discoverInspectorCopy">Copy DSL</button>
+                  <button class="act-btn" id="discoverInspectorClose2">Close</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Saved Searches -->
+          <div id="discoverSavedModal" class="modal-overlay hidden">
+            <div class="modal" style="max-width:640px;width:90vw">
+              <div class="modal-header">
+                <h3>Saved Searches</h3>
+                <button type="button" id="discoverSavedClose" class="modal-close">×</button>
+              </div>
+              <div class="modal-body" style="padding:16px">
+                <div style="display:flex;gap:8px;margin-bottom:14px">
+                  <input id="discoverSaveNameInput" class="fld" placeholder="Name this search…" style="flex:1">
+                  <button class="act-btn primary" id="discoverSaveCurrentBtn">Save current</button>
+                </div>
+                <div id="discoverSavedList"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Keyboard Shortcuts -->
+          <div id="discoverShortcutsModal" class="modal-overlay hidden">
+            <div class="modal" style="max-width:500px;width:90vw">
+              <div class="modal-header">
+                <h3>Keyboard Shortcuts — Discover</h3>
+                <button type="button" id="discoverShortcutsClose" class="modal-close">×</button>
+              </div>
+              <div class="modal-body" style="padding:16px">
+                <table class="discover-detail-table">
+                  <tbody>
+                    <tr><td class="key" style="min-width:180px"><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>Execute search</td></tr>
+                    <tr><td class="key"><kbd>Ctrl</kbd>+<kbd>/</kbd></td><td>Focus search bar</td></tr>
+                    <tr><td class="key"><kbd>Escape</kbd></td><td>Close detail / modal</td></tr>
+                    <tr><td class="key"><kbd>Ctrl</kbd>+<kbd>E</kbd></td><td>Export CSV</td></tr>
+                    <tr><td class="key"><kbd>Ctrl</kbd>+<kbd>I</kbd></td><td>Open Query Inspector</td></tr>
+                    <tr><td class="key"><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>Save search dialog</td></tr>
+                    <tr><td class="key"><kbd>Ctrl</kbd>+<kbd>L</kbd></td><td>Toggle live refresh</td></tr>
+                    <tr><td class="key"><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>IOC Quick Search</td></tr>
+                    <tr><td class="key"><kbd>←</kbd> / <kbd>→</kbd></td><td>Previous / Next page</td></tr>
+                    <tr><td class="key"><kbd>?</kbd></td><td>Show this shortcuts panel</td></tr>
+                  </tbody>
+                </table>
+                <div style="margin-top:14px;font-size:11px;color:var(--fg-3)">
+                  <b>KQL syntax examples:</b><br>
+                  <code>agent_name: win-*</code> · <code>rule_level: [8 TO 15]</code> · <code>src_ip: 192.168.1.*</code><br>
+                  <code>username: admin AND rule_level: &gt;=10</code> · <code>NOT rule_groups: authentication_failed</code>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- IOC Quick Search -->
+          <div id="discoverIOCModal" class="modal-overlay hidden">
+            <div class="modal" style="max-width:540px;width:90vw">
+              <div class="modal-header">
+                <h3>IOC Quick Search</h3>
+                <button type="button" id="discoverIOCClose" class="modal-close">×</button>
+              </div>
+              <div class="modal-body" style="padding:16px">
+                <p style="font-size:12px;color:var(--fg-3);margin:0 0 10px">Search for a malicious indicator across all relevant fields (IP, hash, domain, username, process)</p>
+                <div style="display:flex;gap:8px">
+                  <input id="discoverIOCInput" class="fld" placeholder="192.168.1.100 · abc123hash · evil.com · baduser" style="flex:1" autocomplete="off">
+                  <button class="act-btn primary" id="discoverIOCSearch">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+                    Hunt IOC
+                  </button>
+                </div>
+                <p style="font-size:11px;color:var(--fg-4);margin:8px 0 0">Searches: src_ip, dst_ip, username, process_name, commandline, parent process, rule_description</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Event Tag Modal -->
+          <div id="discoverTagModal" class="modal-overlay hidden">
+            <div class="modal" style="max-width:420px;width:90vw">
+              <div class="modal-header">
+                <h3>Tag Event</h3>
+                <button type="button" id="discoverTagClose" class="modal-close">×</button>
+              </div>
+              <div class="modal-body" style="padding:16px">
+                <input id="discoverTagInput" class="fld" placeholder="Enter custom tag…" style="width:100%;margin-bottom:10px" autocomplete="off">
+                <div style="font-size:11px;color:var(--fg-3);margin-bottom:6px">Quick tags:</div>
+                <div id="discoverTagSuggestions" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px"></div>
+                <div id="discoverTagCurrentList" style="margin-bottom:10px"></div>
+                <div style="display:flex;gap:8px">
+                  <button class="act-btn primary" id="discoverTagSave">Apply Tag</button>
+                  <button class="act-btn" id="discoverTagCancel">Cancel</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Field stats popover (positioned via JS) -->
+          <div id="discoverFieldStatsPop" class="disc-field-stats-pop hidden"></div>
+
+          <!-- Toast notification -->
+          <div id="discoverToast" class="disc-toast"></div>
 
         </section>
 

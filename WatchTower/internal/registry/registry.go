@@ -17,11 +17,16 @@ type EventSink interface {
 	Ingest(event *models.Event)
 }
 
+// maxPendingPerAgent caps the per-agent pending-command queue to prevent
+// unbounded memory growth if an agent stays offline indefinitely.
+const maxPendingPerAgent = 100
+
 type Registry struct {
 	store          *store.Store
 	logger         *zap.Logger
 	mu             sync.RWMutex
 	cmdChans       map[string]chan *proto.ManagerCommand
+	pendingCmds    map[string][]*proto.ManagerCommand
 	stopCh         chan struct{}
 	disconnectHook func(agent *models.Agent)
 	engine         EventSink
@@ -29,10 +34,11 @@ type Registry struct {
 
 func New(s *store.Store, logger *zap.Logger) *Registry {
 	return &Registry{
-		store:    s,
-		logger:   logger,
-		cmdChans: make(map[string]chan *proto.ManagerCommand),
-		stopCh:   make(chan struct{}),
+		store:       s,
+		logger:      logger,
+		cmdChans:    make(map[string]chan *proto.ManagerCommand),
+		pendingCmds: make(map[string][]*proto.ManagerCommand),
+		stopCh:      make(chan struct{}),
 	}
 }
 
@@ -64,7 +70,39 @@ func (r *Registry) Register(a *models.Agent) error {
 	} else {
 		r.ingestLifecycleEvent("agent.reconnected", a)
 	}
+	r.flushPending(a.ID)
 	return nil
+}
+
+// flushPending delivers any commands queued for an agent while it was
+// offline. Called automatically from Register on (re)connect.
+func (r *Registry) flushPending(agentID string) {
+	r.mu.Lock()
+	pending := r.pendingCmds[agentID]
+	delete(r.pendingCmds, agentID)
+	ch := r.cmdChans[agentID]
+	r.mu.Unlock()
+
+	if len(pending) == 0 || ch == nil {
+		return
+	}
+	delivered := 0
+	for _, cmd := range pending {
+		select {
+		case ch <- cmd:
+			delivered++
+		default:
+			r.logger.Warn("pending command channel full on flush",
+				zap.String("agent_id", agentID),
+				zap.Int("remaining", len(pending)-delivered),
+			)
+			return
+		}
+	}
+	r.logger.Info("flushed pending commands on reconnect",
+		zap.String("agent_id", agentID),
+		zap.Int("count", delivered),
+	)
 }
 
 func (r *Registry) UpdateHeartbeat(agentID, status string) error {
@@ -105,23 +143,64 @@ func (r *Registry) GetCommandChannel(agentID string) <-chan *proto.ManagerComman
 	return ch
 }
 
+// SendCommand delivers a command to an agent. If the agent has an active
+// gRPC stream the command is delivered immediately. If the agent is offline
+// the command is queued and delivered automatically on reconnect.
+// Returns true if the command was delivered or queued; false only if the
+// per-agent pending queue is full (which would indicate a misconfiguration
+// or a stuck agent).
 func (r *Registry) SendCommand(agentID string, cmd *proto.ManagerCommand) bool {
-	r.mu.RLock()
-	ch, ok := r.cmdChans[agentID]
-	r.mu.RUnlock()
-	if !ok {
-		return false
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if ch, ok := r.cmdChans[agentID]; ok {
+		select {
+		case ch <- cmd:
+			return true
+		default:
+			r.logger.Warn("command channel full, queuing for retry",
+				zap.String("agent_id", agentID),
+				zap.String("command_id", cmd.CommandId),
+			)
+		}
 	}
-	select {
-	case ch <- cmd:
-		return true
-	default:
-		r.logger.Warn("command channel full, dropping command",
+	pending := r.pendingCmds[agentID]
+	if len(pending) >= maxPendingPerAgent {
+		r.logger.Warn("pending command queue full, dropping oldest",
 			zap.String("agent_id", agentID),
-			zap.String("command_id", cmd.CommandId),
+			zap.Int("queue_size", len(pending)),
 		)
-		return false
+		pending = pending[1:]
 	}
+	r.pendingCmds[agentID] = append(pending, cmd)
+	return true
+}
+
+// SendCommandStatus is a richer variant of SendCommand that returns whether
+// the command was delivered immediately or queued for later.
+func (r *Registry) SendCommandStatus(agentID string, cmd *proto.ManagerCommand) (delivered, queued bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if ch, ok := r.cmdChans[agentID]; ok {
+		select {
+		case ch <- cmd:
+			return true, false
+		default:
+		}
+	}
+	pending := r.pendingCmds[agentID]
+	if len(pending) >= maxPendingPerAgent {
+		pending = pending[1:]
+	}
+	r.pendingCmds[agentID] = append(pending, cmd)
+	return false, true
+}
+
+// PendingCommandCount returns the number of queued commands awaiting delivery
+// for an offline or slow agent. Used by the API for visibility.
+func (r *Registry) PendingCommandCount(agentID string) int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.pendingCmds[agentID])
 }
 
 func (r *Registry) StartHeartbeatMonitor(interval time.Duration, timeout time.Duration) {

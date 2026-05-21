@@ -1059,6 +1059,75 @@ def get_discover_field_values(field, size=25, time_from=None, time_to=None, inde
         return []
 
 
+def get_discover_field_stats(field, size=15, time_from=None, time_to=None, index_pattern=None):
+    """Return top field values with doc counts and percentages for field stats popover."""
+    from datetime import datetime, timezone, timedelta
+    idx = index_pattern or ALERTS_INDEX
+    must = []
+    if time_from or time_to:
+        now = datetime.now(timezone.utc)
+        start = _to_epoch_ms(time_from) if time_from else int((now - timedelta(hours=24)).timestamp() * 1000)
+        end = _to_epoch_ms(time_to) if time_to else int(now.timestamp() * 1000)
+        must.append({"range": {"timestamp": {"gte": start, "lte": end}}})
+    query = {"bool": {"must": must}} if must else {"match_all": {}}
+    body = {
+        "size": 0,
+        "query": query,
+        "aggs": {
+            "values": {"terms": {"field": field, "size": min(size, 50), "order": {"_count": "desc"}}},
+            "total": {"value_count": {"field": field}},
+        },
+    }
+    try:
+        res = indexer_search(idx, body)
+        aggs = res.get("aggregations") or {}
+        buckets = aggs.get("values", {}).get("buckets", [])
+        total_docs = (aggs.get("total", {}).get("value") or 1) or 1
+        values = []
+        for b in buckets:
+            count = b.get("doc_count", 0)
+            values.append({
+                "value": b.get("key"),
+                "count": count,
+                "pct": round(count / total_docs * 100, 1) if total_docs > 0 else 0,
+            })
+        return {"values": values, "total": total_docs}
+    except Exception:
+        return {"values": [], "total": 0}
+
+
+def get_discover_correlate(fields, exclude_id=None, time_from=None, time_to=None, index_pattern=None, size=20):
+    """Find events related to a given alert by shared field values."""
+    from datetime import datetime, timezone, timedelta
+    idx = index_pattern or ALERTS_INDEX
+    must = []
+    if time_from or time_to:
+        now = datetime.now(timezone.utc)
+        start = _to_epoch_ms(time_from) if time_from else int((now - timedelta(hours=24)).timestamp() * 1000)
+        end = _to_epoch_ms(time_to) if time_to else int(now.timestamp() * 1000)
+        must.append({"range": {"timestamp": {"gte": start, "lte": end}}})
+    should_clauses = []
+    for field, value in (fields or {}).items():
+        val = str(value).strip() if value is not None else ""
+        if val and val not in ("—", "", "None"):
+            should_clauses.append({"term": {field + ".keyword": val}})
+            should_clauses.append({"term": {field: val}})
+    if should_clauses:
+        must.append({"bool": {"should": should_clauses, "minimum_should_match": 1}})
+    query = {"bool": {"must": must}} if must else {"match_all": {}}
+    if exclude_id:
+        query = {"bool": {"must": must, "must_not": [{"term": {"_id": exclude_id}}]}}
+    body = {"size": size, "query": query, "sort": [{"timestamp": {"order": "desc"}}]}
+    try:
+        res = indexer_search(idx, body)
+        hits = (res.get("hits") or {}).get("hits") or []
+        total = ((res.get("hits") or {}).get("total") or {})
+        total_val = total.get("value", 0) if isinstance(total, dict) else int(total or 0)
+        return {"hits": hits, "total": total_val}
+    except Exception:
+        return {"hits": [], "total": 0}
+
+
 # ---------------------------------------------------------------------------
 # Rules (WatchTower /api/v1/rules)
 # ---------------------------------------------------------------------------

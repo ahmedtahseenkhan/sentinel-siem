@@ -106,14 +106,105 @@ func (h *AgentHandler) PushConfig(w http.ResponseWriter, r *http.Request) {
 		Payload:     []byte(payload),
 	}
 
-	sent := h.registry.SendCommand(agentID, cmd)
-	if !sent {
-		writeError(w, http.StatusServiceUnavailable, "agent not connected")
+	delivered, queued := h.registry.SendCommandStatus(agentID, cmd)
+	if delivered {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"status":   "delivered",
+			"message":  "config_update delivered to online agent",
+			"agent_id": agentID,
+		})
+		return
+	}
+	if queued {
+		writeJSON(w, http.StatusAccepted, map[string]interface{}{
+			"status":   "queued",
+			"message":  "agent offline — config_update queued for delivery on next reconnect",
+			"agent_id": agentID,
+			"pending":  h.registry.PendingCommandCount(agentID),
+		})
+		return
+	}
+	writeError(w, http.StatusServiceUnavailable, "agent not connected and queue full")
+}
+
+// PushConfigBulk pushes a config update to every agent matching the optional
+// filters. Without filters, applies to ALL agents. Filters supported:
+//   - status: "running" / "disconnected" / etc
+//   - os:     "windows" / "linux"
+//   - label:  "team=security" (repeatable via comma)
+//
+// Online agents receive the update immediately; offline agents have it
+// queued and delivered on their next reconnect.
+//
+// Example: POST /api/v1/agents/config?os=windows
+//
+//	{ "performance": { "max_cpu_percent": 25 } }
+func (h *AgentHandler) PushConfigBulk(w http.ResponseWriter, r *http.Request) {
+	const maxConfigPayload = 64 * 1024
+	r.Body = http.MaxBytesReader(w, r.Body, maxConfigPayload)
+	var payload json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
 
+	statusFilter := r.URL.Query().Get("status")
+	osFilter := r.URL.Query().Get("os")
+	labelFilter := r.URL.Query().Get("label")
+
+	agents, err := h.registry.ListAgents(statusFilter, 10000, 0)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var delivered, queued, skipped int
+	targetIDs := make([]string, 0, len(agents))
+
+	for _, a := range agents {
+		if osFilter != "" && a.OS != osFilter {
+			skipped++
+			continue
+		}
+		if labelFilter != "" {
+			parts := splitKV(labelFilter)
+			if a.Labels == nil || a.Labels[parts[0]] != parts[1] {
+				skipped++
+				continue
+			}
+		}
+		cmd := &proto.ManagerCommand{
+			CommandType: "config_update",
+			Payload:     []byte(payload),
+		}
+		d, q := h.registry.SendCommandStatus(a.ID, cmd)
+		if d {
+			delivered++
+		} else if q {
+			queued++
+		}
+		targetIDs = append(targetIDs, a.ID)
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"message":  "config_update dispatched",
-		"agent_id": agentID,
+		"message":        "bulk config_update dispatched",
+		"total_targeted": len(targetIDs),
+		"delivered":      delivered,
+		"queued":         queued,
+		"skipped":        skipped,
+		"filters": map[string]string{
+			"status": statusFilter,
+			"os":     osFilter,
+			"label":  labelFilter,
+		},
 	})
+}
+
+func splitKV(s string) [2]string {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '=' {
+			return [2]string{s[:i], s[i+1:]}
+		}
+	}
+	return [2]string{s, ""}
 }
