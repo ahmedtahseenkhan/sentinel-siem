@@ -9,7 +9,10 @@ agent:
 manager:
   # !! IMPORTANT: Replace with your Sentinel server IP or hostname !!
   url: "YOUR_SERVER_IP:50051"
-  tls: {}
+  tls:
+    cert: "C:\\Program Files\\SentinelAgent\\certs\\watchnode.crt"
+    key: "C:\\Program Files\\SentinelAgent\\certs\\watchnode.key"
+    ca: "C:\\Program Files\\SentinelAgent\\certs\\ca.crt"
   reconnect:
     max_attempts: 0
     initial_backoff: "5s"
