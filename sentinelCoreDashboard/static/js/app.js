@@ -4808,9 +4808,18 @@ const GEO_CONTINENTS = [
           el.style.display = 'none';
         }
       });
-      const userEl = document.getElementById('sidebarUser');
       const roleLabels = { super_admin: 'Super Admin', administrator: 'Administrator', admin: 'Admin', security_analyst: 'Security Analyst', compliance_officer: 'Compliance Officer' };
-      if (userEl) userEl.textContent = currentUser.username + ' · ' + (roleLabels[currentUser.role] || currentUser.role);
+      const roleLabel = roleLabels[currentUser.role] || currentUser.role || 'User';
+      // Update visible sidebar elements
+      const userNameEl = document.getElementById('sidebarUserName');
+      if (userNameEl) userNameEl.textContent = currentUser.username || 'admin';
+      const userSubEl = document.getElementById('sidebarUserSub');
+      if (userSubEl) userSubEl.textContent = roleLabel + ' · SOC-1';
+      const avatarEl = document.getElementById('sidebarAvatar');
+      if (avatarEl) avatarEl.textContent = (currentUser.username || 'A').slice(0, 2).toUpperCase();
+      // Hidden compat element
+      const userEl = document.getElementById('sidebarUser');
+      if (userEl) userEl.textContent = currentUser.username + ' · ' + roleLabel;
       const headerUserEl = document.getElementById('headerUser');
       if (headerUserEl) headerUserEl.textContent = currentUser.username || 'admin';
       const saveBtn = document.getElementById('dashboardSave');
