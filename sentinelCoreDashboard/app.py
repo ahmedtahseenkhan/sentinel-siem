@@ -270,11 +270,31 @@ def _validate_dashboard_user(username, password):
     return role
 
 
+import hashlib as _hashlib
+import os as _os
+
+def _static_version():
+    """Return a short hash based on the modification time of key static files."""
+    try:
+        base = _os.path.dirname(__file__)
+        paths = [
+            _os.path.join(base, "static", "js", "app.js"),
+            _os.path.join(base, "static", "css", "style.css"),
+            _os.path.join(base, "templates", "index.html"),
+        ]
+        sig = "".join(str(int(_os.path.getmtime(p))) for p in paths if _os.path.exists(p))
+        return _hashlib.md5(sig.encode()).hexdigest()[:8]
+    except Exception:
+        return "1"
+
+_STATIC_VER = _static_version()
+
+
 @app.route("/")
 def index():
     if _check_login() is None:
         return redirect(url_for("login"))
-    return render_template("index.html")
+    return render_template("index.html", v=_STATIC_VER)
 
 
 # ── Agent deployment page ───────────────────────────────────────────────────
