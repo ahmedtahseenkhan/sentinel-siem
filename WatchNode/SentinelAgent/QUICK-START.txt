@@ -1,0 +1,85 @@
+==============================================================
+  SENTINEL AGENT - WINDOWS QUICK START
+==============================================================
+
+PREREQUISITES (ON THE SERVER):
+  1. Run on Ubuntu server first:
+       cd ~/sentinel-siem
+       git checkout -- WatchNode/scripts/certs/
+       git pull
+       mkdir -p certs
+       cp WatchNode/scripts/certs/ca.crt     certs/ca.crt
+       cp WatchNode/scripts/certs/server.crt certs/watchtower.crt
+       cp WatchNode/scripts/certs/server.key certs/watchtower.key
+       docker compose -f docker-compose.full.yaml restart watchtower watchtower-2
+
+  2. Verify the new server cert has correct IP:
+       openssl x509 -in certs/watchtower.crt -noout -ext subjectAltName
+     Should show: IP Address:192.168.100.100
+
+==============================================================
+  WINDOWS INSTALLATION (3 STEPS)
+==============================================================
+
+STEP 1 — Extract SentinelAgent.zip
+  Right-click the zip → "Extract All" → choose any folder
+  (e.g., C:\Temp\SentinelAgent)
+
+STEP 2 — Open PowerShell AS ADMINISTRATOR
+  - Press Windows key
+  - Type: powershell
+  - Right-click "Windows PowerShell" → "Run as administrator"
+  - Click "Yes" on the UAC prompt
+
+STEP 3 — Run the installer (one command):
+
+  cd C:\Temp\SentinelAgent
+  powershell -ExecutionPolicy Bypass -File .\INSTALL-AGENT.ps1 -ServerIP 192.168.100.100
+
+That's it. The installer will:
+  - Stop any existing agent
+  - Copy files to C:\Program Files\SentinelAgent
+  - Configure with your server IP
+  - Test connectivity
+  - Install as Windows service "SentinelAgent"
+  - Start the service
+
+==============================================================
+  VERIFY IT'S WORKING
+==============================================================
+
+  Get-Service SentinelAgent
+  → Status should be: Running
+
+  On the server, check the agent appeared:
+    curl http://localhost:9400/api/v1/agents
+
+==============================================================
+  TROUBLESHOOTING
+==============================================================
+
+If the service fails to start, run the agent manually to see the error:
+
+  cd "C:\Program Files\SentinelAgent"
+  .\watchnode.exe --config .\config.yaml
+
+Common errors:
+
+  "transport: authentication handshake failed: EOF"
+    → Server certs not regenerated/restarted. See PREREQUISITES.
+
+  "connection error: dial tcp ... connection refused"
+    → Firewall blocking port 50051 OR WatchTower not running.
+    Test from Windows: Test-NetConnection 192.168.100.100 -Port 50051
+
+  "no such host"
+    → DNS issue. Use the server IP directly.
+
+==============================================================
+  UNINSTALL
+==============================================================
+
+  Stop-Service SentinelAgent
+  sc.exe delete SentinelAgent
+  Remove-Item -Recurse -Force "C:\Program Files\SentinelAgent"
+  Remove-Item -Recurse -Force "C:\ProgramData\SentinelAgent"
