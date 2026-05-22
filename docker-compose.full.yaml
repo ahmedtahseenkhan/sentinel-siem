@@ -241,6 +241,11 @@ services:
       - DASHBOARD_ADMIN_USER=${DASHBOARD_ADMIN_USER:-admin}
       - DASHBOARD_ADMIN_PASSWORD=${DASHBOARD_ADMIN_PASSWORD:-admin}
       - WATCHTOWER_API_KEY=${WATCHTOWER_API_KEY:-sentinel-dev-api-key}
+    volumes:
+      # Mount agent packages so the deploy page can serve them to endpoints.
+      # The dashboard container only contains sentinelCoreDashboard/ — WatchNode/
+      # is outside its build context, so we mount the zip at the path app.py expects.
+      - ./WatchNode/SentinelAgent.zip:/WatchNode/SentinelAgent.zip:ro
     depends_on:
       - watchtower
       - opensearch-node1
