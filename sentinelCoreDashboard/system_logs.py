@@ -25,13 +25,41 @@ import re
 import subprocess
 from typing import Iterable
 
-# Friendly name → container name used in docker-compose.full.yaml.
+# Friendly name → docker-compose service name. We use `docker ps` with a
+# name filter so it works regardless of the compose project prefix
+# (e.g. `sentinel-siem-watchtower-1`, `watchtower`, etc.).
 SERVICES = {
     "watchtower":  "watchtower",
     "watchvault":  "watchvault",
-    "opensearch":  "opensearch",
-    "dashboard":   "sentinel-dashboard",
+    "opensearch":  "opensearch-node1",
+    "dashboard":   "dashboard",
 }
+
+
+def _resolve_container(service: str) -> str | None:
+    """Find the actual container name for a compose service, tolerating
+    project-name prefixes Docker Compose v2 adds (``<project>-<svc>-<idx>``)."""
+    try:
+        # First try exact match — works in plain `docker run` setups.
+        proc = subprocess.run(
+            ["docker", "ps", "--format", "{{.Names}}", "--filter", f"name={service}"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if proc.returncode != 0:
+            return None
+        names = [n for n in (proc.stdout or "").splitlines() if n.strip()]
+        if not names:
+            return None
+        # Prefer an exact match, otherwise pick the first that ends with -<svc>-N.
+        for n in names:
+            if n == service:
+                return n
+        for n in names:
+            if f"-{service}-" in n or n.endswith("-" + service):
+                return n
+        return names[0]
+    except Exception:
+        return None
 
 # Parses "name:/path" pairs from SYSTEM_LOG_SOURCES env var.
 def _env_sources() -> dict[str, str]:
@@ -60,12 +88,13 @@ def list_services() -> list[dict]:
     """Return services the UI can read, with the source it'll pull from."""
     env = _env_sources()
     out = []
-    for name, container in SERVICES.items():
+    for name, svc in SERVICES.items():
         if name in env:
             source = f"file:{env[name]}"
         else:
-            source = f"docker:{container}"
-        out.append({"name": name, "container": container, "source": source})
+            resolved = _resolve_container(svc) or svc
+            source = f"docker:{resolved}"
+        out.append({"name": name, "container": svc, "source": source})
     return out
 
 
@@ -120,8 +149,10 @@ def read_logs(service: str, lines: int = 200) -> dict:
         return {"service": service, "source": f"file:{env_paths[service]}",
                 "lines": ls, "error": err}
 
-    # 2) docker logs
-    container = SERVICES[service]
+    # 2) docker logs — resolve actual container name first (handles compose
+    # project prefixes like sentinel-siem-watchtower-1).
+    svc = SERVICES[service]
+    container = _resolve_container(svc) or svc
     ls, err = _read_docker_tail(container, lines)
     if not err:
         return {"service": service, "source": f"docker:{container}",

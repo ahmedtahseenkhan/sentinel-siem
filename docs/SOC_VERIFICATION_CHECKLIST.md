@@ -15,7 +15,7 @@ feature work.
 # 1. Pull latest, rebuild dashboard image to pick up bcrypt
 cd /opt/sentinel        # or wherever the project lives
 git pull
-docker-compose -f docker-compose.full.yaml build sentinel-dashboard
+docker compose -f docker-compose.full.yaml build dashboard
 
 # 2. Environment knobs (add to .env or compose env)
 #    All optional — defaults are sane.
@@ -29,7 +29,7 @@ WATCHVAULT_RETENTION_DAYS=90      # shown on Retention page as the
 # SYSTEM_LOG_SOURCES=watchtower:/var/log/wt.log,watchvault:/var/log/wv.log
 
 # 3. Restart and reload
-docker-compose -f docker-compose.full.yaml up -d
+docker compose -f docker-compose.full.yaml up -d
 ```
 
 **Hard-refresh the browser (Ctrl+Shift+R)** after the dashboard restarts so
@@ -191,7 +191,7 @@ entries are unambiguous.
       window from yesterday → **Apply** → results constrained.
 
 ### 3.13 Default mTLS + cert paths still healthy
-- [ ] `docker-compose logs watchtower --tail 50 | grep -i tls` → no
+- [ ] `docker compose logs watchtower --tail 50 | grep -i tls` → no
       handshake errors.
 - [ ] Agents page → all expected hosts marked **active** (last_seen < 5m).
 
