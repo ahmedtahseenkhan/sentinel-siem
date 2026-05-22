@@ -340,6 +340,13 @@ def get_agents_list(limit=50, offset=0):
         status = (a.get("status") or "pending").lower()
         if status in ("streaming", "running", "connected", "online"):
             status = "active"
+        # Override with heartbeat-based status — if last heartbeat > 2 min ago, agent is offline
+        if ts_heartbeat:
+            age_seconds = (datetime.now(timezone.utc).timestamp() * 1000 - ts_heartbeat) / 1000
+            if age_seconds > 120:
+                status = "disconnected"
+        elif not ts_heartbeat and ts_registered:
+            status = "never_connected"
         items.append({
             "id": a.get("id", ""),
             "name": a.get("hostname") or a.get("id", ""),
@@ -393,6 +400,12 @@ def get_agent_by_id(agent_id):
         status = (a.get("status") or "pending").lower()
         if status in ("streaming", "running", "connected", "online"):
             status = "active"
+        if ts_hb:
+            age_seconds = (datetime.now(timezone.utc).timestamp() * 1000 - ts_hb) / 1000
+            if age_seconds > 120:
+                status = "disconnected"
+        elif not ts_hb and ts_reg:
+            status = "never_connected"
         return {
             "id": a.get("id", ""),
             "name": a.get("hostname") or a.get("id", ""),
