@@ -102,9 +102,9 @@
     <p><a class="download" href="/deploy/agent/windows">⬇ Download SentinelAgent.zip</a></p>
 
     <p style="margin-top: 24px;"><strong>Step 2.</strong> Extract and run as Administrator:</p>
-    <pre id="win-cmd"><button class="copy-btn" data-target="win-cmd">Copy</button><code>Expand-Archive SentinelAgent.zip -DestinationPath C:\SentinelAgent
+    <pre id="win-cmd"><button class="copy-btn" data-target="win-cmd">Copy</button><code>Expand-Archive SentinelAgent.zip -DestinationPath C:\
 cd C:\SentinelAgent
-.\install.ps1 -ServerIP {{ server_ip }} -EnrollToken "{{ enroll_token }}"</code></pre>
+.\install.ps1 -ServerIP {{ server_ip }} -Token "{{ enroll_token }}"</code></pre>
 
     <p style="margin-top: 16px;"><strong>Or remote-deploy to a fleet from a domain admin machine:</strong></p>
     <pre id="win-bulk"><button class="copy-btn" data-target="win-bulk">Copy</button><code>.\deploy-to-all-machines.ps1 -ServerIP {{ server_ip }} -CsvFile machines.csv</code></pre>

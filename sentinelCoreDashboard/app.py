@@ -351,11 +351,43 @@ AGENT_BIN_DIR = os.path.join(
 DEFAULT_ENROLL_TOKEN = "sentinel-enroll-secret-2024"
 
 
+def _detect_server_ip() -> str:
+    """Return the best IP for agents to connect to.
+
+    Priority:
+      1. SENTINEL_SERVER_IP env var (operator-set, most reliable)
+      2. X-Forwarded-For / X-Real-IP header (behind a reverse proxy)
+      3. Request host if it's a real IP (not localhost / 127.x)
+      4. Machine's own outbound network IP (what other devices see)
+    """
+    # 1. Explicit override
+    override = os.getenv("SENTINEL_SERVER_IP", "").strip()
+    if override:
+        return override
+    # 2. Proxy headers
+    for hdr in ("X-Forwarded-For", "X-Real-IP"):
+        v = request.headers.get(hdr, "").split(",")[0].strip()
+        if v and v not in ("127.0.0.1", "::1", "localhost"):
+            return v
+    # 3. Request host if already a routable IP
+    host = request.host.split(":")[0]
+    if host and host not in ("localhost", "127.0.0.1", "0.0.0.0", "::1", ""):
+        return host
+    # 4. Machine's outbound IP — connect a UDP socket (no data sent) to discover
+    import socket
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except Exception:
+        return host or "YOUR_SERVER_IP"
+
+
 @app.route("/deploy")
 def deploy_page():
     if _check_login() is None:
         return redirect(url_for("login"))
-    server_ip = request.host.split(":")[0]
+    server_ip = _detect_server_ip()
     enroll_token = os.getenv("WATCHNODE_ENROLL_TOKEN", DEFAULT_ENROLL_TOKEN)
     return render_template(
         "deploy.html",

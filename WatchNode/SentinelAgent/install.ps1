@@ -254,7 +254,10 @@ agent:
 
 manager:
   url: "${ServerIP}:${ServerPort}"
-  tls: {}
+  tls:
+    cert: "C:\\Program Files\\SentinelAgent\\certs\\watchnode.crt"
+    key:  "C:\\Program Files\\SentinelAgent\\certs\\watchnode.key"
+    ca:   "C:\\Program Files\\SentinelAgent\\certs\\ca.crt"
   reconnect:
     max_attempts: 0
     initial_backoff: "5s"
