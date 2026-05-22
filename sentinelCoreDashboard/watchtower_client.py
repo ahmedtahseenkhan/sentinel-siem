@@ -338,7 +338,7 @@ def get_agents_list(limit=50, offset=0):
         hb_iso = datetime.fromtimestamp(ts_heartbeat / 1000, tz=timezone.utc).isoformat() if ts_heartbeat else None
         reg_iso = datetime.fromtimestamp(ts_registered / 1000, tz=timezone.utc).isoformat() if ts_registered else None
         status = (a.get("status") or "pending").lower()
-        if status == "streaming":
+        if status in ("streaming", "running", "connected", "online"):
             status = "active"
         items.append({
             "id": a.get("id", ""),
@@ -391,7 +391,7 @@ def get_agent_by_id(agent_id):
         hb_iso = datetime.fromtimestamp(ts_hb / 1000, tz=timezone.utc).isoformat() if ts_hb else None
         reg_iso = datetime.fromtimestamp(ts_reg / 1000, tz=timezone.utc).isoformat() if ts_reg else None
         status = (a.get("status") or "pending").lower()
-        if status == "streaming":
+        if status in ("streaming", "running", "connected", "online"):
             status = "active"
         return {
             "id": a.get("id", ""),
