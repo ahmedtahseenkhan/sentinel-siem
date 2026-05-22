@@ -1217,22 +1217,25 @@ const GEO_CONTINENTS = [
       _ov2ApplyDemo();
     } else {
       // KPIs from real data — counts from API, sparklines from real timeline_24h
-      const agentsOnline = agentsSummary.active || agentsSummary.connected || totalAgents;
-      const agentsTotal  = agentsSummary.total || totalAgents;
-      const agentsPct    = agentsTotal > 0 ? Math.round((agentsOnline / agentsTotal) * 100) : 100;
+      // Use ?? not || so zero active agents is not treated as falsy and replaced
+      // with totalAgents — that was what made Overview show "1 online / 100%"
+      // when Agents page correctly showed "0 connected / 1 disconnected".
+      const agentsOnline = agentsSummary.active ?? agentsSummary.connected ?? 0;
+      const agentsTotal  = agentsSummary.total ?? totalAgents ?? 0;
+      const agentsPct    = agentsTotal > 0 ? Math.round((agentsOnline / agentsTotal) * 100) : 0;
       // Real sparklines: extract hourly counts from timeline_24h
       const tl24 = (data.timeline_24h || []).map(t => t.count || 0);
       const _spkEvents = tl24.length >= 2 ? tl24 : [18,22,19,25,28,24,31,27,35,30,38,34,42,39,45];
       // For severity-split sparklines use timeline_24h_by_severity if present
       const tl24sev = data.timeline_24h_by_severity || [];
       const _spkCrit   = tl24sev.length >= 2 ? tl24sev.map(t=>(t.critical||0)+(t.high||0)) : [1,0,2,1,0,3,1,4,2,1,3,0,2,4,3];
-      const _spkAgents = [98,99,100,98,97,99,100,99,98,100,99,98,97,99,100]; // flat/stable
+      const _spkAgents = tl24.length >= 2 ? tl24.map(() => agentsPct) : Array(15).fill(agentsPct);
       _ov2SetKpi({ val:'kpiTotalEvents',   sub:'kpiEventsSub',  tag:'kpiEventsTag',  spark:'kpiEventsSpark'  },
         { value: totalEvents.toLocaleString(), sub:'+events · 24h window', tag:totalEvents>0?'+'+totalEvents:'IDLE', tagKind:totalEvents>1000?'up':'ok', spark: _spkEvents, sparkColor:'#38BDF8' });
       _ov2SetKpi({ val:'criticalCount',    sub:'kpiAlertsSub',  tag:'kpiAlertsTag',  spark:'kpiAlertsSpark'  },
         { value: String(critVal), sub: critVal > 0 ? critVal + ' need attention' : 'no escalations', tag: critVal > 0 ? 'ATTN' : 'CLEAR', tagKind: critVal > 0 ? 'crit' : 'ok', spark: _spkCrit, sparkColor:'#F25555' });
       _ov2SetKpi({ val:'kpiMonitoredAssets', sub:'kpiAgentsSub', tag:'kpiAgentsTag', spark:'kpiAgentsSpark' },
-        { value: String(agentsOnline || totalAgents), sub: `of ${agentsTotal} · ${(agentsTotal - agentsOnline)||0} offline`, tag: agentsPct + '%', tagKind: agentsPct >= 95 ? 'ok' : 'crit', spark: _spkAgents, sparkColor:'#34D399' });
+        { value: String(agentsOnline), sub: `of ${agentsTotal} · ${Math.max(0, agentsTotal - agentsOnline)} offline`, tag: agentsPct + '%', tagKind: agentsPct >= 95 ? 'ok' : 'crit', spark: _spkAgents, sparkColor:'#34D399' });
       const alertBadge = document.getElementById('navBadgeAlerts');
       if (alertBadge) { alertBadge.textContent = critVal > 0 ? (critVal > 99 ? '99+' : critVal) : ''; alertBadge.style.display = critVal > 0 ? '' : 'none'; }
     }

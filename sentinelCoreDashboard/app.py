@@ -1019,7 +1019,7 @@ def api_dashboard_overview():
                 return default
 
         out = {}
-        with concurrent.futures.ThreadPoolExecutor(max_workers=12) as ex:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=11) as ex:
             f_alerts     = ex.submit(_safe, get_recent_alerts, 50, default={})
             f_sev        = ex.submit(_safe, get_alerts_by_severity, default={})
             f_agents     = ex.submit(_safe, get_agents_summary, default={})
@@ -1028,9 +1028,12 @@ def api_dashboard_overview():
             f_sources    = ex.submit(_safe, get_top_source_ips, default={})
             f_users      = ex.submit(_safe, get_alerts_by_user, 10, default={})
             f_agent_risk = ex.submit(_safe, get_alerts_by_agent, 10, default={})
-            f_critical   = ex.submit(_safe, get_alerts_high_level_count, default={})
             f_mitre      = ex.submit(_safe, get_mitre_techniques, default={})
             f_sev_24h    = ex.submit(_safe, get_alerts_severity_24h, default={})
+            # f_critical removed: get_alerts_high_level_count used a numeric range on
+            # rule_level which fails when the field is string-mapped in OpenSearch.
+            # critical_incidents is now derived from sev_24h_res (uses terms agg which
+            # works on both keyword and numeric mappings) so all screens stay in sync.
 
         def _get(f, default=None):
             try:
@@ -1047,7 +1050,6 @@ def api_dashboard_overview():
         sources_res     = _get(f_sources,    {})
         users_res       = _get(f_users,      {})
         agent_risk_res  = _get(f_agent_risk, {})
-        critical_res    = _get(f_critical,   {})
         mitre_res       = _get(f_mitre,      {})
 
         alerts = _normalize_alerts(alerts_res)
@@ -1061,9 +1063,12 @@ def api_dashboard_overview():
         out["risk_score"] = risk_score
         out["risk_label"] = "LOW" if risk_score < 40 else "MODERATE" if risk_score < 70 else "HIGH"
 
-        # Critical incidents (level >= 10, last 24h)
-        hits_total = (critical_res.get("hits") or {}).get("total")
-        critical_count = hits_total.get("value", hits_total) if isinstance(hits_total, dict) else (hits_total or 0)
+        # Critical incidents: use sev_24h_res["critical"] (terms agg, works regardless
+        # of whether rule_level is keyword or integer in OpenSearch).
+        # Threshold 12+ matches the Alerts page KPI label "CRITICAL · 12+" so all
+        # three screens (Overview / Alerts / Agent detail) now show the same number.
+        sev_24h = sev_24h_res if isinstance(sev_24h_res, dict) else {}
+        critical_count = int(sev_24h.get("critical", 0))
         out["critical_incidents"] = critical_count
         out["mttr_min"] = 18 + (critical_count % 30)
 

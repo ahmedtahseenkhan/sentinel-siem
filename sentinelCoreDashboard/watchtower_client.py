@@ -609,11 +609,13 @@ def get_alerts_severity_24h():
         for b in buckets:
             level = int(b.get("key", 0))
             count = b.get("doc_count", 0)
-            if level >= 15:
+            # Thresholds match build_alerts_dashboard_from_wt and the Alerts page KPIs:
+            # Critical 12+, High 8-11, Medium 4-7, Low 0-3
+            if level >= 12:
                 critical += count
-            elif level >= 12:
+            elif level >= 8:
                 high += count
-            elif level >= 7:
+            elif level >= 4:
                 medium += count
             else:
                 low += count
