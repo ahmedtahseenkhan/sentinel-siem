@@ -11,8 +11,8 @@ x-watchtower-common: &watchtower-common
     - WATCHTOWER_DATABASE_URL=postgres://${POSTGRES_USER:-watchtower}:${POSTGRES_PASSWORD:-watchtower_dev_pass}@postgres:5432/${POSTGRES_DB:-watchtower}?sslmode=disable
     - WATCHTOWER_GRPC_ENROLL_TOKEN=${WATCHTOWER_GRPC_ENROLL_TOKEN:-sentinel-enroll-secret-2024}
     - WATCHTOWER_KAFKA_BROKERS=kafka:9092
-    - WATCHTOWER_GRPC_TLS_CERT=/etc/sentinel/certs/watchtower.crt
-    - WATCHTOWER_GRPC_TLS_KEY=/etc/sentinel/certs/watchtower.key
+    - WATCHTOWER_GRPC_TLS_CERT=/etc/sentinel/certs/server.crt
+    - WATCHTOWER_GRPC_TLS_KEY=/etc/sentinel/certs/server.key
     - WATCHTOWER_GRPC_TLS_CA=/etc/sentinel/certs/ca.crt
     - WATCHTOWER_SYSLOG_ADDR=:5140
     - WATCHTOWER_THREATINTEL_ENABLED=true
@@ -26,7 +26,7 @@ x-watchtower-common: &watchtower-common
     # Empty value falls back to hash chain only.
     - AUDIT_SIGNING_KEY=${AUDIT_SIGNING_KEY:-}
   volumes:
-    - ./certs:/etc/sentinel/certs:ro
+    - ./WatchNode/scripts/certs:/etc/sentinel/certs:ro
     - ./WatchTower/cdb:/etc/watchtower/cdb:ro
     - ./WatchTower/rules:/etc/watchtower/rules:ro
     - ./WatchTower/sigma/rules:/etc/watchtower/sigma:ro
