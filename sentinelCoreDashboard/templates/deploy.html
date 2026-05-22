@@ -101,14 +101,23 @@
     <p><strong>Step 1.</strong> Download the agent package:</p>
     <p><a class="download" href="/deploy/agent/windows">⬇ Download SentinelAgent.zip</a></p>
 
-    <p style="margin-top: 24px;"><strong>Step 2.</strong> Open <b>PowerShell</b> (any user, NOT cmd) and paste this single block:</p>
+    <p style="margin-top: 24px;"><strong>Step 2.</strong> Easiest — just double-click:</p>
+    <ol style="line-height:1.8; font-size:14px; padding-left:20px;">
+      <li>Right-click <code>SentinelAgent.zip</code> &rarr; <b>Extract All</b> &rarr; pick <code>C:\</code> as the destination.</li>
+      <li>Open the new <code>C:\SentinelAgent\</code> folder.</li>
+      <li>Double-click <b><code>install.bat</code></b>.</li>
+      <li>A <b>UAC prompt</b> asks "Do you want to allow this app to make changes?" &rarr; click <b>Yes</b>.</li>
+      <li>When prompted for <b>Server IP</b>, enter: <code style="background:#0d1117;padding:2px 6px;border-radius:4px;color:#58a6ff;">{{ server_ip }}</code></li>
+    </ol>
+
+    <p style="margin-top: 16px;"><strong>Or, for scripting / no prompts</strong> — paste this in <b>PowerShell</b> (not cmd):</p>
     <pre id="win-cmd"><button class="copy-btn" data-target="win-cmd">Copy</button><code>Expand-Archive -Force "$HOME\Downloads\SentinelAgent.zip" -DestinationPath C:\
-Set-Location C:\SentinelAgent
-powershell.exe -ExecutionPolicy Bypass -File .\install.ps1 -ServerIP {{ server_ip }} -Token "{{ enroll_token }}"</code></pre>
+C:\SentinelAgent\install.bat -ServerIP {{ server_ip }} -Token "{{ enroll_token }}"</code></pre>
     <div class="note" style="background:#1c2128;border-left-color:#9e6a03;">
-      <b>Note:</b> The installer auto-elevates — a UAC prompt appears asking for admin.
-      Click <b>Yes</b>. The agent installs to <code>C:\Program Files\SentinelAgent\</code>;
-      <code>C:\SentinelAgent\</code> is just the temporary extract folder and can be deleted afterwards.
+      <b>Why <code>install.bat</code> and not <code>install.ps1</code> directly?</b>
+      Windows refuses to execute <code>.ps1</code> files from cmd.exe or by double-click for security — it opens them in Notepad instead. The <code>.bat</code> wrapper sidesteps that by invoking PowerShell explicitly with the right flags.
+      <br><br>
+      <b>About paths:</b> <code>C:\SentinelAgent\</code> is the temporary extract folder. The installer copies everything to <code>C:\Program Files\SentinelAgent\</code> (the real install location) and writes a fresh <code>config.yaml</code> there — that's why the cert paths in the template point to Program Files. You don't need to edit anything; the temp folder can be deleted after install.
     </div>
 
     <p style="margin-top: 16px;"><strong>Or remote-deploy to a fleet from a domain admin machine:</strong></p>
