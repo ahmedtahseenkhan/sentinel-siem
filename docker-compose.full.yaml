@@ -244,8 +244,14 @@ services:
     volumes:
       # Mount agent packages so the deploy page can serve them to endpoints.
       # The dashboard container only contains sentinelCoreDashboard/ — WatchNode/
-      # is outside its build context, so we mount the zip at the path app.py expects.
-      - ./WatchNode/SentinelAgent.zip:/WatchNode/SentinelAgent.zip:ro
+      # is outside its build context, so we mount the parent dir at the path
+      # app.py expects.
+      #
+      # IMPORTANT: Mount the DIRECTORY (not the file) so that when git pull or
+      # rebuild replaces SentinelAgent.zip, the new inode is visible to the
+      # container without a docker restart. File-level bind mounts pin the
+      # original inode and serve stale content forever.
+      - ./WatchNode:/WatchNode:ro
     depends_on:
       - watchtower
       - opensearch-node1

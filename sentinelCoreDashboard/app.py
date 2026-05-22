@@ -400,7 +400,7 @@ def deploy_page():
 def deploy_download(platform):
     if _check_login() is None:
         return redirect(url_for("login"))
-    from flask import send_from_directory, abort
+    from flask import send_from_directory, abort, make_response
     mapping = {
         "windows": ("SentinelAgent.zip", "SentinelAgent.zip"),
         "linux":   ("cmd/agent/watchnode-linux", "watchnode-linux"),
@@ -415,9 +415,30 @@ def deploy_download(platform):
         abort(404, description=f"Agent binary not built: {rel}")
     directory = os.path.dirname(full)
     filename = os.path.basename(full)
-    return send_from_directory(
+    response = make_response(send_from_directory(
         directory, filename, as_attachment=True, download_name=download_name
-    )
+    ))
+    # Cache-busting headers so a re-deploy never serves a stale agent package
+    # from the browser cache. Operators have spent hours debugging "I downloaded
+    # the new zip but it still has the old install.ps1" — the actual cause was
+    # the browser silently reusing its 200 OK from yesterday.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    # Add the file's mtime to the filename so each rebuild is a distinct file
+    # name on disk too — easier to spot in the user's Downloads folder.
+    try:
+        import time as _t
+        mtime = int(os.path.getmtime(full))
+        stamped = download_name.rsplit(".", 1)
+        if len(stamped) == 2:
+            stamped_name = f"{stamped[0]}-{mtime}.{stamped[1]}"
+        else:
+            stamped_name = f"{download_name}-{mtime}"
+        response.headers["Content-Disposition"] = f'attachment; filename="{stamped_name}"'
+    except Exception:
+        pass
+    return response
 
 
 @app.route("/deploy/install.sh")
