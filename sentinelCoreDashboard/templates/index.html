@@ -75,6 +75,10 @@
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
             Discover
           </a>
+          <a href="#" class="sb2-item nav-item" data-page="logs">
+            <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+            Logs
+          </a>
           <a href="#" class="sb2-item nav-item" data-page="threat-hunting">
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M22 12h-4M6 12H2M12 6V2M12 22v-4"/></svg>
             Threat Hunting
@@ -191,6 +195,36 @@
           <a href="#" class="sb2-item nav-item" data-page="data-sources">
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 2v4M15 2v4M7 6h10v5a5 5 0 0 1-10 0V6zM12 16v6"/></svg>
             Data Sources
+          </a>
+          <a href="#" class="sb2-item nav-item" data-page="users" data-requires-role="super_admin">
+            <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Users &amp; Roles
+          </a>
+          <a href="#" class="sb2-item nav-item" data-page="correlations">
+            <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
+            Correlations
+            <span class="sb2-badge sb2-badge--crit" id="navBadgeCorr" style="display:none"></span>
+          </a>
+          <a href="#" class="sb2-item nav-item" data-page="silent-sources" data-requires-role="super_admin">
+            <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+            Silent Sources
+            <span class="sb2-badge sb2-badge--crit" id="navBadgeSilent" style="display:none"></span>
+          </a>
+          <a href="#" class="sb2-item nav-item" data-page="log-filters" data-requires-role="super_admin">
+            <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            Log Filters
+          </a>
+          <a href="#" class="sb2-item nav-item" data-page="retention" data-requires-role="super_admin">
+            <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            Retention
+          </a>
+          <a href="#" class="sb2-item nav-item" data-page="system-logs" data-requires-role="super_admin">
+            <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            System Logs
+          </a>
+          <a href="#" class="sb2-item nav-item" data-page="config-audit" data-requires-role="super_admin">
+            <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 12l2 2 4-4M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z"/></svg>
+            Config Audit
           </a>
 
         </nav>
@@ -655,6 +689,518 @@
             <div class="card"><div class="card-h"><h3 class="card-h-title"><span class="dot" style="background:var(--low)"></span>INDEXER CONNECTION</h3></div><div class="card-body" id="stackIndexerDetail" style="padding:12px 16px;font-size:12px;color:var(--fg-3)">—</div></div>
           </div>
           <div class="card"><div class="card-h"><h3 class="card-h-title"><span class="dot" style="background:var(--fg-4)"></span>CONFIGURED ENDPOINTS</h3></div><div class="card-body" id="stackConfig" style="padding:12px 16px;font-size:12px;font-family:var(--font-mono);color:var(--fg-3)">—</div></div>
+
+          <div class="card" style="margin-top:12px">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" id="pipeStatusDot" style="background:var(--ok)"></span>PIPELINE HEALTH <span id="pipeStatusBadge" style="font-size:11px;margin-left:6px;color:var(--fg-4)">—</span></h3>
+              <button type="button" id="pipeRefresh" class="act-btn" style="height:26px;padding:0 10px;font-size:11px">↻ Refresh</button>
+            </div>
+            <div class="card-body" style="padding:12px 16px">
+              <div class="grid grid-4" style="gap:8px">
+                <div class="kpi"><div class="kpi-h"><span class="kpi-label">DLQ depth</span></div><div class="kpi-value" id="pipeDlq" style="font-size:22px">—</div><div class="kpi-foot"><span class="kpi-sub">in-memory replay buffer</span></div></div>
+                <div class="kpi"><div class="kpi-h"><span class="kpi-label" style="color:var(--crit)">Dropped events</span></div><div class="kpi-value" id="pipeDropEv" style="font-size:22px">—</div><div class="kpi-foot"><span class="kpi-sub">since process start</span></div></div>
+                <div class="kpi"><div class="kpi-h"><span class="kpi-label" style="color:var(--crit)">Dropped alerts</span></div><div class="kpi-value" id="pipeDropAl" style="font-size:22px">—</div><div class="kpi-foot"><span class="kpi-sub">since process start</span></div></div>
+                <div class="kpi"><div class="kpi-h"><span class="kpi-label">Agents</span></div><div class="kpi-value" id="pipeAgents" style="font-size:22px">—</div><div class="kpi-foot"><span class="kpi-sub" id="pipeAgentSub">— active / — disconnected</span></div></div>
+              </div>
+              <div id="pipeWarn" style="margin-top:10px;font-size:11px;color:var(--fg-3)">Reads WatchTower <code>/metrics</code> (Prometheus). DLQ stays at 0 when WatchVault keeps up. Persistent non-zero drops mean OpenSearch can't ingest fast enough — increase WatchVault batch size or scale OpenSearch.</div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:12px">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--ok)"></span>BACKUP &amp; RESTORE</h3>
+              <button type="button" id="backupDownloadBtn" class="act-btn primary" style="height:28px;padding:0 14px;font-size:12px">⤓ Backup now</button>
+            </div>
+            <div class="card-body" style="padding:12px 16px;font-size:12px;color:var(--fg-3);line-height:1.6">
+              <p style="margin-top:0">Snapshots Sigma rules, decoders, dashboards, audit log, log filters, and service YAMLs into a single <code>.tar.gz</code>. Run regularly — configs are not in OpenSearch and won't survive a fresh install otherwise.</p>
+              <div style="margin-top:8px;padding:8px 10px;background:var(--bg-2);border:1px solid var(--border);border-radius:6px;font-family:var(--font-mono);font-size:11px">
+                Restore from CLI: <span style="color:var(--accent)">scripts/sentinel-restore.sh &lt;archive.tar.gz&gt;</span>
+              </div>
+              <div id="backupList" style="margin-top:12px"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================== CORRELATIONS (stateful UEBA-style rules) ===================== -->
+        <section id="page-correlations" class="page page-v2">
+          <div class="ag2-header" style="margin-bottom:16px">
+            <div class="ag2-header-left">
+              <h2 class="ag2-title">Correlations <span class="ag2-fleet-badge">Stateful</span></h2>
+              <p class="ag2-subtitle">Multi-event detections that Sigma rules can't express. Includes impossible-travel / multi-location logon — same user signing in from ≥2 sources within a short window.</p>
+            </div>
+            <div class="ag2-header-right">
+              <button type="button" id="corrRunNow" class="act-btn primary" style="height:30px;padding:0 14px;font-size:12px">▶ Run all now</button>
+            </div>
+          </div>
+
+          <div class="grid grid-4" style="margin-bottom:12px">
+            <div class="kpi"><span class="kpi-band kpi-band crit"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--crit)">Open correlations</span><span class="kpi-tag ok">ENTITIES</span></div><div class="kpi-value" id="corrOpen">—</div><div class="kpi-foot"><span class="kpi-sub">unresolved</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band" style="background:var(--high)"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--high)">Multi-location logon</span><span class="kpi-tag ok">USERS</span></div><div class="kpi-value" id="corrMLL">—</div><div class="kpi-foot"><span class="kpi-sub">distinct AD users</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band low"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--accent)">Window</span><span class="kpi-tag ok">LOOKBACK</span></div><div class="kpi-value" id="corrWindow" style="font-size:22px">10m</div><div class="kpi-foot"><span class="kpi-sub">CORR_WINDOW_MIN env</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band" style="background:var(--ok)"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--ok)">Frequency</span><span class="kpi-tag ok">CRON</span></div><div class="kpi-value" id="corrFreq" style="font-size:22px">2m</div><div class="kpi-foot"><span class="kpi-sub">scheduler interval</span></div></div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--crit)"></span>INCIDENTS <span id="corrIncCount" style="font-size:11px;color:var(--fg-4);margin-left:6px">0</span></h3>
+              <select id="corrStatus" class="fld" style="height:26px;font-size:11px">
+                <option value="open" selected>Open</option>
+                <option value="resolved">Resolved</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            <div class="tbl">
+              <div class="tbl-h" style="grid-template-columns:160px 140px 1fr 90px 130px 120px 110px">
+                <span>First seen</span><span>Detector</span><span>Entity / Evidence</span><span>Severity</span><span>Sources</span><span>Status</span><span>Actions</span>
+              </div>
+              <div id="corrBody"></div>
+            </div>
+          </div>
+
+          <div id="corrDetailDrawer" class="hidden" style="position:fixed;top:0;right:0;width:520px;height:100vh;background:var(--bg-1);border-left:1px solid var(--border);z-index:50;overflow:auto;box-shadow:-4px 0 24px rgba(0,0,0,.4)">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg-1);z-index:1">
+              <h3 style="margin:0;font-size:14px">Correlation Incident</h3>
+              <button type="button" id="corrDetailClose" class="act-btn" style="height:24px;padding:0 8px;font-size:11px">✕ Close</button>
+            </div>
+            <pre id="corrDetailBody" style="margin:0;padding:14px 16px;font-family:var(--font-mono);font-size:11px;color:var(--fg-2);white-space:pre-wrap;word-break:break-word"></pre>
+          </div>
+        </section>
+
+        <!-- ===================== USERS & ROLES (super_admin only) ===================== -->
+        <section id="page-users" class="page page-v2">
+          <div class="ag2-header" style="margin-bottom:16px">
+            <div class="ag2-header-left">
+              <h2 class="ag2-title">Users &amp; Roles <span class="ag2-fleet-badge">Super Admin</span></h2>
+              <p class="ag2-subtitle">Create login accounts, assign roles, reset passwords. Every change is recorded in Config Audit.</p>
+            </div>
+            <div class="ag2-header-right">
+              <button type="button" id="usrAdd" class="act-btn primary" style="height:30px;padding:0 14px;font-size:12px">+ New user</button>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-body" style="padding:10px 12px;color:var(--fg-3);font-size:12px;line-height:1.6">
+              <b>Roles:</b>
+              <code>super_admin</code> = full control incl. user management ·
+              <code>administrator</code> / <code>admin</code> = edit rules, decoders, dashboards ·
+              <code>security_analyst</code> = investigate alerts, manage cases ·
+              <code>compliance_officer</code> = compliance reports only ·
+              <code>viewer</code> = read-only.<br>
+              <b>Note:</b> Accounts created here override <code>DASHBOARD_USERS</code> env entries with the same username. The env var is still honored as a break-glass fallback if SQLite is unavailable.
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--accent)"></span>USERS <span id="usrCount" style="font-size:11px;color:var(--fg-4);margin-left:6px">0</span></h3>
+            </div>
+            <div class="tbl">
+              <div class="tbl-h" style="grid-template-columns:160px 140px 1fr 160px 90px 140px 160px">
+                <span>Username</span><span>Role</span><span>Full name / Email</span><span>Last login</span><span>Status</span><span>Created by</span><span>Actions</span>
+              </div>
+              <div id="usrBody"></div>
+            </div>
+          </div>
+
+          <div id="usrDrawer" class="hidden" style="position:fixed;top:0;right:0;width:480px;height:100vh;background:var(--bg-1);border-left:1px solid var(--border);z-index:50;overflow:auto;box-shadow:-4px 0 24px rgba(0,0,0,.4)">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg-1);z-index:1">
+              <h3 style="margin:0;font-size:14px" id="usrDrawerTitle">New User</h3>
+              <button type="button" id="usrDrawerClose" class="act-btn" style="height:24px;padding:0 8px;font-size:11px">✕ Close</button>
+            </div>
+            <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+              <input type="hidden" id="usrEditMode" value="create">
+              <label style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em">
+                Username (letters, digits, _ - .)
+                <input type="text" id="usrUsername" class="fld" style="width:100%;margin-top:4px;font-family:var(--font-mono)" autocomplete="username">
+              </label>
+              <label style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em">
+                Full name
+                <input type="text" id="usrFullName" class="fld" style="width:100%;margin-top:4px">
+              </label>
+              <label style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em">
+                Email
+                <input type="email" id="usrEmail" class="fld" style="width:100%;margin-top:4px">
+              </label>
+              <label style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em">
+                Role
+                <select id="usrRole" class="fld" style="width:100%;margin-top:4px">
+                  <option value="viewer">viewer (read-only)</option>
+                  <option value="compliance_officer">compliance_officer</option>
+                  <option value="security_analyst">security_analyst</option>
+                  <option value="admin">admin</option>
+                  <option value="administrator">administrator</option>
+                  <option value="super_admin">super_admin</option>
+                </select>
+              </label>
+              <label style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em">
+                <span id="usrPwLabel">Password (≥ 10 chars)</span>
+                <input type="password" id="usrPassword" class="fld" style="width:100%;margin-top:4px;font-family:var(--font-mono)" autocomplete="new-password">
+                <span id="usrPwHint" style="font-size:10px;color:var(--fg-4);display:none">Leave blank to keep the current password.</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--fg-2)">
+                <input type="checkbox" id="usrEnabled" checked> Account enabled
+              </label>
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button type="button" id="usrSave" class="act-btn primary" style="flex:1;height:32px">Save user</button>
+                <button type="button" id="usrCancel" class="act-btn" style="flex:1;height:32px">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================== SILENT SOURCES MONITOR ===================== -->
+        <section id="page-silent-sources" class="page page-v2">
+          <div class="ag2-header" style="margin-bottom:16px">
+            <div class="ag2-header-left">
+              <h2 class="ag2-title">Silent Sources <span class="ag2-fleet-badge">Availability</span></h2>
+              <p class="ag2-subtitle">Get notified when an agent, firewall, or syslog source stops sending events. Checks every 60s.</p>
+            </div>
+            <div class="ag2-header-right">
+              <button type="button" id="ssRunNow" class="act-btn" style="height:30px;padding:0 14px;font-size:12px">▶ Run check now</button>
+              <button type="button" id="ssAddThreshold" class="act-btn primary" style="height:30px;padding:0 14px;font-size:12px">+ New threshold</button>
+            </div>
+          </div>
+
+          <div class="grid grid-4" style="margin-bottom:12px">
+            <div class="kpi"><span class="kpi-band kpi-band crit"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--crit)">Open incidents</span><span class="kpi-tag ok">SILENT</span></div><div class="kpi-value" id="ssOpenCount">—</div><div class="kpi-foot"><span class="kpi-sub">sources past threshold</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band" style="background:var(--high)"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--high)">High / Critical</span><span class="kpi-tag ok">SEV</span></div><div class="kpi-value" id="ssOpenSev">—</div><div class="kpi-foot"><span class="kpi-sub">elevated severity</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band low"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--accent)">Active thresholds</span><span class="kpi-tag ok">RULES</span></div><div class="kpi-value" id="ssThresholdCount">—</div><div class="kpi-foot"><span class="kpi-sub">enabled patterns</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band" style="background:var(--ok)"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--ok)">Default threshold</span><span class="kpi-tag ok">FALLBACK</span></div><div class="kpi-value" id="ssDefault" style="font-size:22px">15m</div><div class="kpi-foot"><span class="kpi-sub">unmatched sources</span></div></div>
+          </div>
+
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--crit)"></span>OPEN INCIDENTS <span id="ssIncCount" style="font-size:11px;color:var(--fg-4);margin-left:6px">0</span></h3>
+              <div style="display:flex;gap:6px">
+                <select id="ssIncStatus" class="fld" style="height:26px;font-size:11px">
+                  <option value="open" selected>Open</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="all">All</option>
+                </select>
+              </div>
+            </div>
+            <div class="tbl">
+              <div class="tbl-h" style="grid-template-columns:1fr 110px 110px 110px 110px 90px">
+                <span>Source</span><span>Kind</span><span>Severity</span><span>Last Seen</span><span>Silent For</span><span>Status</span>
+              </div>
+              <div id="ssIncidentsBody"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--accent)"></span>THRESHOLDS</h3>
+            </div>
+            <div class="tbl">
+              <div class="tbl-h" style="grid-template-columns:50px 1fr 100px 90px 100px 60px 1fr 130px">
+                <span>On</span><span>Pattern</span><span>Kind</span><span>Threshold</span><span>Severity</span><span>Notify</span><span>Reason</span><span>Actions</span>
+              </div>
+              <div id="ssThresholdsBody"></div>
+            </div>
+          </div>
+
+          <!-- threshold drawer -->
+          <div id="ssDrawer" class="hidden" style="position:fixed;top:0;right:0;width:480px;height:100vh;background:var(--bg-1);border-left:1px solid var(--border);z-index:50;overflow:auto;box-shadow:-4px 0 24px rgba(0,0,0,.4)">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg-1);z-index:1">
+              <h3 style="margin:0;font-size:14px" id="ssDrawerTitle">New Threshold</h3>
+              <button type="button" id="ssDrawerClose" class="act-btn" style="height:24px;padding:0 8px;font-size:11px">✕ Close</button>
+            </div>
+            <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+              <input type="hidden" id="ssEditId">
+              <label style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em">
+                Source pattern (exact or with <code>*</code>)
+                <input type="text" id="ssPattern" class="fld" style="width:100%;margin-top:4px;font-family:var(--font-mono)" placeholder="firewall-* or WIN-DC-01 or *">
+              </label>
+              <label style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em">
+                Kind
+                <select id="ssKind" class="fld" style="width:100%;margin-top:4px">
+                  <option value="agent">Agent (endpoint)</option>
+                  <option value="syslog">Syslog source</option>
+                  <option value="any">Any</option>
+                </select>
+              </label>
+              <label style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em">
+                Threshold (minutes)
+                <input type="number" min="1" id="ssMinutes" class="fld" style="width:100%;margin-top:4px" placeholder="15">
+              </label>
+              <label style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em">
+                Severity
+                <select id="ssSeverity" class="fld" style="width:100%;margin-top:4px">
+                  <option value="low">Low</option>
+                  <option value="medium" selected>Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </label>
+              <label style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em">
+                Reason / context
+                <textarea id="ssReason" class="fld" style="width:100%;margin-top:4px;min-height:60px" placeholder="Why is this monitored?"></textarea>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--fg-2)">
+                <input type="checkbox" id="ssEnabled" checked> Enabled
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--fg-2)">
+                <input type="checkbox" id="ssNotify" checked> Page out via configured notifiers (email / slack)
+              </label>
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button type="button" id="ssSave" class="act-btn primary" style="flex:1;height:32px">Save threshold</button>
+                <button type="button" id="ssCancel" class="act-btn" style="flex:1;height:32px">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================== LOG FILTERS (whitelist / suppress) ===================== -->
+        <section id="page-log-filters" class="page page-v2">
+          <div class="ag2-header" style="margin-bottom:16px">
+            <div class="ag2-header-left">
+              <h2 class="ag2-title">Log Filters <span class="ag2-fleet-badge">Whitelist · Drop</span></h2>
+              <p class="ag2-subtitle">Hide noisy known-good events from analyst views without changing detection rules. Filters are reversible — toggle off any time.</p>
+            </div>
+            <div class="ag2-header-right">
+              <button type="button" id="lfAddBtn" class="act-btn primary" style="height:30px;padding:0 14px;font-size:12px">+ New filter</button>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-body" style="padding:10px 12px;color:var(--fg-3);font-size:12px;line-height:1.6">
+              <b>How filters work:</b> each rule matches a field on incoming search results and excludes those documents. Underlying records remain in OpenSearch — disable the rule to bring them back. <br>
+              <b>Operators:</b> <code>equals</code> exact match · <code>contains</code> substring · <code>in</code> comma-separated list · <code>regex</code> Lucene regex.
+              <b>Example:</b> hide service-account logons → field <code>TargetUserName</code>, op <code>contains</code>, value <code>svc_</code>, scope <code>events</code>.
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--accent)"></span>ACTIVE FILTERS <span id="lfCount" style="font-size:11px;color:var(--fg-4);margin-left:6px">0 rules</span></h3>
+            </div>
+            <div class="tbl">
+              <div class="tbl-h" style="grid-template-columns:60px 1fr 140px 90px 140px 1fr 120px 160px">
+                <span>Status</span><span>Name</span><span>Field</span><span>Op</span><span>Value</span><span>Reason</span><span>Scope</span><span>Actions</span>
+              </div>
+              <div id="lfBody"></div>
+            </div>
+          </div>
+
+          <!-- Add/edit drawer -->
+          <div id="lfDrawer" class="hidden" style="position:fixed;top:0;right:0;width:480px;height:100vh;background:var(--bg-1);border-left:1px solid var(--border);z-index:50;overflow:auto;box-shadow:-4px 0 24px rgba(0,0,0,.4)">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg-1);z-index:1">
+              <h3 style="margin:0;font-size:14px" id="lfDrawerTitle">New Filter</h3>
+              <button type="button" id="lfDrawerClose" class="act-btn" style="height:24px;padding:0 8px;font-size:11px">✕ Close</button>
+            </div>
+            <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+              <input type="hidden" id="lfEditId">
+              <label style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em">
+                Name
+                <input type="text" id="lfName" class="fld" style="width:100%;margin-top:4px" placeholder="Drop svc_backup logon noise">
+              </label>
+              <label style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em">
+                Scope
+                <select id="lfScope" class="fld" style="width:100%;margin-top:4px">
+                  <option value="events">Events only</option>
+                  <option value="alerts">Alerts only</option>
+                  <option value="both" selected>Both</option>
+                </select>
+              </label>
+              <label style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em">
+                Match Field
+                <input type="text" id="lfField" class="fld" style="width:100%;margin-top:4px;font-family:var(--font-mono)" placeholder="e.g. TargetUserName, win_event_id, agent_name">
+              </label>
+              <label style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em">
+                Operator
+                <select id="lfOp" class="fld" style="width:100%;margin-top:4px">
+                  <option value="equals">equals (exact)</option>
+                  <option value="contains">contains (substring)</option>
+                  <option value="in">in (comma list)</option>
+                  <option value="regex">regex</option>
+                </select>
+              </label>
+              <label style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em">
+                Value
+                <input type="text" id="lfValue" class="fld" style="width:100%;margin-top:4px;font-family:var(--font-mono)" placeholder="svc_backup">
+              </label>
+              <label style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em">
+                Reason / Justification
+                <textarea id="lfReason" class="fld" style="width:100%;margin-top:4px;min-height:60px" placeholder="Why is this filter needed?"></textarea>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--fg-2)">
+                <input type="checkbox" id="lfEnabled" checked> Enabled immediately
+              </label>
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button type="button" id="lfSave" class="act-btn primary" style="flex:1;height:32px">Save filter</button>
+                <button type="button" id="lfCancel" class="act-btn" style="flex:1;height:32px">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================== RETENTION (super_admin only) ===================== -->
+        <section id="page-retention" class="page page-v2">
+          <div class="ag2-header" style="margin-bottom:16px">
+            <div class="ag2-header-left">
+              <h2 class="ag2-title">Retention <span class="ag2-fleet-badge">Index Lifecycle</span></h2>
+              <p class="ag2-subtitle">See what's stored, by family and age. Force-purge old indices when you've shortened retention or want to free space immediately.</p>
+            </div>
+            <div class="ag2-header-right">
+              <button type="button" id="retRefresh" class="act-btn" style="height:30px;padding:0 14px;font-size:12px">↻ Refresh</button>
+            </div>
+          </div>
+
+          <div class="grid grid-4" style="margin-bottom:12px">
+            <div class="kpi"><span class="kpi-band kpi-band low"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--accent)">Indices</span><span class="kpi-tag ok">TOTAL</span></div><div class="kpi-value" id="retTotalIndices">—</div><div class="kpi-foot"><span class="kpi-sub">watchvault-*</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band med"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--high)">Storage</span><span class="kpi-tag ok">DISK</span></div><div class="kpi-value" id="retTotalSize" style="font-size:22px">—</div><div class="kpi-foot"><span class="kpi-sub">primary + replicas</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band" style="background:var(--ok)"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--ok)">Documents</span><span class="kpi-tag ok">EVENTS</span></div><div class="kpi-value" id="retTotalDocs">—</div><div class="kpi-foot"><span class="kpi-sub">across all indices</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band" style="background:var(--fg-4)"></span><div class="kpi-h"><span class="kpi-label">Configured retention</span><span class="kpi-tag ok">DAYS</span></div><div class="kpi-value" id="retConfigured" style="font-size:22px">—</div><div class="kpi-foot"><span class="kpi-sub">WATCHVAULT_RETENTION_DAYS</span></div></div>
+          </div>
+
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--accent)"></span>BY FAMILY</h3>
+            </div>
+            <div class="tbl">
+              <div class="tbl-h" style="grid-template-columns:160px 100px 140px 140px 130px 130px">
+                <span>Family</span><span>Indices</span><span>Size</span><span>Docs</span><span>Youngest</span><span>Oldest</span>
+              </div>
+              <div id="retFamiliesBody"></div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--crit)"></span>FORCE PURGE</h3>
+            </div>
+            <div class="card-body" style="padding:12px 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+              <span style="font-size:12px;color:var(--fg-3)">Delete indices older than</span>
+              <input type="number" min="1" id="retPurgeDays" class="fld" style="width:90px;height:30px;font-size:12px" placeholder="90">
+              <span style="font-size:12px;color:var(--fg-3)">days · families:</span>
+              <input type="text" id="retPurgeFamilies" class="fld" style="width:240px;height:30px;font-size:12px;font-family:var(--font-mono)" placeholder="events,alerts (blank = all)">
+              <button type="button" id="retPurgeDryRun" class="act-btn" style="height:30px;padding:0 12px;font-size:12px">Preview (dry run)</button>
+              <button type="button" id="retPurgeRun" class="act-btn" style="height:30px;padding:0 12px;font-size:12px;color:var(--crit);border-color:var(--crit)">⚠ Delete now</button>
+              <div id="retPurgeResult" style="width:100%;font-size:12px;color:var(--fg-3);font-family:var(--font-mono);margin-top:4px"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--low)"></span>INDICES <span id="retIndicesCount" style="font-size:11px;color:var(--fg-4);margin-left:6px">0</span></h3>
+              <input type="text" id="retFilter" class="fld" style="height:26px;font-size:11px;width:200px" placeholder="filter by name…">
+            </div>
+            <div class="tbl">
+              <div class="tbl-h" style="grid-template-columns:1fr 120px 100px 110px 110px 80px">
+                <span>Index</span><span>Family</span><span>Age (days)</span><span>Size</span><span>Docs</span><span>Health</span>
+              </div>
+              <div id="retIndicesBody"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================== SYSTEM LOGS (super_admin only) ===================== -->
+        <section id="page-system-logs" class="page page-v2">
+          <div class="ag2-header" style="margin-bottom:16px">
+            <div class="ag2-header-left">
+              <h2 class="ag2-title">System Logs <span class="ag2-fleet-badge">Super Admin</span></h2>
+              <p class="ag2-subtitle">Recent stdout/stderr from WatchTower, WatchVault, OpenSearch and this dashboard. Use this when something looks wrong before SSHing in.</p>
+            </div>
+            <div class="ag2-header-right">
+              <button type="button" id="sysLogsRefresh" class="act-btn" style="height:30px;padding:0 14px;font-size:12px">↻ Refresh</button>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-body" style="padding:10px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+              <span style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em">Service</span>
+              <div id="sysLogsTabs" style="display:flex;gap:6px"></div>
+              <div style="flex:1"></div>
+              <select id="sysLogsLines" class="fld" style="height:30px;font-size:12px;width:110px">
+                <option value="100">Last 100</option>
+                <option value="200" selected>Last 200</option>
+                <option value="500">Last 500</option>
+                <option value="1000">Last 1000</option>
+                <option value="2000">Last 2000</option>
+              </select>
+              <input type="text" id="sysLogsGrep" class="fld" placeholder="filter (substring)" style="height:30px;font-size:12px;width:200px;font-family:var(--font-mono)">
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-3)">
+                <input type="checkbox" id="sysLogsAutoRefresh"> auto-refresh
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" id="sysLogsStatusDot" style="background:var(--fg-4)"></span>OUTPUT <span id="sysLogsSource" style="font-size:11px;color:var(--fg-4);margin-left:6px">—</span></h3>
+              <span id="sysLogsHits" style="font-size:11px;color:var(--fg-4)">0 lines</span>
+            </div>
+            <pre id="sysLogsBody" style="margin:0;padding:12px 16px;font-family:var(--font-mono);font-size:11px;color:var(--fg-2);background:var(--bg-2);max-height:70vh;overflow:auto;white-space:pre;border-top:1px solid var(--border)"></pre>
+          </div>
+        </section>
+
+        <!-- ===================== CONFIG AUDIT LOG (super_admin only) ===================== -->
+        <section id="page-config-audit" class="page page-v2">
+          <div class="ag2-header" style="margin-bottom:16px">
+            <div class="ag2-header-left">
+              <h2 class="ag2-title">Configuration Audit Log <span class="ag2-fleet-badge">Super Admin</span></h2>
+              <p class="ag2-subtitle">Every write action against rules, decoders, dashboards, users and policies — who, when, what.</p>
+            </div>
+          </div>
+
+          <div class="grid grid-4" style="margin-bottom:12px">
+            <div class="kpi"><span class="kpi-band kpi-band low"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--accent)">Actions (24h)</span><span class="kpi-tag ok">TOTAL</span></div><div class="kpi-value" id="cfgAuditTotal">—</div><div class="kpi-foot"><span class="kpi-sub">config changes</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band crit"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--crit)">Failures (24h)</span><span class="kpi-tag ok">DENIED</span></div><div class="kpi-value" id="cfgAuditFailures">—</div><div class="kpi-foot"><span class="kpi-sub">403 / 4xx / 5xx</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band med"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--high)">Top Actor</span><span class="kpi-tag ok">USER</span></div><div class="kpi-value" id="cfgAuditTopUser" style="font-size:18px">—</div><div class="kpi-foot"><span class="kpi-sub" id="cfgAuditTopUserCount">—</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band" style="background:var(--ok)"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--ok)">Top Target</span><span class="kpi-tag ok">RESOURCE</span></div><div class="kpi-value" id="cfgAuditTopTarget" style="font-size:14px">—</div><div class="kpi-foot"><span class="kpi-sub" id="cfgAuditTopTargetCount">—</span></div></div>
+          </div>
+
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-body" style="padding:10px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+              <input type="text" id="cfgAuditUser" class="fld" placeholder="Filter by user" style="width:160px;height:30px;font-size:12px">
+              <input type="text" id="cfgAuditTarget" class="fld" placeholder="Target prefix (e.g. rule:)" style="width:200px;height:30px;font-size:12px">
+              <select id="cfgAuditAction" class="fld" style="height:30px;font-size:12px">
+                <option value="">All actions</option>
+                <option value="create">create</option>
+                <option value="edit">edit</option>
+                <option value="delete">delete</option>
+              </select>
+              <select id="cfgAuditTimeRange" class="fld" style="height:30px;font-size:12px">
+                <option value="1h">Last 1h</option>
+                <option value="24h" selected>Last 24h</option>
+                <option value="7d">Last 7d</option>
+                <option value="30d">Last 30d</option>
+              </select>
+              <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-3)">
+                <input type="checkbox" id="cfgAuditOnlyFailures"> Only failures
+              </label>
+              <button type="button" id="cfgAuditApply" class="act-btn primary" style="height:30px;padding:0 14px;font-size:12px">Search</button>
+              <button type="button" id="cfgAuditReset" class="act-btn" style="height:30px;padding:0 10px;font-size:12px">Reset</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--accent)"></span>AUDIT TRAIL <span id="cfgAuditHits" style="font-size:11px;color:var(--fg-4);margin-left:6px">0 entries</span></h3>
+            </div>
+            <div class="tbl">
+              <div class="tbl-h" style="grid-template-columns:160px 110px 110px 70px 1fr 80px 60px 70px">
+                <span>Timestamp</span><span>User</span><span>Role</span><span>Method</span><span>Target / Path</span><span>Action</span><span>Status</span><span>Detail</span>
+              </div>
+              <div id="cfgAuditBody"></div>
+            </div>
+            <div class="tbl-foot">
+              <span id="cfgAuditInfo">Showing 0 of 0</span>
+              <div class="right">
+                <button type="button" id="cfgAuditPrev" class="act-btn" style="height:24px;padding:0 8px;font-size:11px" disabled>← Prev</button>
+                <span id="cfgAuditPageInfo" style="font-size:11px;color:var(--fg-3);padding:0 6px">Page 1</span>
+                <button type="button" id="cfgAuditNext" class="act-btn" style="height:24px;padding:0 8px;font-size:11px">Next →</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="cfgAuditDetailDrawer" class="hidden" style="position:fixed;top:0;right:0;width:520px;height:100vh;background:var(--bg-1);border-left:1px solid var(--border);z-index:50;overflow:auto;box-shadow:-4px 0 24px rgba(0,0,0,.4)">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg-1);z-index:1">
+              <h3 style="margin:0;font-size:14px">Audit Entry</h3>
+              <button type="button" id="cfgAuditDetailClose" class="act-btn" style="height:24px;padding:0 8px;font-size:11px">✕ Close</button>
+            </div>
+            <pre id="cfgAuditDetailBody" style="margin:0;padding:14px 16px;font-family:var(--font-mono);font-size:11px;color:var(--fg-2);white-space:pre-wrap;word-break:break-word"></pre>
+          </div>
         </section>
 
         <section id="page-data-sources" class="page page-v2">
@@ -1153,7 +1699,14 @@
               <option value="24h" selected>Last 24h</option>
               <option value="7d">Last 7d</option>
               <option value="30d">Last 30d</option>
+              <option value="custom">Custom range…</option>
             </select>
+            <div id="discoverCustomRange" class="hidden" style="display:flex;gap:6px;align-items:center">
+              <input type="datetime-local" id="discoverCustomFrom" class="fld" style="height:30px;font-size:11px;width:170px" title="From (local time)">
+              <span style="color:var(--fg-4);font-size:11px">→</span>
+              <input type="datetime-local" id="discoverCustomTo" class="fld" style="height:30px;font-size:11px;width:170px" title="To (local time)">
+              <button type="button" id="discoverCustomApply" class="act-btn primary" style="height:30px;padding:0 10px;font-size:11px">Apply</button>
+            </div>
             <select id="discoverSeverity" class="fld">
               <option value="">All severities</option>
               <option value="12">Critical (12+)</option>
@@ -2537,6 +3090,114 @@
         </section>
 
         <!-- Audit Trail Page -->
+        <!-- ===================== LOGS PAGE (raw events explorer) ===================== -->
+        <section id="page-logs" class="page page-v2">
+          <div class="ag2-header" style="margin-bottom:16px">
+            <div class="ag2-header-left">
+              <h2 class="ag2-title">Logs <span class="ag2-fleet-badge">Raw Events</span></h2>
+              <p class="ag2-subtitle">Every event WatchVault has indexed — Windows eventlog, syslog, process, network, FIM. Search, filter, pivot.</p>
+            </div>
+          </div>
+
+          <!-- KPIs -->
+          <div class="grid grid-4" style="margin-bottom:12px">
+            <div class="kpi"><span class="kpi-band kpi-band low"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--accent)">Total Events</span><span class="kpi-tag ok">RANGE</span></div><div class="kpi-value" id="logsTotal">—</div><div class="kpi-foot"><span class="kpi-sub" id="logsRangeLabel">last 24h</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band med"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--high)">Top Source</span><span class="kpi-tag ok">TYPE</span></div><div class="kpi-value" id="logsTopType" style="font-size:18px">—</div><div class="kpi-foot"><span class="kpi-sub" id="logsTopTypeCount">—</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band" style="background:var(--ok)"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--ok)">Top Agent</span><span class="kpi-tag ok">HOST</span></div><div class="kpi-value" id="logsTopAgent" style="font-size:18px">—</div><div class="kpi-foot"><span class="kpi-sub" id="logsTopAgentCount">—</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band crit"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--crit)">Top Win EventID</span><span class="kpi-tag ok">WIN</span></div><div class="kpi-value" id="logsTopEvid" style="font-size:18px">—</div><div class="kpi-foot"><span class="kpi-sub" id="logsTopEvidCount">—</span></div></div>
+          </div>
+
+          <!-- Toolbar -->
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-body" style="padding:10px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+              <input type="text" id="logsQuery" class="fld" placeholder='Search: e.g. win_event_id:4624 AND TargetUserName:admin' style="flex:1;min-width:280px;height:30px;font-family:var(--font-mono);font-size:12px">
+              <select id="logsSource" class="fld" style="height:30px;font-size:12px">
+                <option value="">All sources</option>
+                <option value="eventlog">Windows Eventlog</option>
+                <option value="syslog">Syslog</option>
+                <option value="journal">journald</option>
+                <option value="file">Log files</option>
+                <option value="process">Process</option>
+                <option value="network">Network</option>
+                <option value="fim">FIM</option>
+                <option value="registry">Registry</option>
+                <option value="sca">SCA</option>
+                <option value="osquery">osquery</option>
+              </select>
+              <input type="text" id="logsAgent" class="fld" placeholder="Agent / host" style="width:160px;height:30px;font-size:12px">
+              <input type="number" id="logsEventId" class="fld" placeholder="Win EventID" style="width:120px;height:30px;font-size:12px">
+              <select id="logsTimeRange" class="fld" style="height:30px;font-size:12px">
+                <option value="15m">Last 15m</option>
+                <option value="1h">Last 1h</option>
+                <option value="3h">Last 3h</option>
+                <option value="24h" selected>Last 24h</option>
+                <option value="7d">Last 7d</option>
+                <option value="30d">Last 30d</option>
+                <option value="custom">Custom…</option>
+              </select>
+              <div id="logsCustomRange" class="hidden" style="display:flex;gap:6px;align-items:center">
+                <input type="datetime-local" id="logsCustomFrom" class="fld" style="height:30px;font-size:11px;width:170px">
+                <span style="color:var(--fg-4);font-size:11px">→</span>
+                <input type="datetime-local" id="logsCustomTo" class="fld" style="height:30px;font-size:11px;width:170px">
+              </div>
+              <select id="logsPageSize" class="fld" style="height:30px;font-size:12px;width:90px">
+                <option value="25">25</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+              </select>
+              <button type="button" id="logsApply" class="act-btn primary" style="height:30px;padding:0 14px;font-size:12px">Search</button>
+              <button type="button" id="logsReset" class="act-btn" style="height:30px;padding:0 10px;font-size:12px">Reset</button>
+            </div>
+          </div>
+
+          <!-- Quick filter chips -->
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-body" style="padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+              <span style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em;margin-right:4px">Quick filters</span>
+              <button type="button" class="act-btn logs-chip" data-evid="4624" style="height:24px;padding:0 8px;font-size:11px">Logon (4624)</button>
+              <button type="button" class="act-btn logs-chip" data-evid="4625" style="height:24px;padding:0 8px;font-size:11px">Failed logon (4625)</button>
+              <button type="button" class="act-btn logs-chip" data-evid="4634" style="height:24px;padding:0 8px;font-size:11px">Logoff (4634)</button>
+              <button type="button" class="act-btn logs-chip" data-evid="4647" style="height:24px;padding:0 8px;font-size:11px">User logoff (4647)</button>
+              <button type="button" class="act-btn logs-chip" data-evid="1074" style="height:24px;padding:0 8px;font-size:11px">Shutdown (1074)</button>
+              <button type="button" class="act-btn logs-chip" data-evid="6005" style="height:24px;padding:0 8px;font-size:11px">Boot (6005)</button>
+              <button type="button" class="act-btn logs-chip" data-evid="6006" style="height:24px;padding:0 8px;font-size:11px">Eventlog stop (6006)</button>
+              <button type="button" class="act-btn logs-chip" data-evid="4720" style="height:24px;padding:0 8px;font-size:11px">User created (4720)</button>
+              <button type="button" class="act-btn logs-chip" data-evid="7045" style="height:24px;padding:0 8px;font-size:11px">Service installed (7045)</button>
+            </div>
+          </div>
+
+          <!-- Events table -->
+          <div class="card">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--accent)"></span>EVENTS <span id="logsHits" style="font-size:11px;color:var(--fg-4);margin-left:6px">0 hits</span></h3>
+            </div>
+            <div class="tbl">
+              <div class="tbl-h" style="grid-template-columns:160px 130px 110px 80px 1fr 90px">
+                <span>Timestamp</span><span>Agent</span><span>Source</span><span>EventID</span><span>Summary</span><span>Action</span>
+              </div>
+              <div id="logsBody"></div>
+            </div>
+            <div class="tbl-foot">
+              <span id="logsInfo">Showing 0 of 0</span>
+              <div class="right">
+                <button type="button" id="logsPrev" class="act-btn" style="height:24px;padding:0 8px;font-size:11px" disabled>← Prev</button>
+                <span id="logsPageInfo" style="font-size:11px;color:var(--fg-3);padding:0 6px">Page 1</span>
+                <button type="button" id="logsNext" class="act-btn" style="height:24px;padding:0 8px;font-size:11px">Next →</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Event detail drawer -->
+          <div id="logsDetailDrawer" class="hidden" style="position:fixed;top:0;right:0;width:520px;height:100vh;background:var(--bg-1);border-left:1px solid var(--border);z-index:50;overflow:auto;box-shadow:-4px 0 24px rgba(0,0,0,.4)">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg-1);z-index:1">
+              <h3 style="margin:0;font-size:14px">Event Details</h3>
+              <button type="button" id="logsDetailClose" class="act-btn" style="height:24px;padding:0 8px;font-size:11px">✕ Close</button>
+            </div>
+            <pre id="logsDetailBody" style="margin:0;padding:14px 16px;font-family:var(--font-mono);font-size:11px;color:var(--fg-2);white-space:pre-wrap;word-break:break-word"></pre>
+          </div>
+        </section>
+
         <section id="page-audit" class="page page-v2">
           <div class="ag2-header" style="margin-bottom:16px">
             <div class="ag2-header-left">

@@ -4,9 +4,21 @@ Professional SIEM dashboard: Overview, Stack Status, Agent Health, Threat Huntin
 """
 import os
 import re
+import json
 import hmac
 import logging as _logging
-from flask import Flask, render_template, jsonify, request, session, redirect, url_for
+from flask import Flask, render_template, jsonify, request, session, redirect, url_for, g
+import audit_log as _audit_log
+import log_filters as _log_filters
+import silent_sources as _silent
+import users_store as _users
+import correlations as _corr
+
+_audit_log.init_db()
+_log_filters.init_db()
+_silent.init_db()
+_users.init_db()
+_corr.init_db()
 
 _logger = _logging.getLogger(__name__)
 
@@ -121,6 +133,13 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = os.getenv("FLASK_HTTPS", "false").lower() in ("true", "1", "yes")
 app.config["SESSION_COOKIE_NAME"] = "sentinel_session"
 
+# Idle session timeout — re-auth required after this period of inactivity.
+# Default 12h; tune per compliance regime (PCI: 15m, HIPAA: 30m typical).
+from datetime import timedelta as _timedelta
+_SESSION_HOURS = int(os.getenv("SESSION_TIMEOUT_HOURS", "12"))
+app.config["PERMANENT_SESSION_LIFETIME"] = _timedelta(hours=_SESSION_HOURS)
+app.config["SESSION_REFRESH_EACH_REQUEST"] = True  # sliding window
+
 # ---------------------------------------------------------------------------
 # Login rate limiter — simple in-process tracker (IP + username).
 # For multi-process/multi-replica deployments, back this with Redis.
@@ -190,6 +209,14 @@ SUPER_ADMIN_ONLY_PATHS = {
     "/api/indexer/patterns",
     "/api/manager/info",
     "/api/indexer/info",
+    "/api/admin/audit-log",
+    "/api/admin/audit-log/stats",
+    "/api/admin/backup/download",
+    "/api/admin/backup/list",
+    "/api/admin/system-logs",
+    "/api/admin/system-logs/services",
+    "/api/admin/retention",
+    "/api/admin/retention/purge",
 }
 
 # Path prefixes that require write privileges (admin or higher).
@@ -202,6 +229,10 @@ WRITE_PROTECTED_PREFIXES = (
     "/api/identity/sync",   # Manual identity sync
     "/api/cdb-lists/",      # CDB list management
     "/api/reports/schedules", # Report schedule management
+    "/api/admin/filters",   # Whitelist / log-drop rules
+    "/api/silent-sources/", # Silent-source thresholds
+    "/api/users",           # Dashboard user management
+    "/api/correlations/",   # Stateful correlation incidents
 )
 
 # HTTP methods that are considered "write" operations
@@ -257,11 +288,21 @@ def _check_login():
 
 def _validate_dashboard_user(username, password):
     """Return role if credentials are valid, else None.
-    Supports both bcrypt hashes ($2b$) and plaintext (dev only) stored credentials.
+
+    Resolution order:
+      1. SQLite users created via the admin UI (bcrypt only)
+      2. DASHBOARD_USERS env-var entries (bcrypt or plaintext)
+      3. The DASHBOARD_*_PASSWORD defaults
+
+    SQLite takes priority so an admin can override an env-var account without
+    a redeploy. The env-var path remains as a break-glass fallback.
     """
-    users = get_dashboard_users()
     if not username:
         return None
+    db_role = _users.authenticate(username, password)
+    if db_role is not None:
+        return db_role
+    users = get_dashboard_users()
     if username not in users:
         return None
     stored_credential, role = users[username]
@@ -385,6 +426,8 @@ def login():
             session.clear()
             session["user"] = username
             session["role"] = role
+            # Mark permanent so PERMANENT_SESSION_LIFETIME (idle timeout) applies.
+            session.permanent = True
             return redirect(url_for("index"))
         _record_login_failure(key)
         return render_template("login.html", error="Invalid username or password")
@@ -425,6 +468,10 @@ def _api_auth():
       - Viewers (and lower) can only read (GET/HEAD).
     """
     path = request.path
+    # /healthz is the standard convention for load-balancer probes — no auth,
+    # no rate limit, no DB hit. Returns 200 if the process can respond at all.
+    if path == "/healthz" or path == "/readyz":
+        return None
     if not path.startswith("/api/"):
         return None
     # Apply rate limiting before anything else (uses client IP)
@@ -440,19 +487,96 @@ def _api_auth():
     if path in SUPER_ADMIN_ONLY_PATHS and role != ROLE_SUPER_ADMIN:
         return jsonify({"error": "Forbidden", "required_role": ROLE_SUPER_ADMIN}), 403
 
+    # CSRF defense-in-depth on write methods. SameSite=Lax already blocks most
+    # cross-site cookie sends, but we additionally require that the request's
+    # Origin (or Referer, as a fallback for older clients) matches the host
+    # this app is serving. Blocks reflected/embedded CSRF even when a browser
+    # vendor regresses on SameSite.
+    if request.method in WRITE_METHODS:
+        origin = request.headers.get("Origin", "")
+        referer = request.headers.get("Referer", "")
+        expected_host = request.host  # e.g. "siem.example.com:5050"
+        def _host_of(url: str) -> str:
+            try:
+                from urllib.parse import urlparse
+                p = urlparse(url)
+                return (p.netloc or "").lower()
+            except Exception:
+                return ""
+        candidate = _host_of(origin) or _host_of(referer)
+        # Allow when caller is same-origin OR explicitly whitelisted via env.
+        allowed_extra = {h.strip().lower() for h in
+                         (os.getenv("CSRF_ALLOWED_HOSTS", "") or "").split(",") if h.strip()}
+        if candidate and candidate != expected_host.lower() and candidate not in allowed_extra:
+            return jsonify({
+                "error": "Forbidden",
+                "message": "Cross-origin write blocked. Set CSRF_ALLOWED_HOSTS to whitelist trusted origins.",
+            }), 403
+        # Missing Origin+Referer is only acceptable from same-process tooling
+        # (server-side scripts using session cookies, curl with --cookie). The
+        # safest stance is to allow when nothing is presented so internal
+        # automation isn't broken; browsers always send at least Referer.
+        # If you want strict-mode, set CSRF_STRICT=true.
+        if not candidate and os.getenv("CSRF_STRICT", "").lower() in ("1", "true", "yes"):
+            return jsonify({
+                "error": "Forbidden",
+                "message": "Origin or Referer header required for write methods (CSRF_STRICT)",
+            }), 403
+
     # Write protection: deny modify-actions to read-only roles on protected paths
     if request.method in WRITE_METHODS:
         is_protected = any(path.startswith(p) for p in WRITE_PROTECTED_PREFIXES)
         if is_protected:
             allowed = ROLES_CAN_MANAGE_CASES if path.startswith("/api/cases/") else ROLES_CAN_WRITE
             if role not in allowed:
+                # Still record the rejection so abuse attempts are auditable.
+                _audit_log.record(
+                    user=login[0], role=role, method=request.method, path=path,
+                    status=403, client_ip=client_ip,
+                    user_agent=request.headers.get("User-Agent", "")[:256],
+                    payload={"denied": True, "required_any_role": sorted(allowed)},
+                )
                 return jsonify({
                     "error": "Forbidden",
                     "message": f"Role '{role}' may not modify this resource",
                     "required_any_role": sorted(allowed),
                 }), 403
 
+    # Stash everything the audit hook needs on flask.g so after_request can
+    # write a row regardless of which view handled the call.
+    if _audit_log.should_audit(request.method, path, WRITE_PROTECTED_PREFIXES):
+        g.audit_user = login[0]
+        g.audit_role = role
+        g.audit_ip = client_ip
+        # Read the JSON body now; once the view consumes it we can't replay it.
+        try:
+            g.audit_payload = request.get_json(silent=True)
+            if g.audit_payload is None and request.form:
+                g.audit_payload = {k: v for k, v in request.form.items()}
+        except Exception:
+            g.audit_payload = None
+
     return None
+
+
+@app.after_request
+def _audit_record(response):
+    """Write one audit-log row per write-action on a protected path."""
+    try:
+        if getattr(g, "audit_user", None):
+            _audit_log.record(
+                user=g.audit_user,
+                role=g.audit_role,
+                method=request.method,
+                path=request.path,
+                status=response.status_code,
+                client_ip=getattr(g, "audit_ip", ""),
+                user_agent=request.headers.get("User-Agent", "")[:256],
+                payload=getattr(g, "audit_payload", None),
+            )
+    except Exception:
+        pass
+    return response
 
 
 def _normalize_alerts(res, include_hipaa=False):
@@ -2318,9 +2442,55 @@ def api_fim_events():
 # Audit Trail endpoints
 # ---------------------------------------------------------------------------
 
+# Windows Security event IDs treated as authentication/audit-trail events.
+# Covers logon (4624), failed logon (4625), logoff (4634/4647), explicit-cred
+# logon (4648), special privileges (4672), account lifecycle (4720/4722/4723/
+# 4724/4725/4726/4738/4740), RDP session (4778/4779), service install (7045),
+# system lifecycle (1074 shutdown, 6005/6006 eventlog start/stop, 6008 dirty
+# shutdown, 6013 uptime).
+WINDOWS_AUTH_EVENT_IDS = [
+    4624, 4625, 4634, 4647, 4648, 4672,
+    4720, 4722, 4723, 4724, 4725, 4726, 4738, 4740,
+    4768, 4769, 4771, 4776,
+    4778, 4779,
+    7045,
+    1074, 6005, 6006, 6008, 6013,
+]
+
+WINDOWS_FAIL_EVENT_IDS = [4625, 4771, 4776, 4740]
+WINDOWS_SUCCESS_EVENT_IDS = [4624, 4648, 4768, 4769, 4778]
+
+
+def _audit_should_clauses():
+    """Build OpenSearch `should` clauses that match auth/audit events across
+    both raw eventlog docs (Windows) and Wazuh-style alert rule_groups (Linux)."""
+    return [
+        # Windows: raw eventlog records carry win_event_id (int)
+        {"terms": {"win_event_id": WINDOWS_AUTH_EVENT_IDS}},
+        # Windows: when win_event_id is mapped as keyword, use term-as-string
+        {"terms": {"event_id": [str(i) for i in WINDOWS_AUTH_EVENT_IDS]}},
+        # Linux/Wazuh: rule_groups markers
+        {"match": {"rule_groups": "authentication"}},
+        {"match": {"rule_groups": "sshd"}},
+        {"match": {"rule_groups": "pam"}},
+        {"match": {"rule_groups": "sudo"}},
+        {"match_phrase": {"rule_description": "ssh"}},
+        {"match_phrase": {"rule_description": "pam"}},
+        {"match_phrase": {"rule_description": "sudo"}},
+        # journald/syslog-ish hints emitted by linux logs collector
+        {"match_phrase": {"unit": "ssh"}},
+        {"match_phrase": {"unit": "sshd"}},
+        {"match_phrase": {"unit": "systemd-logind"}},
+    ]
+
+
 @app.route("/api/audit/summary")
 def api_audit_summary():
-    """Auth/audit summary: total auth events, failed/successful logins, sudo events in last 24h."""
+    """Auth/audit summary: total auth events, failed/successful logins, sudo events in last 24h.
+
+    Queries the raw events index (watchvault-events-*) so Windows logon/logoff/
+    shutdown events from the eventlog collector show up — not just Sigma alerts.
+    """
     try:
         from datetime import datetime, timezone, timedelta
         now = datetime.now(timezone.utc)
@@ -2334,43 +2504,63 @@ def api_audit_summary():
                     "must": [
                         {"range": {"timestamp": {"gte": start_ms, "lte": end_ms}}}
                     ],
-                    "should": [
-                        {"match": {"rule_groups": "authentication"}},
-                        {"match": {"rule_groups": "sshd"}},
-                        {"match": {"rule_groups": "pam"}},
-                        {"match": {"rule_groups": "sudo"}},
-                        {"match_phrase": {"rule_description": "ssh"}},
-                        {"match_phrase": {"rule_description": "pam"}},
-                        {"match_phrase": {"rule_description": "sudo"}},
-                    ],
+                    "should": _audit_should_clauses(),
                     "minimum_should_match": 1,
                 }
             },
             "aggs": {
-                "by_rule_id": {"terms": {"field": "rule_id", "size": 100}},
                 "failed": {
                     "filter": {"bool": {"should": [
+                        {"terms": {"win_event_id": WINDOWS_FAIL_EVENT_IDS}},
+                        {"terms": {"event_id": [str(i) for i in WINDOWS_FAIL_EVENT_IDS]}},
                         {"match": {"rule_description": "failed"}},
                         {"match": {"rule_description": "invalid"}},
                         {"match": {"rule_description": "authentication failure"}},
+                    ], "minimum_should_match": 1}}
+                },
+                "successful": {
+                    "filter": {"bool": {"should": [
+                        {"terms": {"win_event_id": WINDOWS_SUCCESS_EVENT_IDS}},
+                        {"terms": {"event_id": [str(i) for i in WINDOWS_SUCCESS_EVENT_IDS]}},
+                        {"match_phrase": {"rule_description": "accepted"}},
+                        {"match_phrase": {"rule_description": "session opened"}},
                     ], "minimum_should_match": 1}}
                 },
                 "sudo_events": {
                     "filter": {"bool": {"should": [
                         {"match": {"rule_groups": "sudo"}},
                         {"match": {"rule_description": "sudo"}},
+                        {"term": {"win_event_id": 4672}},
                     ], "minimum_should_match": 1}}
                 },
             }
         }
-        res = _os_search(f"{INDEX_PREFIX}-alerts-*", body)
-        total_hits = (res.get("hits") or {}).get("total") or {}
-        total_count = total_hits.get("value", 0) if isinstance(total_hits, dict) else (total_hits or 0)
 
-        aggs = res.get("aggregations") or {}
-        failed_count = (aggs.get("failed") or {}).get("doc_count", 0)
-        sudo_count = (aggs.get("sudo_events") or {}).get("doc_count", 0)
-        successful = max(0, total_count - failed_count - sudo_count)
+        def _search(idx):
+            return _os_search(idx, body) or {}
+
+        # Combine events + alerts so we cover both raw telemetry and Sigma matches.
+        results = []
+        for idx in (f"{INDEX_PREFIX}-events-*", f"{INDEX_PREFIX}-alerts-*"):
+            try:
+                results.append(_search(idx))
+            except Exception:
+                pass
+
+        def _agg(results, name):
+            return sum(((r.get("aggregations") or {}).get(name) or {}).get("doc_count", 0) for r in results)
+
+        def _total(results):
+            t = 0
+            for r in results:
+                th = (r.get("hits") or {}).get("total") or {}
+                t += th.get("value", 0) if isinstance(th, dict) else (th or 0)
+            return t
+
+        total_count = _total(results)
+        failed_count = _agg(results, "failed")
+        successful = _agg(results, "successful") or max(0, total_count - failed_count)
+        sudo_count = _agg(results, "sudo_events")
 
         return jsonify({
             "total": total_count,
@@ -2378,13 +2568,19 @@ def api_audit_summary():
             "successful_logins": successful,
             "sudo_events": sudo_count,
         })
-    except Exception as e:
+    except Exception:
         return jsonify({"total": 0, "failed_logins": 0, "successful_logins": 0, "sudo_events": 0})
 
 
 @app.route("/api/audit/events")
 def api_audit_events():
-    """Paginated auth/audit events. Supports size, offset, agent_name, time_from, time_to."""
+    """Paginated auth/audit events from raw events index plus alerts.
+
+    Supports size, offset, agent_name, time_from, time_to. Returns Windows
+    logon/logoff/shutdown events from the eventlog collector as well as
+    Wazuh-style Linux auth alerts so SOC analysts see every authentication
+    record, not just rule-matched alerts.
+    """
     try:
         from datetime import datetime, timezone, timedelta
         size = request.args.get("size", 20, type=int)
@@ -2399,7 +2595,11 @@ def api_audit_events():
 
         must_clauses = [{"range": {"timestamp": {"gte": start_ms, "lte": end_ms}}}]
         if agent_name:
-            must_clauses.append({"match": {"agent_name": agent_name}})
+            must_clauses.append({"bool": {"should": [
+                {"match": {"agent_name": agent_name}},
+                {"match": {"agent.name": agent_name}},
+                {"match": {"computer": agent_name}},
+            ], "minimum_should_match": 1}})
 
         body = {
             "size": size,
@@ -2407,28 +2607,202 @@ def api_audit_events():
             "query": {
                 "bool": {
                     "must": must_clauses,
-                    "should": [
-                        {"match": {"rule_groups": "authentication"}},
-                        {"match": {"rule_groups": "sshd"}},
-                        {"match": {"rule_groups": "pam"}},
-                        {"match": {"rule_groups": "sudo"}},
-                        {"match_phrase": {"rule_description": "ssh"}},
-                        {"match_phrase": {"rule_description": "pam"}},
-                        {"match_phrase": {"rule_description": "sudo"}},
-                    ],
+                    "should": _audit_should_clauses(),
                     "minimum_should_match": 1,
                 }
             },
             "sort": [{"timestamp": {"order": "desc"}}],
         }
-        res = _os_search(f"{INDEX_PREFIX}-alerts-*", body)
-        raw_hits = (res.get("hits") or {}).get("hits") or []
-        total_hits = (res.get("hits") or {}).get("total") or {}
-        total_count = total_hits.get("value", 0) if isinstance(total_hits, dict) else (total_hits or 0)
-        hits = [h.get("_source", {}) for h in raw_hits]
-        return jsonify({"hits": hits, "total": total_count})
-    except Exception as e:
+
+        # Query events + alerts and merge so users see both raw eventlog
+        # records and any Sigma alerts triggered from them.
+        # Apply operator-defined whitelist/exclusion rules so noisy known-good
+        # records (e.g. svc accounts, internal scanners) drop out of the view.
+        merged_hits = []
+        total_count = 0
+        for idx in (f"{INDEX_PREFIX}-events-*", f"{INDEX_PREFIX}-alerts-*"):
+            scope = "events" if "events" in idx else "alerts"
+            scoped_body = json.loads(json.dumps(body))  # deep copy
+            _log_filters.apply_to_body(scoped_body, scope=scope)
+            try:
+                res = _os_search(idx, scoped_body) or {}
+            except Exception:
+                continue
+            raw = (res.get("hits") or {}).get("hits") or []
+            for h in raw:
+                src = h.get("_source", {}) or {}
+                src.setdefault("_index", h.get("_index"))
+                merged_hits.append(src)
+            th = (res.get("hits") or {}).get("total") or {}
+            total_count += th.get("value", 0) if isinstance(th, dict) else (th or 0)
+
+        # Sort merged hits by timestamp desc, then page.
+        def _ts(h):
+            v = h.get("timestamp")
+            if isinstance(v, (int, float)):
+                return v
+            if isinstance(v, str):
+                try:
+                    from datetime import datetime as _dt
+                    return _dt.fromisoformat(v.replace("Z", "+00:00")).timestamp() * 1000
+                except Exception:
+                    return 0
+            return 0
+        merged_hits.sort(key=_ts, reverse=True)
+        merged_hits = merged_hits[:size]
+
+        return jsonify({"hits": merged_hits, "total": total_count})
+    except Exception:
         return jsonify({"hits": [], "total": 0})
+
+
+# ---------------------------------------------------------------------------
+# Raw Logs / Events Explorer endpoints
+#
+# Powers the "Logs" page — a SOC analyst's primary investigation surface.
+# Returns every event WatchVault has indexed (not just rule-matched alerts),
+# so analysts can search/pivot/hunt across raw telemetry the same way they
+# would in Wazuh Discover or Kibana.
+# ---------------------------------------------------------------------------
+
+# Mapping of UI source filter values → OpenSearch query clauses.
+# Keep this stable: the frontend `logsSource` <select> uses these keys.
+_LOGS_SOURCE_CLAUSES = {
+    "eventlog":   [{"term": {"type": "log.eventlog"}}, {"term": {"tags.source": "eventlog"}}],
+    "syslog":     [{"term": {"type": "log.syslog"}},   {"term": {"tags.source": "syslog"}}],
+    "journal":    [{"term": {"type": "log.journal"}},  {"term": {"tags.source": "journal"}}],
+    "file":       [{"term": {"type": "log.file"}},     {"term": {"tags.source": "file"}}],
+    "process":    [{"prefix": {"type": "process"}},    {"term": {"collector": "process"}}],
+    "network":    [{"prefix": {"type": "network"}},    {"term": {"collector": "network"}}],
+    "fim":        [{"prefix": {"type": "fim"}},        {"term": {"collector": "fim"}}],
+    "registry":   [{"prefix": {"type": "registry"}},   {"term": {"collector": "registry"}}],
+    "sca":        [{"term": {"collector": "sca"}},     {"term": {"type": "sca"}}],
+    "osquery":    [{"prefix": {"type": "osquery"}},    {"term": {"collector": "osquery"}}],
+}
+
+
+@app.route("/api/logs/search")
+def api_logs_search():
+    """Search raw events for the Logs explorer page.
+
+    Query params:
+      - size:        page size (default 50, max 500)
+      - offset:      pagination cursor
+      - time_from:   ISO-8601, epoch ms, or relative (e.g. "now-24h")
+      - time_to:     same
+      - agent_name:  fuzzy-match against agent.name / computer
+      - source:      one of _LOGS_SOURCE_CLAUSES keys (eventlog/syslog/...)
+      - event_id:    exact Windows event id (numeric)
+      - q:           Lucene query_string (free text + field:value supported)
+      - index:       override default events index pattern
+    """
+    try:
+        from datetime import datetime, timezone, timedelta
+        size = min(request.args.get("size", 50, type=int) or 50, 500)
+        offset = request.args.get("offset", 0, type=int) or 0
+        time_from = request.args.get("time_from", type=str) or None
+        time_to = request.args.get("time_to", type=str) or None
+        agent_name = request.args.get("agent_name", type=str) or None
+        source = request.args.get("source", type=str) or None
+        event_id = request.args.get("event_id", type=int)
+        q = (request.args.get("q", type=str) or "").strip()
+        index = request.args.get("index", type=str) or f"{INDEX_PREFIX}-events-*"
+
+        now = datetime.now(timezone.utc)
+        start_ms = _to_epoch_ms(time_from) if time_from else int((now - timedelta(hours=24)).timestamp() * 1000)
+        end_ms = _to_epoch_ms(time_to) if time_to else int(now.timestamp() * 1000)
+
+        must = [{"range": {"timestamp": {"gte": start_ms, "lte": end_ms}}}]
+        if agent_name:
+            must.append({"bool": {"should": [
+                {"match": {"agent_name": agent_name}},
+                {"match": {"agent.name": agent_name}},
+                {"match_phrase_prefix": {"computer": agent_name}},
+            ], "minimum_should_match": 1}})
+        if event_id is not None:
+            must.append({"bool": {"should": [
+                {"term": {"win_event_id": event_id}},
+                {"term": {"event_id": str(event_id)}},
+            ], "minimum_should_match": 1}})
+        if source and source in _LOGS_SOURCE_CLAUSES:
+            must.append({"bool": {"should": _LOGS_SOURCE_CLAUSES[source], "minimum_should_match": 1}})
+        if q:
+            must.append({"query_string": {
+                "query": q,
+                "default_operator": "AND",
+                "lenient": True,
+            }})
+
+        body = {
+            "size": size,
+            "from": offset,
+            "query": {"bool": {"must": must}},
+            "sort": [{"timestamp": {"order": "desc"}}],
+        }
+        _log_filters.apply_to_body(body, scope="events")
+        res = _os_search(index, body) or {}
+        raw_hits = (res.get("hits") or {}).get("hits") or []
+        th = (res.get("hits") or {}).get("total") or {}
+        total = th.get("value", 0) if isinstance(th, dict) else (th or 0)
+
+        hits = []
+        for h in raw_hits:
+            src = h.get("_source", {}) or {}
+            src.setdefault("_index", h.get("_index"))
+            src.setdefault("_id", h.get("_id"))
+            hits.append(src)
+
+        return jsonify({"hits": hits, "total": total})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/logs/summary")
+def api_logs_summary():
+    """Aggregate counts for the Logs page header (last 24h by default)."""
+    try:
+        from datetime import datetime, timezone, timedelta
+        time_from = request.args.get("time_from", type=str) or None
+        time_to = request.args.get("time_to", type=str) or None
+        now = datetime.now(timezone.utc)
+        start_ms = _to_epoch_ms(time_from) if time_from else int((now - timedelta(hours=24)).timestamp() * 1000)
+        end_ms = _to_epoch_ms(time_to) if time_to else int(now.timestamp() * 1000)
+
+        body = {
+            "size": 0,
+            "query": {"bool": {"must": [
+                {"range": {"timestamp": {"gte": start_ms, "lte": end_ms}}}
+            ]}},
+            "aggs": {
+                "by_type":   {"terms": {"field": "type",        "size": 20, "missing": "(unknown)"}},
+                "by_agent":  {"terms": {"field": "agent_name",  "size": 20, "missing": "(unknown)"}},
+                "by_evid":   {"terms": {"field": "win_event_id","size": 20}},
+                "timeline":  {"date_histogram": {
+                    "field": "timestamp",
+                    "fixed_interval": "30m",
+                    "min_doc_count": 0,
+                    "extended_bounds": {"min": start_ms, "max": end_ms},
+                }},
+            },
+        }
+        res = _os_search(f"{INDEX_PREFIX}-events-*", body) or {}
+        th = (res.get("hits") or {}).get("total") or {}
+        total = th.get("value", 0) if isinstance(th, dict) else (th or 0)
+        aggs = res.get("aggregations") or {}
+
+        def _buckets(agg):
+            return [{"key": b.get("key"), "count": b.get("doc_count", 0)}
+                    for b in (agg.get("buckets") or [])]
+
+        return jsonify({
+            "total": total,
+            "by_type":  _buckets(aggs.get("by_type")  or {}),
+            "by_agent": _buckets(aggs.get("by_agent") or {}),
+            "by_event_id": _buckets(aggs.get("by_evid") or {}),
+            "timeline": _buckets(aggs.get("timeline") or {}),
+        })
+    except Exception as e:
+        return _api_error(e)
 
 
 # ---------------------------------------------------------------------------
@@ -3573,6 +3947,384 @@ def api_all_executions():
         return _api_error(e)
 
 
+# ---------------------------------------------------------------------------
+# Dashboard user management (super_admin only).
+#
+# Lets a super_admin create/edit/disable login accounts without redeploying.
+# Sits on top of DASHBOARD_USERS env var (which still works as a break-glass).
+# All writes go through the audit log middleware so every credential change
+# is recorded with the actor's identity.
+# ---------------------------------------------------------------------------
+
+def _require_super_admin():
+    login = _check_login()
+    if login is None:
+        return jsonify({"error": "Unauthorized"}), 401
+    _, role = login
+    if role != ROLE_SUPER_ADMIN:
+        return jsonify({"error": "Forbidden", "required_role": ROLE_SUPER_ADMIN}), 403
+    return None
+
+
+@app.route("/api/users", methods=["GET"])
+def api_users_list():
+    err = _require_super_admin()
+    if err is not None:
+        return err
+    try:
+        return jsonify({
+            "users": _users.list_users(),
+            "total": _users.count(),
+            "current_user": session.get("user"),
+        })
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/users", methods=["POST"])
+def api_users_create():
+    err = _require_super_admin()
+    if err is not None:
+        return err
+    try:
+        body = request.get_json(silent=True) or {}
+        actor = (session.get("user") or "").strip()
+        u = _users.create_user(
+            username=body.get("username", "").strip(),
+            password=body.get("password", ""),
+            role=body.get("role", "viewer"),
+            full_name=body.get("full_name", ""),
+            email=body.get("email", ""),
+            enabled=bool(body.get("enabled", True)),
+            created_by=actor,
+        )
+        return jsonify(u), 201
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/users/<username>", methods=["GET"])
+def api_users_get(username):
+    err = _require_super_admin()
+    if err is not None:
+        return err
+    u = _users.get_user(username)
+    if u is None:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(u)
+
+
+@app.route("/api/users/<username>", methods=["PUT", "PATCH"])
+def api_users_update(username):
+    err = _require_super_admin()
+    if err is not None:
+        return err
+    try:
+        body = request.get_json(silent=True) or {}
+        # Guard against the only super_admin disabling themselves and locking
+        # everyone out.
+        if (body.get("enabled") is False or body.get("role") not in (None, ROLE_SUPER_ADMIN)) \
+                and username == session.get("user"):
+            # Count remaining super_admins after this change.
+            others = [
+                u for u in _users.list_users()
+                if u["username"] != username and u["enabled"] and u["role"] == ROLE_SUPER_ADMIN
+            ]
+            if not others:
+                return jsonify({
+                    "error": "Refusing to demote/disable the last super_admin. "
+                             "Promote another user first."
+                }), 400
+        u = _users.update_user(
+            username,
+            password=body.get("password"),
+            role=body.get("role"),
+            full_name=body.get("full_name"),
+            email=body.get("email"),
+            enabled=body.get("enabled"),
+        )
+        if u is None:
+            return jsonify({"error": "Not found"}), 404
+        return jsonify(u)
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/users/<username>", methods=["DELETE"])
+def api_users_delete(username):
+    err = _require_super_admin()
+    if err is not None:
+        return err
+    if username == session.get("user"):
+        return jsonify({"error": "You cannot delete your own account while logged in."}), 400
+    try:
+        if not _users.delete_user(username):
+            return jsonify({"error": "Not found"}), 404
+        return jsonify({"deleted": username})
+    except Exception as e:
+        return _api_error(e)
+
+
+# ---------------------------------------------------------------------------
+# Silent-source monitoring
+#
+# A scheduler-driven job runs every minute. It pulls the per-agent last-seen
+# timestamps from WatchTower, then queries OpenSearch for the youngest event
+# per agent_name in the events index. The maximum of the two becomes the
+# canonical "last activity" for that source. If the gap exceeds the threshold,
+# we open an incident and (optionally) page out via the notifier.
+# ---------------------------------------------------------------------------
+
+def _collect_agent_last_seen() -> dict:
+    """Returns {source_name: (last_seen_ms, kind)} merging WatchTower agents
+    + OpenSearch event-index activity."""
+    out: dict[str, tuple[int, str]] = {}
+
+    # 1) WatchTower agent heartbeats (authoritative for endpoint agents)
+    try:
+        from watchtower_client import get_agents_list
+        agents = (get_agents_list() or {}).get("data", []) or []
+        for a in agents:
+            name = (a.get("name") or a.get("agent_name") or a.get("id") or "").strip()
+            if not name:
+                continue
+            ls = a.get("last_seen") or a.get("last_keep_alive")
+            ts = _to_epoch_ms(ls) if isinstance(ls, str) and ls else 0
+            if ts:
+                out[name] = (ts, "agent")
+    except Exception:
+        pass
+
+    # 2) OpenSearch — youngest doc per agent_name in events index, last 24h.
+    try:
+        now_ms = int(_time.time() * 1000)
+        body = {
+            "size": 0,
+            "query": {"range": {"timestamp": {"gte": now_ms - 24 * 3600 * 1000}}},
+            "aggs": {
+                "by_agent": {
+                    "terms": {"field": "agent_name", "size": 500, "missing": "(unknown)"},
+                    "aggs": {"last": {"max": {"field": "timestamp"}}},
+                }
+            },
+        }
+        res = _os_search(f"{INDEX_PREFIX}-events-*", body) or {}
+        for b in ((res.get("aggregations") or {}).get("by_agent") or {}).get("buckets") or []:
+            name = (b.get("key") or "").strip()
+            ts = int(((b.get("last") or {}).get("value") or 0))
+            if not name or name == "(unknown)" or not ts:
+                continue
+            prev = out.get(name)
+            if prev is None or ts > prev[0]:
+                # Preserve "agent" kind if the source was known via WatchTower.
+                kind = prev[1] if prev else "any"
+                out[name] = (ts, kind)
+    except Exception:
+        pass
+
+    return out
+
+
+def _silent_source_check_job() -> None:
+    """Scheduler entry point. Lightweight — bails out silently on errors."""
+    try:
+        sources = _collect_agent_last_seen()
+        for name, (last_seen_ms, kind) in sources.items():
+            inc = _silent.record_observation(name, kind, last_seen_ms)
+            if inc and not inc["notified"]:
+                _notify_silent_incident(inc)
+                _silent.mark_notified(inc["id"])
+    except Exception as e:
+        try:
+            _logger.warning("silent-source check failed: %s", e)
+        except Exception:
+            pass
+
+
+def _notify_silent_incident(inc: dict) -> None:
+    """Send an alert through the existing notifier so silent-source pages
+    appear in the same channels (email/slack) as Sigma alerts."""
+    try:
+        from notifier import notify_alert
+        alert = {
+            "rule_id": "silent-source-monitor",
+            "rule_description": f"Source '{inc['source']}' has been silent for {inc['gap_minutes']} minutes (threshold {inc['threshold_min']}m)",
+            "rule_level": {"low": 5, "medium": 8, "high": 11, "critical": 14}.get(inc["severity"], 8),
+            "agent_name": inc["source"],
+            "severity": inc["severity"],
+            "kind": inc["kind"],
+            "first_seen_silent_ms": inc["first_seen_silent_ms"],
+            "tags": ["silent_source", "availability"],
+        }
+        notify_alert(alert)
+    except Exception:
+        pass
+
+
+# ── Silent-source endpoints ────────────────────────────────────────────────
+
+@app.route("/api/silent-sources", methods=["GET"])
+def api_silent_sources_list():
+    """Current incidents — open by default."""
+    try:
+        status = request.args.get("status", "open", type=str)
+        size = min(request.args.get("size", 100, type=int) or 100, 500)
+        incidents = _silent.list_incidents(status=status, size=size)
+        return jsonify({
+            "incidents": incidents,
+            "stats": _silent.stats(),
+        })
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/silent-sources/run-now", methods=["POST"])
+def api_silent_sources_run_now():
+    """Force-trigger a check (useful after editing thresholds)."""
+    try:
+        _silent_source_check_job()
+        return jsonify({"ok": True, "stats": _silent.stats()})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/silent-sources/thresholds", methods=["GET"])
+def api_silent_thresholds_list():
+    try:
+        return jsonify({"thresholds": _silent.list_thresholds()})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/silent-sources/thresholds", methods=["POST"])
+def api_silent_thresholds_create():
+    try:
+        body = request.get_json(silent=True) or {}
+        user = (session.get("user") or "").strip()
+        t = _silent.create_threshold(
+            source_pattern=body.get("source_pattern", ""),
+            kind=body.get("kind", "agent"),
+            minutes=int(body.get("minutes", 15)),
+            severity=body.get("severity", "medium"),
+            enabled=bool(body.get("enabled", True)),
+            notify=bool(body.get("notify", True)),
+            reason=body.get("reason", ""),
+            created_by=user,
+        )
+        return jsonify(t), 201
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/silent-sources/thresholds/<int:tid>", methods=["PUT", "PATCH"])
+def api_silent_thresholds_update(tid):
+    try:
+        body = request.get_json(silent=True) or {}
+        t = _silent.update_threshold(tid, **body)
+        if t is None:
+            return jsonify({"error": "Not found"}), 404
+        return jsonify(t)
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/silent-sources/thresholds/<int:tid>", methods=["DELETE"])
+def api_silent_thresholds_delete(tid):
+    try:
+        if not _silent.delete_threshold(tid):
+            return jsonify({"error": "Not found"}), 404
+        return jsonify({"deleted": tid})
+    except Exception as e:
+        return _api_error(e)
+
+
+# ---------------------------------------------------------------------------
+# Stateful correlations (impossible travel / multi-location logon).
+# ---------------------------------------------------------------------------
+
+def _correlations_run_job() -> None:
+    try:
+        new_inc = _corr.run_all(
+            os_search=_os_search,
+            index_pattern=f"{INDEX_PREFIX}-events-*",
+        )
+        for inc in new_inc:
+            _notify_correlation_incident(inc)
+            _corr.mark_notified(inc["id"])
+    except Exception as e:
+        try:
+            _logger.warning("correlations job failed: %s", e)
+        except Exception:
+            pass
+
+
+def _notify_correlation_incident(inc: dict) -> None:
+    try:
+        from notifier import notify_alert
+        ev = inc.get("evidence") or {}
+        ips = ev.get("distinct_ips") or []
+        hosts = ev.get("distinct_hosts") or []
+        sources = ", ".join(ips or hosts)[:200]
+        sev_level = {"low": 5, "medium": 8, "high": 11, "critical": 14}.get(inc["severity"], 11)
+        alert = {
+            "rule_id": "correlation-multi-location-logon",
+            "rule_description": (
+                f"User '{inc['entity']}' logged in from {len(ips)} IP(s) "
+                f"and {len(hosts)} workstation(s) within {ev.get('window_minutes', '?')}m"
+            ),
+            "rule_level": sev_level,
+            "agent_name": inc["entity"],
+            "severity": inc["severity"],
+            "tags": ["correlation", "impossible_travel", "multi_location_logon"],
+            "evidence_sources": sources,
+            "logon_count": ev.get("logon_count"),
+        }
+        notify_alert(alert)
+    except Exception:
+        pass
+
+
+@app.route("/api/correlations/incidents", methods=["GET"])
+def api_correlation_incidents():
+    try:
+        status = request.args.get("status", "open", type=str)
+        detector = request.args.get("detector", type=str) or None
+        size = min(request.args.get("size", 100, type=int) or 100, 500)
+        return jsonify({
+            "incidents": _corr.list_incidents(status=status, detector=detector, size=size),
+            "stats": _corr.stats(),
+        })
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/correlations/run-now", methods=["POST"])
+def api_correlation_run_now():
+    try:
+        _correlations_run_job()
+        return jsonify({"ok": True, "stats": _corr.stats()})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/correlations/incidents/<int:inc_id>/resolve", methods=["POST"])
+def api_correlation_resolve(inc_id):
+    try:
+        if not _corr.resolve_incident(inc_id):
+            return jsonify({"error": "Not found or already resolved"}), 404
+        return jsonify({"resolved": inc_id})
+    except Exception as e:
+        return _api_error(e)
+
+
 # ── Scheduled Reports & Cloud Connectors ──────────────────────────────────────
 
 try:
@@ -3597,6 +4349,25 @@ try:
             _bg_scheduler.add_job(_auto_ai_job, 'interval', minutes=5, id='auto_ai_summarize', replace_existing=True)
     except Exception as _aie:
         _logger.debug("AI auto-summarize scheduler setup skipped: %s", _aie)
+    # Silent-source monitor — runs every minute, checks per-agent last_seen
+    # against operator-defined thresholds and opens/resolves incidents.
+    try:
+        _bg_scheduler.add_job(
+            _silent_source_check_job, 'interval', minutes=1,
+            id='silent_source_check', replace_existing=True,
+        )
+        _logger.info("Silent-source monitor scheduled (1-min interval)")
+    except Exception as _se:
+        _logger.warning("Silent-source scheduler setup failed: %s", _se)
+    # Stateful correlations — multi-location logon, etc.
+    try:
+        _bg_scheduler.add_job(
+            _correlations_run_job, 'interval', minutes=2,
+            id='correlations_run', replace_existing=True,
+        )
+        _logger.info("Correlation engine scheduled (2-min interval)")
+    except Exception as _ce:
+        _logger.warning("Correlation scheduler setup failed: %s", _ce)
 except Exception as _sched_err:
     _logger.warning("Scheduler init failed: %s", _sched_err)
     def list_schedules(): return []
@@ -3928,6 +4699,505 @@ def api_syslog_decoders_reload():
         return jsonify(res or {"message": "reload triggered"})
     except Exception as e:
         return _api_error(e)
+
+
+# ---------------------------------------------------------------------------
+# Log-filter (whitelist / intentional-drop) endpoints.
+#
+# Operators define rules here to hide noisy known-good events from search
+# results. Rules are applied as ``must_not`` clauses in the Logs explorer and
+# audit endpoints. The underlying documents stay in OpenSearch so the filter
+# can be reversed by toggling the rule off.
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/filters", methods=["GET"])
+def api_filters_list():
+    try:
+        scope = request.args.get("scope", type=str) or None
+        only_enabled = (request.args.get("only_enabled", "") or "").lower() in ("1", "true", "yes")
+        rules = _log_filters.list_rules(scope=scope, only_enabled=only_enabled)
+        return jsonify({"rules": rules, "total": len(rules)})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/admin/filters", methods=["POST"])
+def api_filters_create():
+    try:
+        body = request.get_json(silent=True) or {}
+        user = (session.get("user") or "").strip()
+        rule = _log_filters.create(
+            name=body.get("name", ""),
+            scope=body.get("scope", "both"),
+            match_field=body.get("match_field", ""),
+            match_op=body.get("match_op", "equals"),
+            match_value=body.get("match_value", ""),
+            reason=body.get("reason", ""),
+            enabled=bool(body.get("enabled", True)),
+            created_by=user,
+        )
+        return jsonify(rule), 201
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/admin/filters/<int:rule_id>", methods=["GET"])
+def api_filters_get(rule_id):
+    try:
+        r = _log_filters.get_rule(rule_id)
+        if r is None:
+            return jsonify({"error": "Not found"}), 404
+        return jsonify(r)
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/admin/filters/<int:rule_id>", methods=["PUT", "PATCH"])
+def api_filters_update(rule_id):
+    try:
+        body = request.get_json(silent=True) or {}
+        r = _log_filters.update(rule_id, **body)
+        if r is None:
+            return jsonify({"error": "Not found"}), 404
+        return jsonify(r)
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/admin/filters/<int:rule_id>", methods=["DELETE"])
+def api_filters_delete(rule_id):
+    try:
+        if not _log_filters.delete(rule_id):
+            return jsonify({"error": "Not found"}), 404
+        return jsonify({"deleted": rule_id})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/admin/filters/<int:rule_id>/toggle", methods=["POST"])
+def api_filters_toggle(rule_id):
+    try:
+        r = _log_filters.toggle(rule_id)
+        if r is None:
+            return jsonify({"error": "Not found"}), 404
+        return jsonify(r)
+    except Exception as e:
+        return _api_error(e)
+
+
+# ---------------------------------------------------------------------------
+# Configuration audit-log endpoints (super_admin only).
+# Records every write-action against rules, decoders, dashboards, users, etc.
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/audit-log", methods=["GET"])
+def api_admin_audit_log():
+    """Paginated audit-log entries.
+
+    Query params: size, offset, user, target_prefix, action, time_from,
+    time_to, only_failures.
+    """
+    try:
+        size = min(request.args.get("size", 100, type=int) or 100, 500)
+        offset = request.args.get("offset", 0, type=int) or 0
+        user_f = request.args.get("user", type=str) or None
+        target_pref = request.args.get("target_prefix", type=str) or None
+        action = request.args.get("action", type=str) or None
+        only_failures = (request.args.get("only_failures", "") or "").lower() in ("1", "true", "yes")
+        time_from = request.args.get("time_from", type=str) or None
+        time_to = request.args.get("time_to", type=str) or None
+        t_from_ms = _to_epoch_ms(time_from) if time_from else None
+        t_to_ms = _to_epoch_ms(time_to) if time_to else None
+        rows, total = _audit_log.query(
+            size=size, offset=offset, user=user_f,
+            target_prefix=target_pref, action=action,
+            time_from_ms=t_from_ms, time_to_ms=t_to_ms,
+            only_failures=only_failures,
+        )
+        return jsonify({"hits": rows, "total": total})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/admin/audit-log/stats", methods=["GET"])
+def api_admin_audit_log_stats():
+    """Summary stats for the audit-log page header (last 24h by default)."""
+    try:
+        window = request.args.get("window_hours", 24, type=int) or 24
+        return jsonify(_audit_log.stats(window_hours=window))
+    except Exception as e:
+        return _api_error(e)
+
+
+# ---------------------------------------------------------------------------
+# Pipeline health — drop counters + queue depth.
+#
+# Surfaces WatchTower's Prometheus /metrics endpoint as a friendly JSON
+# object so the Stack Status page can show DLQ depth, dropped events, and
+# agent connectivity counts at a glance — the things that matter when an
+# operator suspects logs are being lost.
+# ---------------------------------------------------------------------------
+
+_PROM_LINE_RE = re.compile(r"^(?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*)\s+(?P<value>[\-+0-9eE.]+)\s*$")
+
+
+def _parse_prom_text(text: str) -> dict:
+    """Minimal Prometheus text exposition parser — only the bare-metric
+    form WatchTower emits (no labels). Returns {metric_name: float}."""
+    out: dict[str, float] = {}
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        m = _PROM_LINE_RE.match(line)
+        if not m:
+            continue
+        try:
+            out[m.group("name")] = float(m.group("value"))
+        except ValueError:
+            continue
+    return out
+
+
+@app.route("/api/pipeline/health", methods=["GET"])
+def api_pipeline_health():
+    """Read /metrics from WatchTower and return a structured digest."""
+    try:
+        from watchtower_client import watchtower_request
+        # watchtower_request returns parsed JSON on success; metrics is plaintext
+        # so we have to do a raw fetch — use the same base URL.
+        import requests
+        from config import WATCHTOWER_URL
+        url = f"{WATCHTOWER_URL.rstrip('/')}/metrics"
+        r = requests.get(url, timeout=5, verify=False)
+        r.raise_for_status()
+        metrics = _parse_prom_text(r.text)
+
+        def g(name, default=0):
+            v = metrics.get(name)
+            return float(v) if v is not None else default
+
+        digest = {
+            "uptime_seconds": g("watchtower_uptime_seconds"),
+            "agents": {
+                "total":        g("watchtower_agents_total"),
+                "active":       g("watchtower_agents_active"),
+                "disconnected": g("watchtower_agents_disconnected"),
+            },
+            "alerts_total": g("watchtower_alerts_total"),
+            "forwarder": {
+                "dropped_events": g("watchtower_forwarder_dropped_events_total"),
+                "dropped_alerts": g("watchtower_forwarder_dropped_alerts_total"),
+                "dlq_depth":      g("watchtower_forwarder_dlq_depth"),
+            },
+            "memory_bytes": g("watchtower_memory_alloc_bytes"),
+            "_raw": metrics,
+        }
+        # Health signal — green if no drops & DLQ < 100; otherwise warn.
+        drops = digest["forwarder"]["dropped_events"] + digest["forwarder"]["dropped_alerts"]
+        dlq   = digest["forwarder"]["dlq_depth"]
+        if drops > 0 or dlq > 1000:
+            digest["status"] = "degraded"
+        elif dlq > 100:
+            digest["status"] = "warning"
+        else:
+            digest["status"] = "healthy"
+        return jsonify(digest)
+    except Exception as e:
+        return jsonify({"error": str(e), "status": "unknown"}), 200
+
+
+# ---------------------------------------------------------------------------
+# Retention policy — visibility + on-demand purge (super_admin only).
+#
+# WatchVault already has a daily scheduler that deletes indices older than
+# its configured retention_days. This UI surfaces:
+#   - what's stored right now, grouped by index family + age
+#   - a one-shot "purge indices older than N days" action for cases where
+#     the scheduler hasn't yet run or retention was just shortened
+# Both operations require super_admin and are recorded in the config audit log.
+# ---------------------------------------------------------------------------
+
+_DATE_SUFFIX_RE = re.compile(r"-(\d{4})\.(\d{2})\.(\d{2})$")
+
+
+def _parse_index_date(name: str):
+    m = _DATE_SUFFIX_RE.search(name or "")
+    if not m:
+        return None
+    try:
+        from datetime import datetime, timezone
+        return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                        tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def _index_family(name: str) -> str:
+    """watchvault-events-2025.05.20 → 'events' ; watchvault-alerts-* → 'alerts'."""
+    if not name:
+        return "other"
+    body = _DATE_SUFFIX_RE.sub("", name)
+    parts = body.split("-", 1)
+    return parts[1] if len(parts) > 1 else parts[0]
+
+
+@app.route("/api/admin/retention", methods=["GET"])
+def api_retention_overview():
+    """Return effective retention + per-family index inventory with ages."""
+    try:
+        from watchtower_client import opensearch_request
+        # Per-index stats. _cat/indices is cheaper and already wrapped.
+        cat = opensearch_request(f"/_cat/indices/{INDEX_PREFIX}-*?format=json&bytes=b") or []
+        if not isinstance(cat, list):
+            cat = []
+
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        families: dict[str, dict] = {}
+        items: list[dict] = []
+        for row in cat:
+            name = row.get("index") or ""
+            if not name:
+                continue
+            dt = _parse_index_date(name)
+            age_days = int((now - dt).total_seconds() // 86400) if dt else None
+            size_b = int(row.get("store.size") or row.get("pri.store.size") or 0)
+            docs = int(row.get("docs.count") or 0)
+            fam = _index_family(name)
+            entry = {
+                "name": name,
+                "family": fam,
+                "age_days": age_days,
+                "size_bytes": size_b,
+                "docs": docs,
+                "health": row.get("health"),
+                "status": row.get("status"),
+            }
+            items.append(entry)
+            f = families.setdefault(fam, {"indices": 0, "size_bytes": 0, "docs": 0,
+                                          "oldest_days": 0, "youngest_days": None})
+            f["indices"]   += 1
+            f["size_bytes"] += size_b
+            f["docs"]      += docs
+            if age_days is not None:
+                if age_days > f["oldest_days"]:
+                    f["oldest_days"] = age_days
+                if f["youngest_days"] is None or age_days < f["youngest_days"]:
+                    f["youngest_days"] = age_days
+
+        items.sort(key=lambda x: (x["family"], -(x["age_days"] or 0)))
+        family_list = [{"family": k, **v} for k, v in sorted(families.items())]
+
+        # Effective retention_days — env hint; not authoritative since it lives
+        # in WatchVault config. We surface it so the operator can spot drift.
+        cfg_retention = os.getenv("WATCHVAULT_RETENTION_DAYS", "")
+        return jsonify({
+            "configured_retention_days": int(cfg_retention) if cfg_retention.isdigit() else None,
+            "families": family_list,
+            "indices": items,
+            "total_indices": len(items),
+            "total_size_bytes": sum(i["size_bytes"] for i in items),
+            "total_docs": sum(i["docs"] for i in items),
+        })
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/admin/retention/purge", methods=["POST"])
+def api_retention_purge():
+    """Delete indices older than ``older_than_days`` for one or more families.
+
+    Body: {"older_than_days": 90, "families": ["events", "fim"], "dry_run": false}
+    """
+    try:
+        from watchtower_client import opensearch_request
+        body = request.get_json(silent=True) or {}
+        days = int(body.get("older_than_days", 0))
+        if days < 1:
+            return jsonify({"error": "older_than_days must be ≥ 1"}), 400
+        wanted = set(body.get("families") or [])  # empty = all families
+        dry_run = bool(body.get("dry_run", False))
+
+        cat = opensearch_request(f"/_cat/indices/{INDEX_PREFIX}-*?format=json") or []
+        if not isinstance(cat, list):
+            cat = []
+
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        to_delete: list[dict] = []
+        for row in cat:
+            name = row.get("index") or ""
+            dt = _parse_index_date(name)
+            if not name or not dt:
+                continue
+            age = (now - dt).total_seconds() / 86400
+            if age < days:
+                continue
+            fam = _index_family(name)
+            if wanted and fam not in wanted:
+                continue
+            to_delete.append({"name": name, "family": fam, "age_days": int(age)})
+
+        deleted, failed = [], []
+        if not dry_run:
+            for entry in to_delete:
+                try:
+                    opensearch_request(f"/{entry['name']}", method="DELETE")
+                    deleted.append(entry)
+                except Exception as ex:
+                    failed.append({**entry, "error": str(ex)})
+        return jsonify({
+            "dry_run": dry_run,
+            "older_than_days": days,
+            "families": sorted(wanted),
+            "matched": len(to_delete),
+            "would_delete": to_delete if dry_run else [],
+            "deleted": deleted,
+            "failed": failed,
+        })
+    except Exception as e:
+        return _api_error(e)
+
+
+# ---------------------------------------------------------------------------
+# System Logs viewer (super_admin only).
+#
+# Wraps system_logs.read_logs() so an operator can pull recent WatchTower /
+# WatchVault / OpenSearch / dashboard output from inside the UI without SSH.
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/system-logs/services", methods=["GET"])
+def api_system_logs_services():
+    try:
+        import system_logs as _sl
+        return jsonify({"services": _sl.list_services()})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/admin/system-logs", methods=["GET"])
+def api_system_logs_read():
+    try:
+        import system_logs as _sl
+        service = request.args.get("service", type=str) or "watchtower"
+        lines = request.args.get("lines", 200, type=int) or 200
+        return jsonify(_sl.read_logs(service, lines=lines))
+    except Exception as e:
+        return _api_error(e)
+
+
+# ---------------------------------------------------------------------------
+# Backup & restore endpoints (super_admin only).
+#
+# The Python endpoint shells out to the same scripts/sentinel-backup.sh used
+# from the command line so there's a single source of truth for what gets
+# packaged. Downloads stream the resulting tarball directly to the browser.
+# ---------------------------------------------------------------------------
+
+_BACKUP_DIR = os.path.join(os.path.dirname(__file__), "..", "backups")
+_BACKUP_SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "sentinel-backup.sh")
+
+
+@app.route("/api/admin/backup/list", methods=["GET"])
+def api_backup_list():
+    """Return the list of backup archives already on disk."""
+    try:
+        abs_dir = os.path.abspath(_BACKUP_DIR)
+        if not os.path.isdir(abs_dir):
+            return jsonify({"backups": [], "dir": abs_dir})
+        items = []
+        for name in sorted(os.listdir(abs_dir), reverse=True):
+            if not name.startswith("sentinel-") or not name.endswith(".tar.gz"):
+                continue
+            full = os.path.join(abs_dir, name)
+            try:
+                st = os.stat(full)
+                items.append({
+                    "name": name,
+                    "size_bytes": st.st_size,
+                    "created_at_ms": int(st.st_mtime * 1000),
+                })
+            except Exception:
+                pass
+        return jsonify({"backups": items, "dir": abs_dir})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/admin/backup/download", methods=["POST"])
+def api_backup_download():
+    """Create a fresh backup and stream it to the browser.
+
+    This is a write action: it produces a new archive on disk *and* returns
+    its bytes. The after_request audit hook records the request so we know
+    when a super-admin exported configs.
+    """
+    import subprocess
+    from flask import send_file
+    try:
+        abs_script = os.path.abspath(_BACKUP_SCRIPT)
+        abs_dir = os.path.abspath(_BACKUP_DIR)
+        if not os.path.isfile(abs_script):
+            return jsonify({"error": "backup script missing", "path": abs_script}), 500
+        os.makedirs(abs_dir, exist_ok=True)
+        proc = subprocess.run(
+            ["/bin/bash", abs_script, abs_dir],
+            capture_output=True, text=True, timeout=120,
+        )
+        if proc.returncode != 0:
+            return jsonify({
+                "error": "backup script failed",
+                "returncode": proc.returncode,
+                "stderr": proc.stderr[-2000:],
+            }), 500
+        # Find the newest archive in the dir.
+        archives = [
+            f for f in os.listdir(abs_dir)
+            if f.startswith("sentinel-") and f.endswith(".tar.gz")
+        ]
+        if not archives:
+            return jsonify({"error": "no archive produced"}), 500
+        archives.sort(key=lambda f: os.path.getmtime(os.path.join(abs_dir, f)), reverse=True)
+        latest = os.path.join(abs_dir, archives[0])
+        return send_file(
+            latest,
+            mimetype="application/gzip",
+            as_attachment=True,
+            download_name=os.path.basename(latest),
+        )
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/healthz", methods=["GET"])
+def healthz():
+    """Liveness probe — process is up and Flask is responding."""
+    return jsonify({"status": "ok"}), 200
+
+
+@app.route("/readyz", methods=["GET"])
+def readyz():
+    """Readiness probe — local SQLite DBs are reachable. Returns 503 if any
+    fail so a load balancer can drain this instance."""
+    checks = {}
+    ok_overall = True
+    for name, mod in (
+        ("audit_log", _audit_log), ("log_filters", _log_filters),
+        ("users", _users), ("silent_sources", _silent),
+        ("correlations", _corr),
+    ):
+        try:
+            mod._conn().close()
+            checks[name] = "ok"
+        except Exception as e:
+            checks[name] = f"fail: {e}"
+            ok_overall = False
+    return jsonify({"status": "ok" if ok_overall else "degraded", "checks": checks}), 200 if ok_overall else 503
 
 
 if __name__ == "__main__":

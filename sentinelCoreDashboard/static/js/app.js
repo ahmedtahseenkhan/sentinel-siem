@@ -80,6 +80,21 @@ const GEO_CONTINENTS = [
     fimEvents: '/api/fim/events',
     auditSummary: '/api/audit/summary',
     auditEvents: '/api/audit/events',
+    logsSearch: '/api/logs/search',
+    logsSummary: '/api/logs/summary',
+    cfgAuditLog:   '/api/admin/audit-log',
+    cfgAuditStats: '/api/admin/audit-log/stats',
+    logFilters:    '/api/admin/filters',
+    silentSources: '/api/silent-sources',
+    silentThresh:  '/api/silent-sources/thresholds',
+    silentRunNow:  '/api/silent-sources/run-now',
+    users:         '/api/users',
+    corrIncidents: '/api/correlations/incidents',
+    corrRunNow:    '/api/correlations/run-now',
+    sysLogsList:   '/api/admin/system-logs/services',
+    sysLogsRead:   '/api/admin/system-logs',
+    retention:     '/api/admin/retention',
+    retentionPurge:'/api/admin/retention/purge',
     scaSummary: '/api/sca/summary',
     scaAgents: '/api/sca/agents',
     customVizList: '/api/custom/visualizations',
@@ -182,17 +197,60 @@ const GEO_CONTINENTS = [
       localStorage.setItem(DASHBOARD_STORAGE_KEY, JSON.stringify(obj));
     } catch (e) {}
   }
+  // Convert a time-range token into ISO bounds.
+  // Supported tokens:
+  //   "15m" "1h" "3h" "24h" "7d" "30d"                 — rolling windows
+  //   "custom:<fromISO>:<toISO>"                       — absolute range
+  // Backwards-compat: also returns .time_from / .time_to / .days / .from / .to.
   function getTimeRangeBounds(range) {
     const now = new Date();
     let start = new Date(now);
-    if (range === '24h') start.setHours(now.getHours() - 24);
-    else if (range === '7d') start.setDate(now.getDate() - 7);
-    else if (range === '30d') start.setDate(now.getDate() - 30);
-    else start.setDate(now.getDate() - 7);
+    let days  = 1;
+    if (typeof range === 'string' && range.startsWith('custom:')) {
+      const parts = range.split(':');
+      // ISO timestamps may themselves contain ':' so re-join everything after the
+      // first two splits as the end of the second ISO string.
+      // Format: "custom:<fromISO>:<toISO>"  — both ISO strings end in "Z".
+      const m = range.match(/^custom:([^|]+)\|(.+)$/);
+      let fromStr = null, toStr = null;
+      if (m) { fromStr = m[1]; toStr = m[2]; }
+      else {
+        // Tolerate the older colon-joined form by finding the boundary 'Z|2'.
+        // Falls back to the now ± 24h window if parsing fails.
+        const idx = range.indexOf('Z:', 'custom:'.length);
+        if (idx > 0) {
+          fromStr = range.slice('custom:'.length, idx + 1);
+          toStr   = range.slice(idx + 2);
+        }
+      }
+      const f = fromStr ? new Date(fromStr) : null;
+      const t = toStr   ? new Date(toStr)   : null;
+      if (f && !isNaN(f) && t && !isNaN(t) && t > f) {
+        days = Math.max(1, Math.round((t - f) / 86400000));
+        return {
+          time_from: f.toISOString().slice(0, 19) + 'Z',
+          time_to:   t.toISOString().slice(0, 19) + 'Z',
+          from:      f.toISOString().slice(0, 19) + 'Z',
+          to:        t.toISOString().slice(0, 19) + 'Z',
+          days,
+        };
+      }
+      // Malformed custom range → fall through to defaults.
+    }
+    if (range === '15m')      start.setMinutes(now.getMinutes() - 15);
+    else if (range === '1h')  start.setHours(now.getHours() - 1);
+    else if (range === '3h')  start.setHours(now.getHours() - 3);
+    else if (range === '24h') { start.setHours(now.getHours() - 24); days = 1; }
+    else if (range === '7d')  { start.setDate(now.getDate() - 7);   days = 7; }
+    else if (range === '30d') { start.setDate(now.getDate() - 30);  days = 30; }
+    else                      { start.setDate(now.getDate() - 7);   days = 7; }
+    const iso = d => d.toISOString().slice(0, 19) + 'Z';
     return {
-      time_from: start.toISOString().slice(0, 19) + 'Z',
-      time_to: now.toISOString().slice(0, 19) + 'Z',
-      days: range === '24h' ? 1 : range === '30d' ? 30 : 7
+      time_from: iso(start),
+      time_to:   iso(now),
+      from:      iso(start),
+      to:        iso(now),
+      days,
     };
   }
 
@@ -1639,6 +1697,103 @@ const GEO_CONTINENTS = [
     document.getElementById('stackManagerDetail').innerHTML = r.mDetail;
     document.getElementById('stackIndexerDetail').innerHTML = r.iDetail;
     document.getElementById('stackConfig').innerHTML = r.cfgHtml;
+    _stackWireBackup();
+    _stackRefreshBackupList();
+    _stackWirePipeline();
+    _stackRefreshPipeline();
+  }
+
+  let _pipeWired = false;
+  function _stackWirePipeline() {
+    if (_pipeWired) return;
+    const btn = document.getElementById('pipeRefresh');
+    if (!btn) return;
+    _pipeWired = true;
+    btn.addEventListener('click', _stackRefreshPipeline);
+  }
+
+  async function _stackRefreshPipeline() {
+    const el = id => document.getElementById(id);
+    const data = await fetchJson('/api/pipeline/health').catch(() => null);
+    if (!data) {
+      if (el('pipeStatusBadge')) el('pipeStatusBadge').textContent = 'unreachable';
+      if (el('pipeStatusDot')) el('pipeStatusDot').style.background = 'var(--fg-4)';
+      return;
+    }
+    const status = data.status || 'unknown';
+    const color = status === 'healthy'  ? 'var(--ok)'
+                : status === 'warning'  ? 'var(--high)'
+                : status === 'degraded' ? 'var(--crit)'
+                : 'var(--fg-4)';
+    if (el('pipeStatusBadge')) {
+      el('pipeStatusBadge').textContent = status.toUpperCase();
+      el('pipeStatusBadge').style.color = color;
+    }
+    if (el('pipeStatusDot')) el('pipeStatusDot').style.background = color;
+    const f = data.forwarder || {};
+    const a = data.agents || {};
+    if (el('pipeDlq')) el('pipeDlq').textContent = (f.dlq_depth || 0).toLocaleString();
+    if (el('pipeDropEv')) {
+      el('pipeDropEv').textContent = (f.dropped_events || 0).toLocaleString();
+      el('pipeDropEv').style.color = f.dropped_events > 0 ? 'var(--crit)' : '';
+    }
+    if (el('pipeDropAl')) {
+      el('pipeDropAl').textContent = (f.dropped_alerts || 0).toLocaleString();
+      el('pipeDropAl').style.color = f.dropped_alerts > 0 ? 'var(--crit)' : '';
+    }
+    if (el('pipeAgents')) el('pipeAgents').textContent = (a.total || 0).toLocaleString();
+    if (el('pipeAgentSub')) el('pipeAgentSub').textContent = `${a.active || 0} active / ${a.disconnected || 0} disconnected`;
+  }
+
+  let _stackBackupWired = false;
+  function _stackWireBackup() {
+    if (_stackBackupWired) return;
+    const btn = document.getElementById('backupDownloadBtn');
+    if (!btn) return;
+    _stackBackupWired = true;
+    btn.addEventListener('click', async () => {
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Building…';
+      try {
+        const res = await fetch('/api/admin/backup/download', { method: 'POST', credentials: 'same-origin' });
+        if (!res.ok) {
+          const t = await res.text();
+          alert('Backup failed: ' + t);
+          return;
+        }
+        const blob = await res.blob();
+        const dispo = res.headers.get('Content-Disposition') || '';
+        const m = dispo.match(/filename="?([^";]+)"?/);
+        const fname = m ? m[1] : `sentinel-backup-${Date.now()}.tar.gz`;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = fname;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(a.href);
+        _stackRefreshBackupList();
+      } finally {
+        btn.disabled = false;
+        btn.textContent = orig;
+      }
+    });
+  }
+
+  async function _stackRefreshBackupList() {
+    const target = document.getElementById('backupList');
+    if (!target) return;
+    const data = await fetchJson('/api/admin/backup/list').catch(() => null);
+    if (!data || !data.backups || data.backups.length === 0) {
+      target.innerHTML = '<div style="color:var(--fg-4);font-size:11px">No previous backups on disk.</div>';
+      return;
+    }
+    target.innerHTML =
+      '<div style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Recent backups</div>' +
+      data.backups.slice(0, 10).map(b => {
+        const ts = new Date(b.created_at_ms).toLocaleString();
+        const kb = (b.size_bytes / 1024).toFixed(1) + ' KB';
+        return `<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;font-family:var(--font-mono);font-size:11px;border-bottom:1px solid var(--border)"><span>${escapeHtml(b.name)}</span><span style="color:var(--fg-4)">${ts} · ${kb}</span></div>`;
+      }).join('');
   }
 
   function formatAgentsUpdated(iso) {
@@ -2256,14 +2411,17 @@ const GEO_CONTINENTS = [
   let discoverDslFilters = [];
 
   function getDiscoverParams() {
-    const range = document.getElementById('discoverTimeRange')?.value || '24h';
-    const now = new Date();
-    const start = new Date(now);
-    if (range === '7d') start.setDate(now.getDate() - 7);
-    else if (range === '30d') start.setDate(now.getDate() - 30);
-    else start.setHours(now.getHours() - 24);
-    const time_from = start.toISOString().slice(0, 19) + 'Z';
-    const time_to = now.toISOString().slice(0, 19) + 'Z';
+    const sel = document.getElementById('discoverTimeRange');
+    let range = sel?.value || '24h';
+    if (range === 'custom') {
+      const from = sel.getAttribute('data-custom-from');
+      const to   = sel.getAttribute('data-custom-to');
+      if (from && to) range = `custom:${from}|${to}`;
+      else range = '24h';
+    }
+    const b = getTimeRangeBounds(range);
+    const time_from = b.time_from;
+    const time_to   = b.time_to;
     const min_level = document.getElementById('discoverSeverity')?.value ? parseInt(document.getElementById('discoverSeverity').value, 10) : undefined;
     const agent_id = document.getElementById('discoverAgent')?.value || undefined;
     const rule_group = document.getElementById('discoverGroup')?.value || undefined;
@@ -4722,6 +4880,14 @@ const GEO_CONTINENTS = [
     fim: loadFimPage,
     mitre: loadMitrePage,
     audit: loadAuditPage,
+    logs: loadLogsPage,
+    'config-audit': loadConfigAuditPage,
+    'system-logs': loadSystemLogsPage,
+    'retention': loadRetentionPage,
+    'log-filters': loadLogFiltersPage,
+    'silent-sources': loadSilentSourcesPage,
+    'users': loadUsersPage,
+    'correlations': loadCorrelationsPage,
     sca: loadScaPage,
     'threat-hunting': loadThreatHunting,
     alerts: () => { _wireAlertChips(); loadAlerts(); },
@@ -5104,6 +5270,52 @@ const GEO_CONTINENTS = [
   ['discoverTimeRange', 'discoverSeverity', 'discoverAgent', 'discoverGroup', 'discoverMitre', 'discoverCompliance'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', () => { discoverOffset = 0; loadDiscover(); });
   });
+
+  // Custom-range picker: show/hide on selection, apply on button click.
+  // The picker is suppressed from reloading until Apply, so partial dates
+  // don't fire half-broken queries.
+  (function wireDiscoverCustomRange() {
+    const sel  = document.getElementById('discoverTimeRange');
+    const wrap = document.getElementById('discoverCustomRange');
+    const fromEl = document.getElementById('discoverCustomFrom');
+    const toEl   = document.getElementById('discoverCustomTo');
+    const apply  = document.getElementById('discoverCustomApply');
+    if (!sel || !wrap || !apply) return;
+
+    function toLocalISO(date) {
+      // datetime-local expects YYYY-MM-DDTHH:MM in local time, no Z.
+      const off = date.getTimezoneOffset();
+      const local = new Date(date.getTime() - off * 60000);
+      return local.toISOString().slice(0, 16);
+    }
+
+    sel.addEventListener('change', () => {
+      if (sel.value === 'custom') {
+        wrap.classList.remove('hidden');
+        if (!fromEl.value || !toEl.value) {
+          const now = new Date();
+          const past = new Date(now.getTime() - 24 * 3600 * 1000);
+          fromEl.value = toLocalISO(past);
+          toEl.value   = toLocalISO(now);
+        }
+      } else {
+        wrap.classList.add('hidden');
+      }
+    });
+
+    apply.addEventListener('click', () => {
+      if (!fromEl.value || !toEl.value) { alert('Pick both a start and an end.'); return; }
+      const fromD = new Date(fromEl.value);
+      const toD   = new Date(toEl.value);
+      if (toD <= fromD) { alert('"To" must be after "From".'); return; }
+      // Persist as ISO Z on the select element so getDiscoverParams reads it.
+      sel.setAttribute('data-custom-from', fromD.toISOString().slice(0, 19) + 'Z');
+      sel.setAttribute('data-custom-to',   toD.toISOString().slice(0, 19)   + 'Z');
+      sel.value = 'custom';
+      discoverOffset = 0;
+      loadDiscover();
+    });
+  })();
   let discoverSearchTimeout = null;
   document.getElementById('discoverSearch')?.addEventListener('input', () => {
     if (discoverSearchTimeout) clearTimeout(discoverSearchTimeout);
@@ -5755,6 +5967,993 @@ const GEO_CONTINENTS = [
     el('auditApplyFilter') && el('auditApplyFilter').addEventListener('click', () => { auditOffset = 0; reloadAuditEvents(); });
     el('auditPrev') && el('auditPrev').addEventListener('click', () => { if (auditOffset >= auditSize) { auditOffset -= auditSize; reloadAuditEvents(); } });
     el('auditNext') && el('auditNext').addEventListener('click', () => { auditOffset += auditSize; reloadAuditEvents(); });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Logs / Raw Events Explorer
+  //
+  // SOC analysts need every event, not just rule-matched alerts. This page
+  // talks to /api/logs/* which queries watchvault-events-* directly.
+  // ---------------------------------------------------------------------------
+  let _logsOffset = 0;
+  let _logsLastHits = [];
+
+  function _logsParams() {
+    const el = id => document.getElementById(id);
+    const size = parseInt((el('logsPageSize') && el('logsPageSize').value) || '50', 10);
+    let range = (el('logsTimeRange') && el('logsTimeRange').value) || '24h';
+    if (range === 'custom') {
+      const f = el('logsCustomFrom') && el('logsCustomFrom').value;
+      const t = el('logsCustomTo')   && el('logsCustomTo').value;
+      if (f && t) {
+        const fromIso = new Date(f).toISOString().slice(0, 19) + 'Z';
+        const toIso   = new Date(t).toISOString().slice(0, 19) + 'Z';
+        range = `custom:${fromIso}|${toIso}`;
+      } else {
+        range = '24h';
+      }
+    }
+    const bounds = getTimeRangeBounds(range);
+    const p = new URLSearchParams();
+    p.set('size', size);
+    p.set('offset', _logsOffset);
+    if (bounds.from) p.set('time_from', bounds.from);
+    if (bounds.to) p.set('time_to', bounds.to);
+    const q = ((el('logsQuery') && el('logsQuery').value) || '').trim();
+    if (q) p.set('q', q);
+    const src = (el('logsSource') && el('logsSource').value) || '';
+    if (src) p.set('source', src);
+    const agent = ((el('logsAgent') && el('logsAgent').value) || '').trim();
+    if (agent) p.set('agent_name', agent);
+    const evid = ((el('logsEventId') && el('logsEventId').value) || '').trim();
+    if (evid) p.set('event_id', evid);
+    return { params: p, size };
+  }
+
+  function _logsSummarize(hit) {
+    // Prefer Windows event description, then channel/message, then any rule text.
+    const parts = [];
+    if (hit.win_event_description) parts.push(hit.win_event_description);
+    if (hit.TargetUserName) parts.push('user=' + hit.TargetUserName);
+    else if (hit.SubjectUserName) parts.push('user=' + hit.SubjectUserName);
+    if (hit.IpAddress && hit.IpAddress !== '-') parts.push('src=' + hit.IpAddress);
+    if (hit.Image) parts.push('img=' + hit.Image);
+    if (parts.length) return parts.join(' · ');
+    if (hit.message) return String(hit.message).slice(0, 240);
+    if (hit.rule_description) return String(hit.rule_description);
+    if (hit.raw) return String(hit.raw).slice(0, 240);
+    return '(no summary)';
+  }
+
+  function _logsSource(hit) {
+    if (hit.type) return String(hit.type);
+    if (hit.tags && hit.tags.source) return String(hit.tags.source);
+    if (hit.collector) return String(hit.collector);
+    return '—';
+  }
+
+  function _logsEventId(hit) {
+    return hit.win_event_id || hit.event_id || '—';
+  }
+
+  function _logsAgent(hit) {
+    return hit.agent_name || (hit.agent && hit.agent.name) || hit.computer || '—';
+  }
+
+  async function reloadLogs() {
+    const el = id => document.getElementById(id);
+    const { params, size } = _logsParams();
+    const url = API.logsSearch + '?' + params.toString();
+    const data = await fetchJson(url).catch(() => ({ hits: [], total: 0 }));
+    const hits = data.hits || [];
+    _logsLastHits = hits;
+    const total = data.total || 0;
+    if (el('logsHits')) el('logsHits').textContent = total.toLocaleString() + ' hits';
+    if (el('logsInfo')) el('logsInfo').textContent = `Showing ${hits.length} of ${total.toLocaleString()}`;
+    if (el('logsPageInfo')) el('logsPageInfo').textContent = `Page ${Math.floor(_logsOffset / size) + 1}`;
+    if (el('logsPrev')) el('logsPrev').disabled = _logsOffset === 0;
+    if (el('logsNext')) el('logsNext').disabled = (_logsOffset + size) >= total;
+
+    const tbody = el('logsBody');
+    if (!tbody) return;
+    const cols = 'grid-template-columns:160px 130px 110px 80px 1fr 90px';
+    tbody.innerHTML = hits.length ? hits.map((h, i) => {
+      const ts = h.timestamp ? new Date(h.timestamp).toLocaleString() : '—';
+      const agent = escapeHtml(_logsAgent(h));
+      const src = escapeHtml(_logsSource(h));
+      const evid = escapeHtml(String(_logsEventId(h)));
+      const summary = escapeHtml(_logsSummarize(h));
+      return `<div class="tbl-r" style="${cols}">
+        <span class="tbl-time">${ts}</span>
+        <span class="tbl-mono">${agent}</span>
+        <span class="tbl-mono">${src}</span>
+        <span class="tbl-mono">${evid}</span>
+        <span class="tbl-pri" title="${summary}">${summary}</span>
+        <span><button type="button" class="act-btn logs-view-btn" data-idx="${i}" style="height:22px;padding:0 8px;font-size:11px">View</button></span>
+      </div>`;
+    }).join('') : `<div class="sigil-block"><div class="sigil-text"><h4>No events found</h4><p>Try widening the time range, removing filters, or clearing the search query.</p></div></div>`;
+
+    // Wire detail buttons
+    tbody.querySelectorAll('.logs-view-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.getAttribute('data-idx'), 10);
+        _logsShowDetail(_logsLastHits[idx]);
+      });
+    });
+  }
+
+  function _logsShowDetail(hit) {
+    const el = id => document.getElementById(id);
+    const drawer = el('logsDetailDrawer');
+    const body = el('logsDetailBody');
+    if (!drawer || !body) return;
+    body.textContent = JSON.stringify(hit, null, 2);
+    drawer.classList.remove('hidden');
+  }
+
+  async function _logsRefreshSummary() {
+    const el = id => document.getElementById(id);
+    const bounds = getTimeRangeBounds((el('logsTimeRange') && el('logsTimeRange').value) || '24h');
+    const p = new URLSearchParams();
+    if (bounds.from) p.set('time_from', bounds.from);
+    if (bounds.to) p.set('time_to', bounds.to);
+    const data = await fetchJson(API.logsSummary + '?' + p.toString()).catch(() => null);
+    if (!data) return;
+    if (el('logsTotal')) el('logsTotal').textContent = (data.total || 0).toLocaleString();
+    const top = (arr) => (arr && arr[0]) || null;
+    const t = top(data.by_type);
+    const a = top(data.by_agent);
+    const e = top(data.by_event_id);
+    if (el('logsTopType'))  el('logsTopType').textContent  = t ? t.key : '—';
+    if (el('logsTopTypeCount')) el('logsTopTypeCount').textContent = t ? (t.count.toLocaleString() + ' events') : '—';
+    if (el('logsTopAgent')) el('logsTopAgent').textContent = a ? a.key : '—';
+    if (el('logsTopAgentCount')) el('logsTopAgentCount').textContent = a ? (a.count.toLocaleString() + ' events') : '—';
+    if (el('logsTopEvid'))  el('logsTopEvid').textContent  = e ? e.key : '—';
+    if (el('logsTopEvidCount')) el('logsTopEvidCount').textContent = e ? (e.count.toLocaleString() + ' events') : '—';
+    const rng = (el('logsTimeRange') && el('logsTimeRange').value) || '24h';
+    if (el('logsRangeLabel')) el('logsRangeLabel').textContent = 'last ' + rng;
+  }
+
+  let _logsWired = false;
+  async function loadLogsPage() {
+    _logsOffset = 0;
+    await Promise.all([reloadLogs(), _logsRefreshSummary()]);
+
+    if (_logsWired) return;
+    _logsWired = true;
+    const el = id => document.getElementById(id);
+    const apply = () => { _logsOffset = 0; reloadLogs(); _logsRefreshSummary(); };
+    el('logsApply') && el('logsApply').addEventListener('click', apply);
+    el('logsReset') && el('logsReset').addEventListener('click', () => {
+      ['logsQuery', 'logsAgent', 'logsEventId'].forEach(id => { if (el(id)) el(id).value = ''; });
+      if (el('logsSource')) el('logsSource').value = '';
+      if (el('logsTimeRange')) el('logsTimeRange').value = '24h';
+      if (el('logsPageSize')) el('logsPageSize').value = '50';
+      apply();
+    });
+    el('logsQuery') && el('logsQuery').addEventListener('keydown', e => { if (e.key === 'Enter') apply(); });
+    el('logsAgent') && el('logsAgent').addEventListener('keydown', e => { if (e.key === 'Enter') apply(); });
+    el('logsEventId') && el('logsEventId').addEventListener('keydown', e => { if (e.key === 'Enter') apply(); });
+    el('logsTimeRange') && el('logsTimeRange').addEventListener('change', () => {
+      const wrap = el('logsCustomRange');
+      const sel = el('logsTimeRange');
+      if (sel.value === 'custom') {
+        wrap && wrap.classList.remove('hidden');
+        // seed defaults if empty
+        const f = el('logsCustomFrom'), t = el('logsCustomTo');
+        if (f && !f.value) {
+          const now = new Date();
+          const past = new Date(now.getTime() - 24*3600*1000);
+          const local = d => new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,16);
+          f.value = local(past); if (t) t.value = local(now);
+        }
+        // do NOT auto-apply — wait for user to click Search
+      } else {
+        wrap && wrap.classList.add('hidden');
+        apply();
+      }
+    });
+    el('logsSource') && el('logsSource').addEventListener('change', apply);
+    el('logsPageSize') && el('logsPageSize').addEventListener('change', apply);
+    el('logsPrev') && el('logsPrev').addEventListener('click', () => {
+      const { size } = _logsParams();
+      if (_logsOffset >= size) { _logsOffset -= size; reloadLogs(); }
+    });
+    el('logsNext') && el('logsNext').addEventListener('click', () => {
+      const { size } = _logsParams();
+      _logsOffset += size; reloadLogs();
+    });
+    // Quick-filter chips set EventID and re-query.
+    document.querySelectorAll('#page-logs .logs-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (el('logsEventId')) el('logsEventId').value = btn.getAttribute('data-evid') || '';
+        if (el('logsSource')) el('logsSource').value = 'eventlog';
+        apply();
+      });
+    });
+    el('logsDetailClose') && el('logsDetailClose').addEventListener('click', () => {
+      const drawer = el('logsDetailDrawer');
+      if (drawer) drawer.classList.add('hidden');
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Correlations — stateful UEBA-style incidents.
+  // ---------------------------------------------------------------------------
+  let _corrLast = [];
+
+  function _corrSevColor(s) {
+    return s === 'critical' ? 'var(--crit)'
+         : s === 'high'     ? 'var(--high)'
+         : s === 'medium'   ? 'var(--med)'
+         : 'var(--fg-3)';
+  }
+
+  async function _corrLoad() {
+    const el = id => document.getElementById(id);
+    const status = (el('corrStatus') || {}).value || 'open';
+    const data = await fetchJson(`${API.corrIncidents}?status=${encodeURIComponent(status)}&size=200`).catch(() => ({ incidents: [], stats: {} }));
+    const incs = data.incidents || [];
+    _corrLast = incs;
+    const stats = data.stats || {};
+    if (el('corrOpen')) el('corrOpen').textContent = (stats.open_count || 0).toLocaleString();
+    if (el('corrMLL'))  el('corrMLL').textContent  = ((stats.by_detector || {})['multi_location_logon'] || 0).toLocaleString();
+    if (el('corrIncCount')) el('corrIncCount').textContent = incs.length + ' incident' + (incs.length === 1 ? '' : 's');
+    if (el('navBadgeCorr')) {
+      const n = stats.open_count || 0;
+      const b = el('navBadgeCorr');
+      if (n > 0) { b.textContent = n; b.style.display = ''; } else { b.style.display = 'none'; }
+    }
+    const body = el('corrBody');
+    if (!body) return;
+    const cols = 'grid-template-columns:160px 140px 1fr 90px 130px 120px 110px';
+    body.innerHTML = incs.length ? incs.map((inc, i) => {
+      const first = inc.first_seen_ms ? new Date(inc.first_seen_ms).toLocaleString() : '—';
+      const ev = inc.evidence || {};
+      const ips = ev.distinct_ips || [];
+      const hosts = ev.distinct_hosts || [];
+      const summary = `<b>${escapeHtml(inc.entity)}</b> · ${ev.logon_count || 0} logons · IPs: ${escapeHtml(ips.slice(0, 3).join(', '))}${ips.length > 3 ? '…' : ''}${hosts.length ? ` · hosts: ${escapeHtml(hosts.slice(0, 2).join(', '))}` : ''}`;
+      const sevCol = _corrSevColor(inc.severity);
+      const sources = `${ips.length} IP${ips.length !== 1 ? 's' : ''} · ${hosts.length} host${hosts.length !== 1 ? 's' : ''}`;
+      const statusBadge = inc.status === 'resolved'
+        ? '<span style="padding:2px 8px;border-radius:10px;background:rgba(51,204,153,.15);color:var(--ok);font-size:10px;font-weight:600">RESOLVED</span>'
+        : '<span style="padding:2px 8px;border-radius:10px;background:rgba(255,51,51,.15);color:var(--crit);font-size:10px;font-weight:600">OPEN</span>';
+      return `<div class="tbl-r" style="${cols}">
+        <span class="tbl-time">${first}</span>
+        <span class="tbl-mono">${escapeHtml(inc.detector)}</span>
+        <span class="tbl-pri">${summary}</span>
+        <span style="font-family:var(--font-mono);font-weight:600;color:${sevCol}">${escapeHtml(inc.severity)}</span>
+        <span class="tbl-mono">${sources}</span>
+        <span>${statusBadge}</span>
+        <span style="display:flex;gap:4px">
+          <button type="button" class="act-btn corr-view" data-idx="${i}" style="height:22px;padding:0 8px;font-size:11px">View</button>
+          ${inc.status === 'open' ? `<button type="button" class="act-btn corr-resolve" data-id="${inc.id}" style="height:22px;padding:0 8px;font-size:11px">Resolve</button>` : ''}
+        </span>
+      </div>`;
+    }).join('') : `<div class="sigil-block"><div class="sigil-text"><h4>No ${escapeHtml(status)} correlations</h4><p>The engine runs every 2 minutes. Click <strong>▶ Run all now</strong> to force a check.</p></div></div>`;
+
+    body.querySelectorAll('.corr-view').forEach(b => b.addEventListener('click', () => {
+      const idx = parseInt(b.getAttribute('data-idx'), 10);
+      const drawer = el('corrDetailDrawer');
+      const dbody = el('corrDetailBody');
+      if (drawer && dbody) {
+        dbody.textContent = JSON.stringify(_corrLast[idx], null, 2);
+        drawer.classList.remove('hidden');
+      }
+    }));
+    body.querySelectorAll('.corr-resolve').forEach(b => b.addEventListener('click', async () => {
+      const id = b.getAttribute('data-id');
+      const res = await fetch(`${API.corrIncidents}/${id}/resolve`, { method: 'POST', credentials: 'same-origin' });
+      if (res.ok) _corrLoad();
+    }));
+  }
+
+  let _corrWired = false;
+  async function loadCorrelationsPage() {
+    await _corrLoad();
+    if (_corrWired) return;
+    _corrWired = true;
+    const el = id => document.getElementById(id);
+    el('corrStatus')      && el('corrStatus').addEventListener('change', _corrLoad);
+    el('corrDetailClose') && el('corrDetailClose').addEventListener('click', () => {
+      const d = el('corrDetailDrawer'); if (d) d.classList.add('hidden');
+    });
+    el('corrRunNow') && el('corrRunNow').addEventListener('click', async () => {
+      const btn = el('corrRunNow'); btn.disabled = true; const o = btn.textContent; btn.textContent = 'Running…';
+      try {
+        await fetch(API.corrRunNow, { method: 'POST', credentials: 'same-origin' });
+        await _corrLoad();
+      } finally { btn.disabled = false; btn.textContent = o; }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Users & Roles (super_admin only) — dashboard account management.
+  // ---------------------------------------------------------------------------
+  async function _usrLoad() {
+    const el = id => document.getElementById(id);
+    const data = await fetchJson(API.users).catch(() => ({ users: [], total: 0 }));
+    const users = data.users || [];
+    const me = data.current_user || '';
+    if (el('usrCount')) el('usrCount').textContent = users.length + ' account' + (users.length === 1 ? '' : 's');
+    const body = el('usrBody');
+    if (!body) return;
+    const cols = 'grid-template-columns:160px 140px 1fr 160px 90px 140px 160px';
+    body.innerHTML = users.length ? users.map(u => {
+      const last = u.last_login_at ? new Date(u.last_login_at).toLocaleString() : 'never';
+      const status = u.enabled
+        ? '<span style="padding:2px 8px;border-radius:10px;background:rgba(51,204,153,.15);color:var(--ok);font-size:10px;font-weight:600">ENABLED</span>'
+        : '<span style="padding:2px 8px;border-radius:10px;background:rgba(140,140,140,.15);color:var(--fg-3);font-size:10px;font-weight:600">DISABLED</span>';
+      const isMe = u.username === me;
+      return `<div class="tbl-r" style="${cols}">
+        <span class="tbl-mono">${escapeHtml(u.username)}${isMe ? ' <span style="color:var(--accent);font-size:10px">(you)</span>' : ''}</span>
+        <span class="tbl-mono">${escapeHtml(u.role)}</span>
+        <span class="tbl-pri">${escapeHtml(u.full_name || '—')}<span style="color:var(--fg-4);font-size:11px;margin-left:6px">${escapeHtml(u.email || '')}</span></span>
+        <span class="tbl-time">${escapeHtml(last)}</span>
+        <span>${status}</span>
+        <span class="tbl-mono" style="font-size:11px;color:var(--fg-3)">${escapeHtml(u.created_by || '—')}</span>
+        <span style="display:flex;gap:4px">
+          <button type="button" class="act-btn usr-edit" data-username="${escapeHtml(u.username)}" style="height:22px;padding:0 8px;font-size:11px">Edit</button>
+          <button type="button" class="act-btn usr-delete" data-username="${escapeHtml(u.username)}" ${isMe ? 'disabled' : ''} style="height:22px;padding:0 8px;font-size:11px;color:var(--crit)" title="${isMe ? 'Cannot delete your own account' : ''}">Del</button>
+        </span>
+      </div>`;
+    }).join('') : `<div class="sigil-block"><div class="sigil-text"><h4>No users yet</h4><p>Click <strong>+ New user</strong> to add a dashboard account. Env-var accounts (<code>DASHBOARD_USERS</code>) still work as a fallback.</p></div></div>`;
+
+    body.querySelectorAll('.usr-edit').forEach(b => b.addEventListener('click', () => {
+      const u = users.find(x => x.username === b.getAttribute('data-username'));
+      if (u) _usrOpenDrawer(u);
+    }));
+    body.querySelectorAll('.usr-delete').forEach(b => b.addEventListener('click', async () => {
+      const username = b.getAttribute('data-username');
+      if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
+      const res = await fetch(`${API.users}/${encodeURIComponent(username)}`, { method: 'DELETE', credentials: 'same-origin' });
+      if (!res.ok) { alert('Delete failed: ' + await res.text()); return; }
+      _usrLoad();
+    }));
+  }
+
+  function _usrOpenDrawer(u) {
+    const el = id => document.getElementById(id);
+    el('usrDrawer').classList.remove('hidden');
+    el('usrDrawerTitle').textContent = u ? `Edit user · ${u.username}` : 'New user';
+    el('usrEditMode').value = u ? 'edit' : 'create';
+    el('usrUsername').value = u ? u.username : '';
+    el('usrUsername').disabled = !!u;
+    el('usrFullName').value = u ? u.full_name : '';
+    el('usrEmail').value = u ? u.email : '';
+    el('usrRole').value = u ? u.role : 'viewer';
+    el('usrPassword').value = '';
+    el('usrPwLabel').textContent = u ? 'Password (leave blank to keep current)' : 'Password (≥ 8 chars)';
+    el('usrPwHint').style.display = u ? '' : 'none';
+    el('usrEnabled').checked = u ? !!u.enabled : true;
+  }
+
+  function _usrCloseDrawer() {
+    const d = document.getElementById('usrDrawer');
+    if (d) d.classList.add('hidden');
+  }
+
+  async function _usrSave() {
+    const el = id => document.getElementById(id);
+    const mode = el('usrEditMode').value;
+    const username = el('usrUsername').value.trim();
+    const body = {
+      full_name: el('usrFullName').value.trim(),
+      email: el('usrEmail').value.trim(),
+      role: el('usrRole').value,
+      enabled: el('usrEnabled').checked,
+    };
+    const pw = el('usrPassword').value;
+    if (mode === 'create') {
+      if (!username) { alert('Username is required.'); return; }
+      if (!pw || pw.length < 10) { alert('Password must be at least 10 characters.'); return; }
+      body.username = username;
+      body.password = pw;
+      const res = await fetch(API.users, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) { alert('Create failed: ' + await res.text()); return; }
+    } else {
+      if (pw) body.password = pw;
+      const res = await fetch(`${API.users}/${encodeURIComponent(username)}`, {
+        method: 'PUT', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) { alert('Update failed: ' + await res.text()); return; }
+    }
+    _usrCloseDrawer();
+    _usrLoad();
+  }
+
+  let _usrWired = false;
+  async function loadUsersPage() {
+    await _usrLoad();
+    if (_usrWired) return;
+    _usrWired = true;
+    const el = id => document.getElementById(id);
+    el('usrAdd')         && el('usrAdd').addEventListener('click', () => _usrOpenDrawer(null));
+    el('usrDrawerClose') && el('usrDrawerClose').addEventListener('click', _usrCloseDrawer);
+    el('usrCancel')      && el('usrCancel').addEventListener('click', _usrCloseDrawer);
+    el('usrSave')        && el('usrSave').addEventListener('click', _usrSave);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Silent Sources monitor — incidents + threshold management.
+  // ---------------------------------------------------------------------------
+  function _ssFmtGap(min) {
+    if (min == null) return '—';
+    if (min < 60) return min + 'm';
+    if (min < 1440) return Math.floor(min / 60) + 'h ' + (min % 60) + 'm';
+    return Math.floor(min / 1440) + 'd ' + Math.floor((min % 1440) / 60) + 'h';
+  }
+  function _ssSevColor(s) {
+    return s === 'critical' ? 'var(--crit)'
+         : s === 'high'     ? 'var(--high)'
+         : s === 'medium'   ? 'var(--med)'
+         : 'var(--fg-3)';
+  }
+
+  async function _ssLoadIncidents() {
+    const status = (document.getElementById('ssIncStatus') || {}).value || 'open';
+    const data = await fetchJson(`${API.silentSources}?status=${encodeURIComponent(status)}&size=100`).catch(() => ({ incidents: [], stats: {} }));
+    const incs = data.incidents || [];
+    const stats = data.stats || {};
+    const el = id => document.getElementById(id);
+
+    if (el('ssOpenCount')) el('ssOpenCount').textContent = (stats.open_count || 0).toLocaleString();
+    if (el('navBadgeSilent')) {
+      const n = stats.open_count || 0;
+      const badge = el('navBadgeSilent');
+      if (n > 0) { badge.textContent = n; badge.style.display = ''; } else { badge.style.display = 'none'; }
+    }
+    if (el('ssOpenSev')) {
+      const bs = stats.by_severity || {};
+      el('ssOpenSev').textContent = ((bs.high || 0) + (bs.critical || 0)).toLocaleString();
+    }
+    if (el('ssIncCount')) el('ssIncCount').textContent = incs.length + ' incident' + (incs.length === 1 ? '' : 's');
+
+    const body = el('ssIncidentsBody');
+    if (!body) return;
+    const cols = 'grid-template-columns:1fr 110px 110px 110px 110px 90px';
+    body.innerHTML = incs.length ? incs.map(i => {
+      const lastSeen = i.last_seen_ms ? new Date(i.last_seen_ms).toLocaleString() : '—';
+      const sevCol = _ssSevColor(i.severity);
+      const statusBadge = i.status === 'resolved'
+        ? '<span style="padding:2px 8px;border-radius:10px;background:rgba(51,204,153,.15);color:var(--ok);font-size:10px;font-weight:600">RESOLVED</span>'
+        : '<span style="padding:2px 8px;border-radius:10px;background:rgba(255,51,51,.15);color:var(--crit);font-size:10px;font-weight:600">OPEN</span>';
+      return `<div class="tbl-r" style="${cols}">
+        <span class="tbl-pri">${escapeHtml(i.source)}</span>
+        <span class="tbl-mono">${escapeHtml(i.kind || '—')}</span>
+        <span style="font-family:var(--font-mono);font-weight:600;color:${sevCol}">${escapeHtml(i.severity)}</span>
+        <span class="tbl-time">${lastSeen}</span>
+        <span class="tbl-mono">${_ssFmtGap(i.gap_minutes)} (≥${i.threshold_min}m)</span>
+        <span>${statusBadge}</span>
+      </div>`;
+    }).join('') : `<div class="sigil-block"><div class="sigil-text"><h4>No ${escapeHtml(status)} incidents</h4><p>Sources sending events within their threshold.</p></div></div>`;
+  }
+
+  async function _ssLoadThresholds() {
+    const data = await fetchJson(API.silentThresh).catch(() => ({ thresholds: [] }));
+    const ts = data.thresholds || [];
+    const enabledN = ts.filter(t => t.enabled).length;
+    const el = id => document.getElementById(id);
+    if (el('ssThresholdCount')) el('ssThresholdCount').textContent = enabledN.toLocaleString();
+    const body = el('ssThresholdsBody');
+    if (!body) return;
+    const cols = 'grid-template-columns:50px 1fr 100px 90px 100px 60px 1fr 130px';
+    body.innerHTML = ts.length ? ts.map(t => {
+      const onBadge = t.enabled
+        ? '<span style="padding:2px 6px;border-radius:8px;background:rgba(51,204,153,.15);color:var(--ok);font-size:10px;font-weight:600">ON</span>'
+        : '<span style="padding:2px 6px;border-radius:8px;background:rgba(140,140,140,.15);color:var(--fg-3);font-size:10px;font-weight:600">OFF</span>';
+      return `<div class="tbl-r" style="${cols}">
+        <span>${onBadge}</span>
+        <span class="tbl-mono">${escapeHtml(t.source_pattern)}</span>
+        <span class="tbl-mono">${escapeHtml(t.kind)}</span>
+        <span class="tbl-mono">${t.minutes}m</span>
+        <span style="font-family:var(--font-mono);font-weight:600;color:${_ssSevColor(t.severity)}">${escapeHtml(t.severity)}</span>
+        <span class="tbl-mono">${t.notify ? '✓' : '—'}</span>
+        <span style="color:var(--fg-3);font-size:11px" title="${escapeHtml(t.reason || '')}">${escapeHtml(t.reason || '—')}</span>
+        <span style="display:flex;gap:4px">
+          <button type="button" class="act-btn ss-edit" data-id="${t.id}" style="height:22px;padding:0 8px;font-size:11px">Edit</button>
+          <button type="button" class="act-btn ss-delete" data-id="${t.id}" style="height:22px;padding:0 8px;font-size:11px;color:var(--crit)">Del</button>
+        </span>
+      </div>`;
+    }).join('') : `<div class="sigil-block"><div class="sigil-text"><h4>No thresholds defined</h4><p>Click <strong>+ New threshold</strong> to set per-source silence limits. Sources without a match fall back to the default of 15 minutes.</p></div></div>`;
+
+    body.querySelectorAll('.ss-edit').forEach(b => b.addEventListener('click', () => {
+      const id = b.getAttribute('data-id');
+      const t = ts.find(x => String(x.id) === id);
+      if (t) _ssOpenDrawer(t);
+    }));
+    body.querySelectorAll('.ss-delete').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Delete this threshold?')) return;
+      await fetch(`${API.silentThresh}/${b.getAttribute('data-id')}`, { method: 'DELETE', credentials: 'same-origin' });
+      _ssLoadThresholds(); _ssLoadIncidents();
+    }));
+  }
+
+  function _ssOpenDrawer(t) {
+    const el = id => document.getElementById(id);
+    el('ssDrawer').classList.remove('hidden');
+    el('ssDrawerTitle').textContent = t ? 'Edit threshold' : 'New threshold';
+    el('ssEditId').value = t ? t.id : '';
+    el('ssPattern').value = t ? t.source_pattern : '';
+    el('ssKind').value = t ? t.kind : 'agent';
+    el('ssMinutes').value = t ? t.minutes : 15;
+    el('ssSeverity').value = t ? t.severity : 'medium';
+    el('ssReason').value = t ? t.reason || '' : '';
+    el('ssEnabled').checked = t ? !!t.enabled : true;
+    el('ssNotify').checked = t ? !!t.notify : true;
+  }
+
+  function _ssCloseDrawer() {
+    const d = document.getElementById('ssDrawer');
+    if (d) d.classList.add('hidden');
+  }
+
+  async function _ssSave() {
+    const el = id => document.getElementById(id);
+    const id = el('ssEditId').value;
+    const body = {
+      source_pattern: el('ssPattern').value.trim(),
+      kind: el('ssKind').value,
+      minutes: parseInt(el('ssMinutes').value, 10) || 15,
+      severity: el('ssSeverity').value,
+      reason: el('ssReason').value.trim(),
+      enabled: el('ssEnabled').checked,
+      notify: el('ssNotify').checked,
+    };
+    if (!body.source_pattern) { alert('Source pattern is required.'); return; }
+    const method = id ? 'PUT' : 'POST';
+    const url = id ? `${API.silentThresh}/${id}` : API.silentThresh;
+    const res = await fetch(url, {
+      method, credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      alert('Save failed: ' + await res.text());
+      return;
+    }
+    _ssCloseDrawer();
+    _ssLoadThresholds();
+    _ssLoadIncidents();
+  }
+
+  let _ssWired = false;
+  async function loadSilentSourcesPage() {
+    await Promise.all([_ssLoadIncidents(), _ssLoadThresholds()]);
+    if (_ssWired) return;
+    _ssWired = true;
+    const el = id => document.getElementById(id);
+    el('ssAddThreshold') && el('ssAddThreshold').addEventListener('click', () => _ssOpenDrawer(null));
+    el('ssDrawerClose')  && el('ssDrawerClose').addEventListener('click', _ssCloseDrawer);
+    el('ssCancel')       && el('ssCancel').addEventListener('click', _ssCloseDrawer);
+    el('ssSave')         && el('ssSave').addEventListener('click', _ssSave);
+    el('ssIncStatus')    && el('ssIncStatus').addEventListener('change', _ssLoadIncidents);
+    el('ssRunNow')       && el('ssRunNow').addEventListener('click', async () => {
+      const btn = el('ssRunNow');
+      btn.disabled = true; const o = btn.textContent; btn.textContent = 'Checking…';
+      try {
+        await fetch(API.silentRunNow, { method: 'POST', credentials: 'same-origin' });
+        await Promise.all([_ssLoadIncidents(), _ssLoadThresholds()]);
+      } finally { btn.disabled = false; btn.textContent = o; }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Log Filters / Whitelist — operator-defined suppression rules applied at
+  // query time to drop known-good noise from Logs + alert views.
+  // ---------------------------------------------------------------------------
+  async function _lfFetchRules() {
+    const data = await fetchJson(API.logFilters).catch(() => ({ rules: [] }));
+    return data.rules || [];
+  }
+
+  function _lfRowHtml(r) {
+    const cols = 'grid-template-columns:60px 1fr 140px 90px 140px 1fr 120px 160px';
+    const enabledBadge = r.enabled
+      ? '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:rgba(51,204,153,.15);color:var(--ok);font-size:10px;font-weight:600">ON</span>'
+      : '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:rgba(140,140,140,.15);color:var(--fg-3);font-size:10px;font-weight:600">OFF</span>';
+    return `<div class="tbl-r" style="${cols}">
+      <span>${enabledBadge}</span>
+      <span class="tbl-pri" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</span>
+      <span class="tbl-mono" title="${escapeHtml(r.match_field)}">${escapeHtml(r.match_field)}</span>
+      <span class="tbl-mono">${escapeHtml(r.match_op)}</span>
+      <span class="tbl-mono" title="${escapeHtml(r.match_value)}">${escapeHtml(r.match_value)}</span>
+      <span style="color:var(--fg-3);font-size:11px" title="${escapeHtml(r.reason || '')}">${escapeHtml(r.reason || '—')}</span>
+      <span class="tbl-mono">${escapeHtml(r.scope)}</span>
+      <span style="display:flex;gap:4px">
+        <button type="button" class="act-btn lf-toggle"  data-id="${r.id}" style="height:22px;padding:0 8px;font-size:11px">${r.enabled ? 'Disable' : 'Enable'}</button>
+        <button type="button" class="act-btn lf-edit"    data-id="${r.id}" style="height:22px;padding:0 8px;font-size:11px">Edit</button>
+        <button type="button" class="act-btn lf-delete"  data-id="${r.id}" style="height:22px;padding:0 8px;font-size:11px;color:var(--crit)">Del</button>
+      </span>
+    </div>`;
+  }
+
+  async function _lfRender() {
+    const rules = await _lfFetchRules();
+    const el = id => document.getElementById(id);
+    if (el('lfCount')) el('lfCount').textContent = rules.length + ' rule' + (rules.length === 1 ? '' : 's');
+    const body = el('lfBody');
+    if (!body) return;
+    body.innerHTML = rules.length
+      ? rules.map(_lfRowHtml).join('')
+      : `<div class="sigil-block"><div class="sigil-text"><h4>No filters yet</h4><p>Click <strong>+ New filter</strong> to suppress noisy known-good events.</p></div></div>`;
+    body.querySelectorAll('.lf-toggle').forEach(b => b.addEventListener('click', () => _lfToggle(b.getAttribute('data-id'))));
+    body.querySelectorAll('.lf-edit').forEach(b => b.addEventListener('click', () => _lfEdit(rules.find(r => String(r.id) === b.getAttribute('data-id')))));
+    body.querySelectorAll('.lf-delete').forEach(b => b.addEventListener('click', () => _lfDelete(b.getAttribute('data-id'))));
+  }
+
+  function _lfOpenDrawer(rule) {
+    const el = id => document.getElementById(id);
+    el('lfDrawer').classList.remove('hidden');
+    el('lfDrawerTitle').textContent = rule ? 'Edit filter' : 'New filter';
+    el('lfEditId').value = rule ? rule.id : '';
+    el('lfName').value = rule ? rule.name : '';
+    el('lfScope').value = rule ? rule.scope : 'both';
+    el('lfField').value = rule ? rule.match_field : '';
+    el('lfOp').value = rule ? rule.match_op : 'equals';
+    el('lfValue').value = rule ? rule.match_value : '';
+    el('lfReason').value = rule ? rule.reason || '' : '';
+    el('lfEnabled').checked = rule ? !!rule.enabled : true;
+  }
+
+  function _lfCloseDrawer() {
+    const d = document.getElementById('lfDrawer');
+    if (d) d.classList.add('hidden');
+  }
+
+  function _lfEdit(rule) { if (rule) _lfOpenDrawer(rule); }
+
+  async function _lfSave() {
+    const el = id => document.getElementById(id);
+    const id = el('lfEditId').value;
+    const body = {
+      name: el('lfName').value.trim(),
+      scope: el('lfScope').value,
+      match_field: el('lfField').value.trim(),
+      match_op: el('lfOp').value,
+      match_value: el('lfValue').value.trim(),
+      reason: el('lfReason').value.trim(),
+      enabled: el('lfEnabled').checked,
+    };
+    if (!body.name || !body.match_field || !body.match_value) {
+      alert('Name, field, and value are required.');
+      return;
+    }
+    const method = id ? 'PUT' : 'POST';
+    const url = id ? `${API.logFilters}/${id}` : API.logFilters;
+    const res = await fetch(url, {
+      method, credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      alert('Save failed: ' + t);
+      return;
+    }
+    _lfCloseDrawer();
+    _lfRender();
+  }
+
+  async function _lfToggle(id) {
+    await fetch(`${API.logFilters}/${id}/toggle`, { method: 'POST', credentials: 'same-origin' });
+    _lfRender();
+  }
+
+  async function _lfDelete(id) {
+    if (!confirm('Delete this filter?')) return;
+    await fetch(`${API.logFilters}/${id}`, { method: 'DELETE', credentials: 'same-origin' });
+    _lfRender();
+  }
+
+  let _lfWired = false;
+  async function loadLogFiltersPage() {
+    await _lfRender();
+    if (_lfWired) return;
+    _lfWired = true;
+    const el = id => document.getElementById(id);
+    el('lfAddBtn')      && el('lfAddBtn').addEventListener('click', () => _lfOpenDrawer(null));
+    el('lfDrawerClose') && el('lfDrawerClose').addEventListener('click', _lfCloseDrawer);
+    el('lfCancel')      && el('lfCancel').addEventListener('click', _lfCloseDrawer);
+    el('lfSave')        && el('lfSave').addEventListener('click', _lfSave);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Retention — index lifecycle visibility + force purge (super_admin only).
+  // ---------------------------------------------------------------------------
+  function _retFmtBytes(n) {
+    if (n == null || isNaN(n)) return '—';
+    const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0, v = n;
+    while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+    return v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2) + ' ' + u[i];
+  }
+
+  async function _retLoad() {
+    const el = id => document.getElementById(id);
+    const data = await fetchJson(API.retention).catch(() => null);
+    if (!data) {
+      if (el('retIndicesBody')) el('retIndicesBody').innerHTML = '<div class="sigil-block"><div class="sigil-text"><h4>Failed to load</h4></div></div>';
+      return;
+    }
+    if (el('retTotalIndices')) el('retTotalIndices').textContent = (data.total_indices || 0).toLocaleString();
+    if (el('retTotalSize'))    el('retTotalSize').textContent    = _retFmtBytes(data.total_size_bytes || 0);
+    if (el('retTotalDocs'))    el('retTotalDocs').textContent    = (data.total_docs || 0).toLocaleString();
+    if (el('retConfigured'))   el('retConfigured').textContent   = data.configured_retention_days != null ? (data.configured_retention_days + 'd') : '—';
+
+    const fams = data.families || [];
+    const famBody = el('retFamiliesBody');
+    if (famBody) {
+      const famCols = 'grid-template-columns:160px 100px 140px 140px 130px 130px';
+      famBody.innerHTML = fams.length ? fams.map(f => `<div class="tbl-r" style="${famCols}">
+        <span class="tbl-mono">${escapeHtml(f.family)}</span>
+        <span class="tbl-mono">${f.indices.toLocaleString()}</span>
+        <span class="tbl-mono">${_retFmtBytes(f.size_bytes)}</span>
+        <span class="tbl-mono">${f.docs.toLocaleString()}</span>
+        <span class="tbl-mono">${f.youngest_days != null ? f.youngest_days + 'd ago' : '—'}</span>
+        <span class="tbl-mono">${f.oldest_days != null ? f.oldest_days + 'd ago' : '—'}</span>
+      </div>`).join('') : '<div class="sigil-block"><div class="sigil-text"><h4>No indices yet</h4></div></div>';
+    }
+
+    const items = data.indices || [];
+    const filter = ((el('retFilter') && el('retFilter').value) || '').toLowerCase();
+    const filtered = filter ? items.filter(i => i.name.toLowerCase().includes(filter)) : items;
+    if (el('retIndicesCount')) el('retIndicesCount').textContent = filtered.length + (filter ? ' / ' + items.length : '') + ' indices';
+    const body = el('retIndicesBody');
+    if (body) {
+      const cols = 'grid-template-columns:1fr 120px 100px 110px 110px 80px';
+      const healthColor = h => h === 'red' ? 'var(--crit)' : h === 'yellow' ? 'var(--high)' : 'var(--ok)';
+      body.innerHTML = filtered.length ? filtered.map(i => `<div class="tbl-r" style="${cols}">
+        <span class="tbl-mono">${escapeHtml(i.name)}</span>
+        <span class="tbl-mono">${escapeHtml(i.family)}</span>
+        <span class="tbl-mono">${i.age_days != null ? i.age_days : '—'}</span>
+        <span class="tbl-mono">${_retFmtBytes(i.size_bytes)}</span>
+        <span class="tbl-mono">${i.docs.toLocaleString()}</span>
+        <span style="font-family:var(--font-mono);color:${healthColor(i.health)}">${escapeHtml(i.health || '—')}</span>
+      </div>`).join('') : '<div class="sigil-block"><div class="sigil-text"><h4>No indices match</h4></div></div>';
+    }
+  }
+
+  async function _retPurge(dryRun) {
+    const el = id => document.getElementById(id);
+    const days = parseInt((el('retPurgeDays') && el('retPurgeDays').value) || '0', 10);
+    if (!days || days < 1) { alert('Enter a number of days ≥ 1.'); return; }
+    const famRaw = ((el('retPurgeFamilies') && el('retPurgeFamilies').value) || '').trim();
+    const families = famRaw ? famRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+    if (!dryRun) {
+      const confirmMsg = `Delete indices older than ${days} days` +
+        (families.length ? ` in families: ${families.join(', ')}` : ' (all families)') +
+        '?\n\nThis cannot be undone.';
+      if (!confirm(confirmMsg)) return;
+    }
+    const res = await fetch(API.retentionPurge, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ older_than_days: days, families, dry_run: dryRun }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (el('retPurgeResult')) el('retPurgeResult').textContent = 'Error: ' + (j.error || res.status);
+      return;
+    }
+    const list = dryRun ? (j.would_delete || []) : (j.deleted || []);
+    const msg = dryRun
+      ? `Dry run: ${j.matched} indices would be deleted` + (list.length ? ' — ' + list.slice(0, 5).map(x => x.name).join(', ') + (list.length > 5 ? '…' : '') : '')
+      : `Deleted ${(j.deleted || []).length} indices` + ((j.failed || []).length ? ` (${j.failed.length} failed)` : '');
+    if (el('retPurgeResult')) el('retPurgeResult').textContent = msg;
+    if (!dryRun) _retLoad();
+  }
+
+  let _retWired = false;
+  async function loadRetentionPage() {
+    await _retLoad();
+    if (_retWired) return;
+    _retWired = true;
+    const el = id => document.getElementById(id);
+    el('retRefresh')     && el('retRefresh').addEventListener('click', _retLoad);
+    el('retFilter')      && el('retFilter').addEventListener('input', _retLoad);
+    el('retPurgeDryRun') && el('retPurgeDryRun').addEventListener('click', () => _retPurge(true));
+    el('retPurgeRun')    && el('retPurgeRun').addEventListener('click', () => _retPurge(false));
+  }
+
+  // ---------------------------------------------------------------------------
+  // System Logs viewer (super_admin only) — pulls docker/file output for the
+  // SIEM's own services so operators don't need to SSH.
+  // ---------------------------------------------------------------------------
+  let _sysLogsService = 'watchtower';
+  let _sysLogsTimer = null;
+
+  function _sysLogsRenderTabs(services) {
+    const wrap = document.getElementById('sysLogsTabs');
+    if (!wrap) return;
+    wrap.innerHTML = services.map(s => {
+      const active = s.name === _sysLogsService;
+      return `<button type="button" class="act-btn sys-tab" data-name="${escapeHtml(s.name)}" style="height:28px;padding:0 12px;font-size:12px;${active ? 'background:var(--accent);color:#fff' : ''}">${escapeHtml(s.name)}</button>`;
+    }).join('');
+    wrap.querySelectorAll('.sys-tab').forEach(b => b.addEventListener('click', () => {
+      _sysLogsService = b.getAttribute('data-name');
+      _sysLogsRenderTabs(services);
+      _sysLogsLoad();
+    }));
+  }
+
+  async function _sysLogsLoad() {
+    const el = id => document.getElementById(id);
+    const lines = parseInt((el('sysLogsLines') || {}).value || '200', 10);
+    const data = await fetchJson(`${API.sysLogsRead}?service=${encodeURIComponent(_sysLogsService)}&lines=${lines}`).catch(() => null);
+    if (!data) {
+      if (el('sysLogsBody')) el('sysLogsBody').textContent = '(failed to load)';
+      return;
+    }
+    const allLines = data.lines || [];
+    const grep = ((el('sysLogsGrep') || {}).value || '').toLowerCase();
+    const filtered = grep ? allLines.filter(l => l.toLowerCase().includes(grep)) : allLines;
+    if (el('sysLogsSource')) el('sysLogsSource').textContent = data.source || '—';
+    if (el('sysLogsHits')) el('sysLogsHits').textContent = `${filtered.length}${grep ? ' / ' + allLines.length : ''} lines`;
+    if (el('sysLogsStatusDot')) {
+      el('sysLogsStatusDot').style.background = data.error ? 'var(--crit)' : 'var(--ok)';
+    }
+    const body = el('sysLogsBody');
+    if (body) {
+      if (data.error) {
+        body.textContent = `⚠ ${data.error}\n\n${data.hint || ''}`;
+        body.style.color = 'var(--high)';
+      } else {
+        body.textContent = filtered.join('\n');
+        body.style.color = 'var(--fg-2)';
+        body.scrollTop = body.scrollHeight; // auto-scroll to tail
+      }
+    }
+  }
+
+  let _sysLogsWired = false;
+  async function loadSystemLogsPage() {
+    const svcs = await fetchJson(API.sysLogsList).catch(() => ({ services: [] }));
+    _sysLogsRenderTabs(svcs.services || []);
+    await _sysLogsLoad();
+    if (_sysLogsWired) return;
+    _sysLogsWired = true;
+    const el = id => document.getElementById(id);
+    el('sysLogsRefresh')      && el('sysLogsRefresh').addEventListener('click', _sysLogsLoad);
+    el('sysLogsLines')        && el('sysLogsLines').addEventListener('change', _sysLogsLoad);
+    el('sysLogsGrep')         && el('sysLogsGrep').addEventListener('input', _sysLogsLoad);
+    el('sysLogsAutoRefresh')  && el('sysLogsAutoRefresh').addEventListener('change', e => {
+      if (_sysLogsTimer) { clearInterval(_sysLogsTimer); _sysLogsTimer = null; }
+      if (e.target.checked) _sysLogsTimer = setInterval(_sysLogsLoad, 5000);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Configuration Audit Log (super_admin only) — who changed what, when.
+  // ---------------------------------------------------------------------------
+  let _cfgAuditOffset = 0;
+  let _cfgAuditLast = [];
+
+  function _cfgAuditParams() {
+    const el = id => document.getElementById(id);
+    const size = 50;
+    const bounds = getTimeRangeBounds((el('cfgAuditTimeRange') && el('cfgAuditTimeRange').value) || '24h');
+    const p = new URLSearchParams();
+    p.set('size', size);
+    p.set('offset', _cfgAuditOffset);
+    if (bounds.from) p.set('time_from', bounds.from);
+    if (bounds.to) p.set('time_to', bounds.to);
+    const user = ((el('cfgAuditUser') && el('cfgAuditUser').value) || '').trim();
+    if (user) p.set('user', user);
+    const target = ((el('cfgAuditTarget') && el('cfgAuditTarget').value) || '').trim();
+    if (target) p.set('target_prefix', target);
+    const action = (el('cfgAuditAction') && el('cfgAuditAction').value) || '';
+    if (action) p.set('action', action);
+    if (el('cfgAuditOnlyFailures') && el('cfgAuditOnlyFailures').checked) p.set('only_failures', '1');
+    return { params: p, size };
+  }
+
+  async function _cfgAuditReload() {
+    const el = id => document.getElementById(id);
+    const { params, size } = _cfgAuditParams();
+    const data = await fetchJson(API.cfgAuditLog + '?' + params.toString()).catch(() => ({ hits: [], total: 0 }));
+    const hits = data.hits || [];
+    _cfgAuditLast = hits;
+    const total = data.total || 0;
+    if (el('cfgAuditHits')) el('cfgAuditHits').textContent = total.toLocaleString() + ' entries';
+    if (el('cfgAuditInfo')) el('cfgAuditInfo').textContent = `Showing ${hits.length} of ${total.toLocaleString()}`;
+    if (el('cfgAuditPageInfo')) el('cfgAuditPageInfo').textContent = `Page ${Math.floor(_cfgAuditOffset / size) + 1}`;
+    if (el('cfgAuditPrev')) el('cfgAuditPrev').disabled = _cfgAuditOffset === 0;
+    if (el('cfgAuditNext')) el('cfgAuditNext').disabled = (_cfgAuditOffset + size) >= total;
+
+    const tbody = el('cfgAuditBody');
+    if (!tbody) return;
+    const cols = 'grid-template-columns:160px 110px 110px 70px 1fr 80px 60px 70px';
+    tbody.innerHTML = hits.length ? hits.map((r, i) => {
+      const ts = r.ts_ms ? new Date(r.ts_ms).toLocaleString() : '—';
+      const user = escapeHtml(r.user || '—');
+      const role = escapeHtml(r.role || '—');
+      const method = escapeHtml(r.method || '');
+      const targetLabel = escapeHtml(r.target || r.path || '—');
+      const action = escapeHtml(r.action || '');
+      const status = parseInt(r.status, 10) || 0;
+      const statusColor = status >= 500 ? 'var(--crit)' : status >= 400 ? 'var(--high)' : status >= 200 ? 'var(--ok)' : 'var(--fg-3)';
+      return `<div class="tbl-r" style="${cols}">
+        <span class="tbl-time">${ts}</span>
+        <span class="tbl-mono">${user}</span>
+        <span class="tbl-mono">${role}</span>
+        <span class="tbl-mono">${method}</span>
+        <span class="tbl-pri" title="${escapeHtml(r.path || '')}">${targetLabel}</span>
+        <span class="tbl-mono">${action}</span>
+        <span style="font-family:var(--font-mono);font-weight:600;color:${statusColor}">${status}</span>
+        <span><button type="button" class="act-btn cfg-audit-view" data-idx="${i}" style="height:22px;padding:0 8px;font-size:11px">View</button></span>
+      </div>`;
+    }).join('') : `<div class="sigil-block"><div class="sigil-text"><h4>No audit entries</h4><p>Make a configuration change (rule edit, decoder save, dashboard save) and it will be recorded here.</p></div></div>`;
+
+    tbody.querySelectorAll('.cfg-audit-view').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.getAttribute('data-idx'), 10);
+        const el2 = id => document.getElementById(id);
+        const drawer = el2('cfgAuditDetailDrawer');
+        const body = el2('cfgAuditDetailBody');
+        if (drawer && body) {
+          body.textContent = JSON.stringify(_cfgAuditLast[idx], null, 2);
+          drawer.classList.remove('hidden');
+        }
+      });
+    });
+  }
+
+  async function _cfgAuditRefreshStats() {
+    const el = id => document.getElementById(id);
+    const data = await fetchJson(API.cfgAuditStats).catch(() => null);
+    if (!data) return;
+    if (el('cfgAuditTotal'))    el('cfgAuditTotal').textContent    = (data.total || 0).toLocaleString();
+    if (el('cfgAuditFailures')) el('cfgAuditFailures').textContent = (data.failures || 0).toLocaleString();
+    const u = (data.by_user || [])[0];
+    const t = (data.by_target || [])[0];
+    if (el('cfgAuditTopUser'))       el('cfgAuditTopUser').textContent       = u ? u.user : '—';
+    if (el('cfgAuditTopUserCount'))  el('cfgAuditTopUserCount').textContent  = u ? (u.count + ' actions') : '—';
+    if (el('cfgAuditTopTarget'))     el('cfgAuditTopTarget').textContent     = t ? t.target : '—';
+    if (el('cfgAuditTopTargetCount'))el('cfgAuditTopTargetCount').textContent= t ? (t.count + ' actions') : '—';
+  }
+
+  let _cfgAuditWired = false;
+  async function loadConfigAuditPage() {
+    _cfgAuditOffset = 0;
+    await Promise.all([_cfgAuditReload(), _cfgAuditRefreshStats()]);
+
+    if (_cfgAuditWired) return;
+    _cfgAuditWired = true;
+    const el = id => document.getElementById(id);
+    const apply = () => { _cfgAuditOffset = 0; _cfgAuditReload(); _cfgAuditRefreshStats(); };
+    el('cfgAuditApply') && el('cfgAuditApply').addEventListener('click', apply);
+    el('cfgAuditReset') && el('cfgAuditReset').addEventListener('click', () => {
+      ['cfgAuditUser', 'cfgAuditTarget'].forEach(id => { if (el(id)) el(id).value = ''; });
+      if (el('cfgAuditAction')) el('cfgAuditAction').value = '';
+      if (el('cfgAuditTimeRange')) el('cfgAuditTimeRange').value = '24h';
+      if (el('cfgAuditOnlyFailures')) el('cfgAuditOnlyFailures').checked = false;
+      apply();
+    });
+    ['cfgAuditUser', 'cfgAuditTarget'].forEach(id => {
+      el(id) && el(id).addEventListener('keydown', e => { if (e.key === 'Enter') apply(); });
+    });
+    el('cfgAuditAction') && el('cfgAuditAction').addEventListener('change', apply);
+    el('cfgAuditTimeRange') && el('cfgAuditTimeRange').addEventListener('change', apply);
+    el('cfgAuditOnlyFailures') && el('cfgAuditOnlyFailures').addEventListener('change', apply);
+    el('cfgAuditPrev') && el('cfgAuditPrev').addEventListener('click', () => {
+      const { size } = _cfgAuditParams();
+      if (_cfgAuditOffset >= size) { _cfgAuditOffset -= size; _cfgAuditReload(); }
+    });
+    el('cfgAuditNext') && el('cfgAuditNext').addEventListener('click', () => {
+      const { size } = _cfgAuditParams();
+      _cfgAuditOffset += size; _cfgAuditReload();
+    });
+    el('cfgAuditDetailClose') && el('cfgAuditDetailClose').addEventListener('click', () => {
+      const drawer = el('cfgAuditDetailDrawer');
+      if (drawer) drawer.classList.add('hidden');
+    });
   }
 
   // ---------------------------------------------------------------------------
