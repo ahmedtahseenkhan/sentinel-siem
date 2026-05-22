@@ -101,10 +101,15 @@
     <p><strong>Step 1.</strong> Download the agent package:</p>
     <p><a class="download" href="/deploy/agent/windows">⬇ Download SentinelAgent.zip</a></p>
 
-    <p style="margin-top: 24px;"><strong>Step 2.</strong> Extract and run as Administrator:</p>
-    <pre id="win-cmd"><button class="copy-btn" data-target="win-cmd">Copy</button><code>Expand-Archive SentinelAgent.zip -DestinationPath C:\
-cd C:\SentinelAgent
-.\install.ps1 -ServerIP {{ server_ip }} -Token "{{ enroll_token }}"</code></pre>
+    <p style="margin-top: 24px;"><strong>Step 2.</strong> Open <b>PowerShell</b> (any user, NOT cmd) and paste this single block:</p>
+    <pre id="win-cmd"><button class="copy-btn" data-target="win-cmd">Copy</button><code>Expand-Archive -Force "$HOME\Downloads\SentinelAgent.zip" -DestinationPath C:\
+Set-Location C:\SentinelAgent
+powershell.exe -ExecutionPolicy Bypass -File .\install.ps1 -ServerIP {{ server_ip }} -Token "{{ enroll_token }}"</code></pre>
+    <div class="note" style="background:#1c2128;border-left-color:#9e6a03;">
+      <b>Note:</b> The installer auto-elevates — a UAC prompt appears asking for admin.
+      Click <b>Yes</b>. The agent installs to <code>C:\Program Files\SentinelAgent\</code>;
+      <code>C:\SentinelAgent\</code> is just the temporary extract folder and can be deleted afterwards.
+    </div>
 
     <p style="margin-top: 16px;"><strong>Or remote-deploy to a fleet from a domain admin machine:</strong></p>
     <pre id="win-bulk"><button class="copy-btn" data-target="win-bulk">Copy</button><code>.\deploy-to-all-machines.ps1 -ServerIP {{ server_ip }} -CsvFile machines.csv</code></pre>

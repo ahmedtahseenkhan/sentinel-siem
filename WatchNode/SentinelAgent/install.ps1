@@ -1,13 +1,11 @@
-#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
     Sentinel Core SIEM Agent Installer for Windows
 .DESCRIPTION
     Installs the Sentinel WatchNode agent as a Windows service.
-    Must be run as Administrator.
+    Auto-elevates to Administrator if needed.
 .EXAMPLE
-    .\install.ps1
-    .\install.ps1 -ServerIP "192.168.1.100" -Silent
+    .\install.ps1 -ServerIP "192.168.1.100"
 #>
 
 param(
@@ -21,6 +19,28 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Auto-elevate to Administrator if not already elevated. Without this, running
+# from a normal PowerShell prompt silently exits because of #Requires; running
+# from cmd.exe opens this file in Notepad because of the .ps1 file association.
+$principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host "Re-launching as Administrator..." -ForegroundColor Yellow
+    $argsList = @(
+        "-NoExit",
+        "-ExecutionPolicy", "Bypass",
+        "-File", "`"$PSCommandPath`""
+    )
+    if ($ServerIP)   { $argsList += @("-ServerIP", $ServerIP) }
+    if ($ServerPort) { $argsList += @("-ServerPort", $ServerPort) }
+    if ($Token)      { $argsList += @("-Token", "`"$Token`"") }
+    if ($Silent)     { $argsList += "-Silent" }
+    if ($Uninstall)  { $argsList += "-Uninstall" }
+    if ($SkipSysmon) { $argsList += "-SkipSysmon" }
+    if ($SkipAuditPol) { $argsList += "-SkipAuditPol" }
+    Start-Process powershell.exe -Verb RunAs -ArgumentList $argsList
+    exit
+}
 $ServiceName   = "SentinelAgent"
 $DisplayName   = "Sentinel Core SIEM Agent"
 $InstallDir    = "C:\Program Files\SentinelAgent"
