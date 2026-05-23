@@ -1,0 +1,631 @@
+# PCI-DSS v4.0 Compliance Detection Rules
+# IDs 19100-19149 (50 rules)
+# Covers cardholder data environment (CDE) monitoring requirements
+
+- id: 19100
+  level: 10
+  description: "PCI Req 2.2: Default vendor account login attempt"
+  groups: [compliance, pci_dss, req_2]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4625}
+      target_user: {regex: "(?i)^(admin|administrator|root|sa|oracle|guest|test|demo)$"}
+  mitre:
+    - {tactic_id: "TA0001", technique_id: "T1078.001", technique_name: "Default Accounts"}
+  alert: {title: "PCI 2.2 violation: default account login attempt"}
+  enabled: true
+
+- id: 19101
+  level: 12
+  description: "PCI Req 3.4: Unencrypted PAN detected in log content"
+  groups: [compliance, pci_dss, req_3, dlp]
+  match:
+    type: "log.file"
+    fields:
+      message: {regex: "\\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\\b"}
+  alert: {title: "PCI 3.4 violation: unencrypted PAN in log stream"}
+  enabled: true
+
+- id: 19102
+  level: 11
+  description: "PCI Req 4.1: Cleartext transmission of cardholder data (HTTP POST to CDE)"
+  groups: [compliance, pci_dss, req_4]
+  match:
+    type: "log.file"
+    fields:
+      protocol: {equals: "http"}
+      uri: {regex: "(?i)(checkout|payment|card|pan|cvv)"}
+  alert: {title: "PCI 4.1 violation: cleartext payment data transmission"}
+  enabled: true
+
+- id: 19103
+  level: 9
+  description: "PCI Req 5.2: Anti-malware service stopped on CDE host"
+  groups: [compliance, pci_dss, req_5]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 7036}
+      service_name: {regex: "(?i)(defender|sentinel|crowdstrike|symantec|mcafee|sophos)"}
+      state: {equals: "stopped"}
+  mitre:
+    - {tactic_id: "TA0005", technique_id: "T1562.001", technique_name: "Disable Security Tools"}
+  alert: {title: "PCI 5.2 violation: anti-malware service stopped"}
+  enabled: true
+
+- id: 19104
+  level: 8
+  description: "PCI Req 6.4: Production change without change-control approval"
+  groups: [compliance, pci_dss, req_6]
+  match:
+    type: "log.file"
+    fields:
+      env: {equals: "production"}
+      action: {equals: "deploy"}
+      change_ticket: {equals: ""}
+  alert: {title: "PCI 6.4 violation: unapproved production change"}
+  enabled: true
+
+- id: 19105
+  level: 10
+  description: "PCI Req 7.1: Privileged role granted without business justification"
+  groups: [compliance, pci_dss, req_7, rbac]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4728}
+      group_name: {regex: "(?i)(domain admins|enterprise admins|administrators)"}
+  mitre:
+    - {tactic_id: "TA0004", technique_id: "T1098", technique_name: "Account Manipulation"}
+  alert: {title: "PCI 7.1 review: privileged role grant"}
+  enabled: true
+
+- id: 19106
+  level: 9
+  description: "PCI Req 8.1.6: Account locked after >6 failed logins"
+  groups: [compliance, pci_dss, req_8]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4740}
+  alert: {title: "PCI 8.1.6: account lockout (audit confirmation)"}
+  enabled: true
+
+- id: 19107
+  level: 11
+  description: "PCI Req 8.2.3: Weak password set (less than 12 chars detected via policy log)"
+  groups: [compliance, pci_dss, req_8]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4723}
+      password_length: {regex: "^([0-9]|1[01])$"}
+  alert: {title: "PCI 8.2.3 violation: weak password set"}
+  enabled: true
+
+- id: 19108
+  level: 12
+  description: "PCI Req 8.3: Admin access to CDE without MFA"
+  groups: [compliance, pci_dss, req_8, mfa]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      logon_type: {equals: "10"}
+      mfa_used: {equals: "false"}
+      target_user: {regex: "(?i)admin"}
+  mitre:
+    - {tactic_id: "TA0001", technique_id: "T1078", technique_name: "Valid Accounts"}
+  alert: {title: "PCI 8.3 violation: admin CDE access without MFA"}
+  enabled: true
+
+- id: 19109
+  level: 10
+  description: "PCI Req 9.1: Physical access door forced/unauthorized"
+  groups: [compliance, pci_dss, req_9, physical]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {contains: "badge"}
+      event: {regex: "(?i)(forced|denied|tailgate)"}
+  alert: {title: "PCI 9.1 violation: physical access anomaly"}
+  enabled: true
+
+- id: 19110
+  level: 11
+  description: "PCI Req 10.2.1: Audit log access by unauthorized user"
+  groups: [compliance, pci_dss, req_10]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1102}
+  mitre:
+    - {tactic_id: "TA0005", technique_id: "T1070.001", technique_name: "Clear Windows Event Logs"}
+  alert: {title: "PCI 10.2.1 violation: audit log cleared"}
+  enabled: true
+
+- id: 19111
+  level: 10
+  description: "PCI Req 10.2.4: Failed access to audit trail"
+  groups: [compliance, pci_dss, req_10]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4656}
+      object_name: {regex: "(?i)(security\\.evtx|audit)"}
+      access_result: {equals: "denied"}
+  alert: {title: "PCI 10.2.4: denied access to audit log"}
+  enabled: true
+
+- id: 19112
+  level: 9
+  description: "PCI Req 10.4: NTP service stopped (time sync requirement)"
+  groups: [compliance, pci_dss, req_10]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 7036}
+      service_name: {regex: "(?i)(w32time|ntp|chrony)"}
+      state: {equals: "stopped"}
+  alert: {title: "PCI 10.4 violation: time sync service stopped"}
+  enabled: true
+
+- id: 19113
+  level: 11
+  description: "PCI Req 10.5.5: File integrity monitoring detected change to audit log"
+  groups: [compliance, pci_dss, req_10, fim]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      path: {regex: "(?i)(audit|/var/log|security\\.evtx)"}
+      action: {regex: "(modified|deleted)"}
+  alert: {title: "PCI 10.5.5 violation: audit log tampered"}
+  enabled: true
+
+- id: 19114
+  level: 8
+  description: "PCI Req 11.4: IDS/IPS service down"
+  groups: [compliance, pci_dss, req_11]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 7036}
+      service_name: {regex: "(?i)(snort|suricata|zeek|ossec)"}
+      state: {equals: "stopped"}
+  alert: {title: "PCI 11.4 violation: IDS/IPS stopped"}
+  enabled: true
+
+- id: 19115
+  level: 10
+  description: "PCI Req 11.5: Unauthorized wireless access point on CDE network"
+  groups: [compliance, pci_dss, req_11, wireless]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {contains: "wireless"}
+      event: {regex: "(?i)(rogue|unauthorized) ap"}
+  alert: {title: "PCI 11.5 violation: rogue wireless AP"}
+  enabled: true
+
+- id: 19116
+  level: 9
+  description: "PCI Req 12.10: Incident response procedure not invoked on critical alert"
+  groups: [compliance, pci_dss, req_12]
+  match:
+    type: "log.file"
+    fields:
+      alert_severity: {equals: "critical"}
+      ir_ticket: {equals: ""}
+  correlation: {window: "30m", threshold: 1}
+  alert: {title: "PCI 12.10 review: critical alert without IR ticket"}
+  enabled: true
+
+- id: 19117
+  level: 10
+  description: "PCI scope: outbound connection from CDE to non-approved IP"
+  groups: [compliance, pci_dss, segmentation]
+  match:
+    type: "log.file"
+    fields:
+      source_zone: {equals: "cde"}
+      dest_zone: {equals: "untrusted"}
+      action: {equals: "allow"}
+  alert: {title: "PCI scope violation: CDE to untrusted outbound"}
+  enabled: true
+
+- id: 19118
+  level: 11
+  description: "PCI Req 3.6: Cryptographic key access by non-key-custodian"
+  groups: [compliance, pci_dss, req_3, kms]
+  match:
+    type: "log.file"
+    fields:
+      service: {contains: "kms"}
+      action: {regex: "Decrypt|GetKey"}
+      principal: {regex: "(?i)(test|dev|guest)"}
+  alert: {title: "PCI 3.6 violation: unauthorized key access"}
+  enabled: true
+
+- id: 19119
+  level: 10
+  description: "PCI Req 6.5.1: SQL injection signature in CDE web traffic"
+  groups: [compliance, pci_dss, req_6, owasp]
+  match:
+    type: "log.file"
+    fields:
+      uri: {regex: "(?i)(union\\s+select|or\\s+1=1|drop\\s+table)"}
+      app_zone: {equals: "cde"}
+  mitre:
+    - {tactic_id: "TA0001", technique_id: "T1190", technique_name: "Exploit Public-Facing App"}
+  alert: {title: "PCI 6.5.1 violation: SQLi against CDE"}
+  enabled: true
+
+- id: 19120
+  level: 10
+  description: "PCI Req 6.5.7: XSS signature against CDE webapp"
+  groups: [compliance, pci_dss, req_6, owasp]
+  match:
+    type: "log.file"
+    fields:
+      uri: {regex: "(?i)(<script|javascript:|onerror=|onload=)"}
+      app_zone: {equals: "cde"}
+  alert: {title: "PCI 6.5.7 violation: XSS against CDE"}
+  enabled: true
+
+- id: 19121
+  level: 9
+  description: "PCI Req 1.2: Inbound port not on approved list"
+  groups: [compliance, pci_dss, req_1, firewall]
+  match:
+    type: "logs.syslog"
+    fields:
+      action: {equals: "allow"}
+      direction: {equals: "inbound"}
+      dst_port: {regex: "^(23|135|139|445|3389|5900)$"}
+      dst_zone: {equals: "cde"}
+  alert: {title: "PCI 1.2 violation: insecure port allowed to CDE"}
+  enabled: true
+
+- id: 19122
+  level: 8
+  description: "PCI Req 1.3.4: Outbound from CDE without stateful inspection"
+  groups: [compliance, pci_dss, req_1]
+  match:
+    type: "logs.syslog"
+    fields:
+      stateful: {equals: "false"}
+      src_zone: {equals: "cde"}
+  alert: {title: "PCI 1.3.4 violation: stateless outbound from CDE"}
+  enabled: true
+
+- id: 19123
+  level: 11
+  description: "PCI Req 8.1.4: Inactive account >90 days reactivated"
+  groups: [compliance, pci_dss, req_8]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4722}
+      account_inactive_days: {regex: "^([9-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "PCI 8.1.4 violation: stale account reactivated"}
+  enabled: true
+
+- id: 19124
+  level: 10
+  description: "PCI Req 8.1.8: Idle session exceeded 15 minutes without lockout"
+  groups: [compliance, pci_dss, req_8]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4800}
+      idle_minutes: {regex: "^([1-9][5-9]|[2-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "PCI 8.1.8 violation: idle session not locked"}
+  enabled: true
+
+- id: 19125
+  level: 9
+  description: "PCI Req 2.3: Non-console admin access without strong crypto"
+  groups: [compliance, pci_dss, req_2]
+  match:
+    type: "log.file"
+    fields:
+      service: {regex: "(?i)(telnet|ftp|rsh|rlogin)"}
+      action: {equals: "connect"}
+  alert: {title: "PCI 2.3 violation: insecure admin protocol used"}
+  enabled: true
+
+- id: 19126
+  level: 9
+  description: "PCI Req 2.4: System component inventory record missing for CDE host"
+  groups: [compliance, pci_dss, req_2, inventory]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "inventory"}
+      zone: {equals: "cde"}
+      asset_record: {equals: "missing"}
+  alert: {title: "PCI 2.4 violation: CDE host not in inventory"}
+  enabled: true
+
+- id: 19127
+  level: 8
+  description: "PCI Req 3.2: Sensitive auth data (CAV2/CVC2/CVV2/CID) detected in storage"
+  groups: [compliance, pci_dss, req_3, dlp]
+  match:
+    type: "log.file"
+    fields:
+      content: {regex: "(?i)(cav2|cvc2|cvv2|cid)\\s*[:=]\\s*\\d{3,4}"}
+  alert: {title: "PCI 3.2 violation: sensitive auth data stored"}
+  enabled: true
+
+- id: 19128
+  level: 7
+  description: "PCI Req 5.3: AV signatures older than 7 days"
+  groups: [compliance, pci_dss, req_5]
+  match:
+    type: "log.file"
+    fields:
+      av_signature_age_days: {regex: "^([7-9]|[1-9][0-9]+)$"}
+  alert: {title: "PCI 5.3 violation: AV signatures outdated"}
+  enabled: true
+
+- id: 19129
+  level: 8
+  description: "PCI Req 6.2: Critical security patch missing >30 days"
+  groups: [compliance, pci_dss, req_6, patching]
+  match:
+    type: "log.file"
+    fields:
+      patch_severity: {equals: "critical"}
+      days_missing: {regex: "^([3-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "PCI 6.2 violation: critical patch overdue"}
+  enabled: true
+
+- id: 19130
+  level: 8
+  description: "PCI Req 6.3: Custom code deployed without security review"
+  groups: [compliance, pci_dss, req_6, sdlc]
+  match:
+    type: "log.file"
+    fields:
+      pipeline: {equals: "deploy"}
+      sast_passed: {equals: "false"}
+  alert: {title: "PCI 6.3 violation: deploy without SAST"}
+  enabled: true
+
+- id: 19131
+  level: 9
+  description: "PCI Req 8.7: Direct DB query against CDE outside of approved app"
+  groups: [compliance, pci_dss, req_8]
+  match:
+    type: "log.file"
+    fields:
+      service: {contains: "db"}
+      app_zone: {equals: "cde"}
+      client_app: {regex: "(?i)(sqlcli|psql|mysql|sqlplus|toad)"}
+  alert: {title: "PCI 8.7 violation: direct DB access against CDE"}
+  enabled: true
+
+- id: 19132
+  level: 11
+  description: "PCI Req 10.6: SIEM log review not performed (gap > 24h)"
+  groups: [compliance, pci_dss, req_10]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "siem_audit"}
+      last_review_hours: {regex: "^([2-9][4-9]|[3-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "PCI 10.6 violation: daily log review missed"}
+  enabled: true
+
+- id: 19133
+  level: 9
+  description: "PCI Req 11.2: Quarterly vulnerability scan overdue"
+  groups: [compliance, pci_dss, req_11]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "vuln_scanner"}
+      days_since_scan: {regex: "^(9[1-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "PCI 11.2 violation: vuln scan overdue"}
+  enabled: true
+
+- id: 19134
+  level: 9
+  description: "PCI Req 11.3: Annual penetration test overdue"
+  groups: [compliance, pci_dss, req_11]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "pentest_record"}
+      days_since: {regex: "^(36[6-9]|3[7-9][0-9]|[4-9][0-9]{2}|[1-9][0-9]{3,})$"}
+  alert: {title: "PCI 11.3 violation: pentest overdue"}
+  enabled: true
+
+- id: 19135
+  level: 10
+  description: "PCI Req 12.3: Modem/dial-up usage detected"
+  groups: [compliance, pci_dss, req_12]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_type: {regex: "(?i)(modem|dial)"}
+      action: {equals: "connect"}
+  alert: {title: "PCI 12.3 violation: dial-up access used"}
+  enabled: true
+
+- id: 19136
+  level: 8
+  description: "PCI Req 12.6: Security awareness training overdue for user"
+  groups: [compliance, pci_dss, req_12]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "training_lms"}
+      days_overdue: {regex: "^([1-9][0-9]+)$"}
+  alert: {title: "PCI 12.6 violation: training overdue"}
+  enabled: true
+
+- id: 19137
+  level: 11
+  description: "PCI Req 9.4: Visitor in CDE without escort log entry"
+  groups: [compliance, pci_dss, req_9]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {contains: "visitor"}
+      escort_id: {equals: ""}
+      zone: {equals: "cde"}
+  alert: {title: "PCI 9.4 violation: visitor unescorted in CDE"}
+  enabled: true
+
+- id: 19138
+  level: 10
+  description: "PCI Req 9.5: Backup media access outside business hours"
+  groups: [compliance, pci_dss, req_9]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "media_access"}
+      hour: {regex: "^([01]?[0-5]|19|2[0-3])$"}
+  alert: {title: "PCI 9.5 violation: off-hours backup media access"}
+  enabled: true
+
+- id: 19139
+  level: 9
+  description: "PCI Req 9.7: Hardcopy media destruction not logged"
+  groups: [compliance, pci_dss, req_9]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "media_disposal"}
+      destruction_method: {equals: ""}
+  alert: {title: "PCI 9.7 violation: media disposal missing destruction method"}
+  enabled: true
+
+- id: 19140
+  level: 10
+  description: "PCI Req 10.7: Audit log retention <12 months"
+  groups: [compliance, pci_dss, req_10, retention]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "log_retention_check"}
+      retention_days: {regex: "^([0-9]|[1-9][0-9]|[12][0-9][0-9]|3[0-5][0-9])$"}
+  alert: {title: "PCI 10.7 violation: audit retention <365 days"}
+  enabled: true
+
+- id: 19141
+  level: 8
+  description: "PCI Req 1.4: Personal firewall disabled on remote-access laptop"
+  groups: [compliance, pci_dss, req_1]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 5025}
+  alert: {title: "PCI 1.4 violation: host firewall disabled"}
+  enabled: true
+
+- id: 19142
+  level: 9
+  description: "PCI Req 8.5: Generic/shared account used"
+  groups: [compliance, pci_dss, req_8]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      target_user: {regex: "(?i)^(shared|team|ops|service)$"}
+  alert: {title: "PCI 8.5 violation: shared account login"}
+  enabled: true
+
+- id: 19143
+  level: 11
+  description: "PCI Req 4.2: Cardholder data sent via unencrypted email"
+  groups: [compliance, pci_dss, req_4, dlp]
+  match:
+    type: "log.file"
+    fields:
+      service: {equals: "smtp"}
+      tls: {equals: "false"}
+      body: {regex: "\\b(?:4[0-9]{12}|5[1-5][0-9]{14})\\b"}
+  alert: {title: "PCI 4.2 violation: PAN over plaintext email"}
+  enabled: true
+
+- id: 19144
+  level: 10
+  description: "PCI Req 1.1.6: Insecure protocol allowed (NetBIOS, SNMPv1)"
+  groups: [compliance, pci_dss, req_1]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {regex: "(?i)(netbios|snmpv1|tftp)"}
+      action: {equals: "allow"}
+  alert: {title: "PCI 1.1.6 violation: insecure protocol permitted"}
+  enabled: true
+
+- id: 19145
+  level: 8
+  description: "PCI Req 12.8: Third-party with CDE access lacks signed agreement"
+  groups: [compliance, pci_dss, req_12]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "vendor_mgmt"}
+      contract_signed: {equals: "false"}
+      cde_access: {equals: "true"}
+  alert: {title: "PCI 12.8 violation: vendor CDE access w/o agreement"}
+  enabled: true
+
+- id: 19146
+  level: 10
+  description: "PCI Req 8.2.4: Password unchanged >90 days for CDE admin"
+  groups: [compliance, pci_dss, req_8]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "password_age_check"}
+      days_since_change: {regex: "^(9[1-9]|[1-9][0-9]{2,})$"}
+      role: {regex: "(?i)admin"}
+  alert: {title: "PCI 8.2.4 violation: admin password age >90d"}
+  enabled: true
+
+- id: 19147
+  level: 9
+  description: "PCI Req 2.2.4: System hardening baseline drift"
+  groups: [compliance, pci_dss, req_2, hardening]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "cis_benchmark"}
+      drift_count: {regex: "^([1-9][0-9]*)$"}
+  alert: {title: "PCI 2.2.4: hardening baseline drift detected"}
+  enabled: true
+
+- id: 19148
+  level: 11
+  description: "PCI Req 6.4.2: Unauthorized push to production branch"
+  groups: [compliance, pci_dss, req_6]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "git"}
+      branch: {regex: "(?i)(prod|production|main|master)"}
+      approver: {equals: ""}
+  alert: {title: "PCI 6.4.2 violation: unapproved prod commit"}
+  enabled: true
+
+- id: 19149
+  level: 12
+  description: "PCI Req 3.5.1: Encryption key exported in clear"
+  groups: [compliance, pci_dss, req_3]
+  match:
+    type: "log.file"
+    fields:
+      action: {regex: "(?i)key.*export"}
+      protected: {equals: "false"}
+  mitre:
+    - {tactic_id: "TA0006", technique_id: "T1552.004", technique_name: "Private Keys"}
+  alert: {title: "PCI 3.5.1 violation: encryption key exported in clear"}
+  enabled: true

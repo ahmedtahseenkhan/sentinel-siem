@@ -1,0 +1,609 @@
+# NIST SP 800-53 Rev 5 Control Detection Rules
+# IDs 19240-19289 (50 rules)
+
+- id: 19240
+  level: 10
+  description: "NIST AC-2: Account creation outside change control"
+  groups: [compliance, nist_800_53, ac]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4720}
+      change_ticket: {equals: ""}
+  alert: {title: "NIST AC-2: account created w/o change ticket"}
+  enabled: true
+
+- id: 19241
+  level: 10
+  description: "NIST AC-2(4): Privileged account action not audited"
+  groups: [compliance, nist_800_53, ac]
+  match:
+    type: "log.file"
+    fields:
+      principal_role: {equals: "privileged"}
+      audit_logged: {equals: "false"}
+  alert: {title: "NIST AC-2(4): privileged action without audit"}
+  enabled: true
+
+- id: 19242
+  level: 9
+  description: "NIST AC-3: Mandatory access control denied"
+  groups: [compliance, nist_800_53, ac]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {regex: "(?i)(selinux|apparmor)"}
+      result: {equals: "denied"}
+  alert: {title: "NIST AC-3: MAC denial recorded"}
+  enabled: true
+
+- id: 19243
+  level: 11
+  description: "NIST AC-6: Use of elevated privileges via sudo"
+  groups: [compliance, nist_800_53, ac, sudo]
+  match:
+    type: "logs.syslog"
+    fields:
+      program: {equals: "sudo"}
+      command: {regex: "(?i)(rm\\s+-rf|dd\\s+if=|mkfs|shutdown|reboot)"}
+  alert: {title: "NIST AC-6: dangerous sudo command"}
+  enabled: true
+
+- id: 19244
+  level: 9
+  description: "NIST AC-7: Login attempt threshold exceeded"
+  groups: [compliance, nist_800_53, ac]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4625}
+  correlation: {window: "5m", threshold: 5, group_by: ["target_user"]}
+  alert: {title: "NIST AC-7: login threshold exceeded"}
+  enabled: true
+
+- id: 19245
+  level: 10
+  description: "NIST AC-11: Session lock requirement not enforced"
+  groups: [compliance, nist_800_53, ac]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "endpoint_policy"}
+      session_lock_minutes: {regex: "^([0-9]|1[6-9]|[2-9][0-9])$"}
+  alert: {title: "NIST AC-11: session lock not within 15m"}
+  enabled: true
+
+- id: 19246
+  level: 11
+  description: "NIST AC-17: Remote access without approved mechanism"
+  groups: [compliance, nist_800_53, ac]
+  match:
+    type: "log.file"
+    fields:
+      connection_type: {equals: "remote"}
+      protocol: {regex: "(?i)(telnet|rsh|vnc_unencrypted)"}
+  alert: {title: "NIST AC-17: unapproved remote protocol"}
+  enabled: true
+
+- id: 19247
+  level: 9
+  description: "NIST AT-2: Security awareness training overdue"
+  groups: [compliance, nist_800_53, at]
+  match:
+    type: "log.file"
+    fields:
+      task: {equals: "security_awareness_training"}
+      days_overdue: {regex: "^([1-9][0-9]+)$"}
+  alert: {title: "NIST AT-2: awareness training overdue"}
+  enabled: true
+
+- id: 19248
+  level: 11
+  description: "NIST AU-2: Auditable event not logged"
+  groups: [compliance, nist_800_53, au]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4719}
+  alert: {title: "NIST AU-2: audit policy changed"}
+  enabled: true
+
+- id: 19249
+  level: 12
+  description: "NIST AU-9: Audit log integrity violation"
+  groups: [compliance, nist_800_53, au]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      path: {regex: "(?i)(audit|/var/log|security\\.evtx)"}
+      action: {regex: "(modified|deleted|truncated)"}
+  mitre:
+    - {tactic_id: "TA0005", technique_id: "T1070", technique_name: "Indicator Removal"}
+  alert: {title: "NIST AU-9: audit log integrity violation"}
+  enabled: true
+
+- id: 19250
+  level: 9
+  description: "NIST AU-12: Audit generation failure"
+  groups: [compliance, nist_800_53, au]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4612}
+  alert: {title: "NIST AU-12: audit log full / generation failure"}
+  enabled: true
+
+- id: 19251
+  level: 10
+  description: "NIST CM-3: Unauthorized configuration change"
+  groups: [compliance, nist_800_53, cm]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "config_mgmt"}
+      change_ticket: {equals: ""}
+      env: {equals: "production"}
+  alert: {title: "NIST CM-3: unauthorized prod config change"}
+  enabled: true
+
+- id: 19252
+  level: 8
+  description: "NIST CM-6: Configuration baseline drift"
+  groups: [compliance, nist_800_53, cm]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "scap_scan"}
+      drift_count: {regex: "^([1-9][0-9]*)$"}
+  alert: {title: "NIST CM-6: baseline drift detected"}
+  enabled: true
+
+- id: 19253
+  level: 9
+  description: "NIST CM-7: Unauthorized software installed"
+  groups: [compliance, nist_800_53, cm]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "software_inventory"}
+      whitelisted: {equals: "false"}
+      action: {equals: "install"}
+  alert: {title: "NIST CM-7: unapproved software install"}
+  enabled: true
+
+- id: 19254
+  level: 10
+  description: "NIST CM-8: System component not in inventory"
+  groups: [compliance, nist_800_53, cm]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "asset_inventory_check"}
+      asset_record: {equals: "missing"}
+  alert: {title: "NIST CM-8: asset missing from inventory"}
+  enabled: true
+
+- id: 19255
+  level: 9
+  description: "NIST CP-9: Backup failure"
+  groups: [compliance, nist_800_53, cp]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "backup_job"}
+      status: {equals: "fail"}
+  alert: {title: "NIST CP-9: backup failed"}
+  enabled: true
+
+- id: 19256
+  level: 10
+  description: "NIST IA-2: Multi-factor not used for privileged access"
+  groups: [compliance, nist_800_53, ia]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      target_user: {regex: "(?i)admin"}
+      mfa_used: {equals: "false"}
+  alert: {title: "NIST IA-2: privileged login without MFA"}
+  enabled: true
+
+- id: 19257
+  level: 11
+  description: "NIST IA-5: Shared/default credential detected"
+  groups: [compliance, nist_800_53, ia]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      target_user: {regex: "(?i)^(admin|root|guest|test)$"}
+  alert: {title: "NIST IA-5: default credential in use"}
+  enabled: true
+
+- id: 19258
+  level: 12
+  description: "NIST IR-4: Incident handling activity (IoC match)"
+  groups: [compliance, nist_800_53, ir]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "threat_intel"}
+      ioc_match: {equals: "true"}
+  alert: {title: "NIST IR-4: IoC matched on host"}
+  enabled: true
+
+- id: 19259
+  level: 9
+  description: "NIST IR-6: Incident not reported to ISSO within 1 hour"
+  groups: [compliance, nist_800_53, ir]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "incident_register"}
+      severity: {equals: "high"}
+      minutes_since_open: {regex: "^(6[1-9]|[7-9][0-9]|[1-9][0-9]{2,})$"}
+      isso_notified: {equals: "false"}
+  alert: {title: "NIST IR-6: incident report SLA breach"}
+  enabled: true
+
+- id: 19260
+  level: 8
+  description: "NIST MA-4: Remote maintenance session without approval"
+  groups: [compliance, nist_800_53, ma]
+  match:
+    type: "log.file"
+    fields:
+      session_type: {equals: "maintenance"}
+      remote: {equals: "true"}
+      approval_id: {equals: ""}
+  alert: {title: "NIST MA-4: unapproved remote maintenance"}
+  enabled: true
+
+- id: 19261
+  level: 10
+  description: "NIST MP-7: Use of unauthorized removable media"
+  groups: [compliance, nist_800_53, mp]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 6416}
+      device_id_whitelisted: {equals: "false"}
+  alert: {title: "NIST MP-7: unauthorized USB device"}
+  enabled: true
+
+- id: 19262
+  level: 10
+  description: "NIST PE-3: Physical access by unauthorized individual"
+  groups: [compliance, nist_800_53, pe]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {contains: "badge"}
+      access_result: {equals: "denied"}
+  alert: {title: "NIST PE-3: denied physical access"}
+  enabled: true
+
+- id: 19263
+  level: 9
+  description: "NIST PE-6: Surveillance camera offline"
+  groups: [compliance, nist_800_53, pe]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {contains: "cctv"}
+      status: {equals: "offline"}
+  alert: {title: "NIST PE-6: CCTV camera offline"}
+  enabled: true
+
+- id: 19264
+  level: 9
+  description: "NIST RA-5: Vulnerability scan finding above threshold"
+  groups: [compliance, nist_800_53, ra]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "vuln_scanner"}
+      severity: {regex: "(high|critical)"}
+  alert: {title: "NIST RA-5: high/critical vuln finding"}
+  enabled: true
+
+- id: 19265
+  level: 11
+  description: "NIST SC-7: Boundary protection bypass (split tunnel detected)"
+  groups: [compliance, nist_800_53, sc]
+  match:
+    type: "log.file"
+    fields:
+      vpn_split_tunnel: {equals: "true"}
+  alert: {title: "NIST SC-7: VPN split tunnel"}
+  enabled: true
+
+- id: 19266
+  level: 10
+  description: "NIST SC-8: Transmission integrity (TLS handshake failure)"
+  groups: [compliance, nist_800_53, sc]
+  match:
+    type: "log.file"
+    fields:
+      tls_handshake: {equals: "fail"}
+  correlation: {window: "5m", threshold: 10, group_by: ["src_ip"]}
+  alert: {title: "NIST SC-8: repeated TLS failures"}
+  enabled: true
+
+- id: 19267
+  level: 11
+  description: "NIST SC-12: Cryptographic key compromise indicator"
+  groups: [compliance, nist_800_53, sc]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "kms"}
+      action: {regex: "(?i)key.*(export|delete|rotate_forced)"}
+  alert: {title: "NIST SC-12: key lifecycle anomaly"}
+  enabled: true
+
+- id: 19268
+  level: 10
+  description: "NIST SC-28: Data at rest unencrypted on FIPS-required system"
+  groups: [compliance, nist_800_53, sc, fips]
+  match:
+    type: "log.file"
+    fields:
+      fips_required: {equals: "true"}
+      encrypted_at_rest: {equals: "false"}
+  alert: {title: "NIST SC-28: required encryption missing"}
+  enabled: true
+
+- id: 19269
+  level: 11
+  description: "NIST SI-2: Critical patch missing >30 days"
+  groups: [compliance, nist_800_53, si]
+  match:
+    type: "log.file"
+    fields:
+      patch_severity: {equals: "critical"}
+      days_missing: {regex: "^(3[0-9]|[4-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "NIST SI-2: critical patch overdue"}
+  enabled: true
+
+- id: 19270
+  level: 10
+  description: "NIST SI-3: Malware detected"
+  groups: [compliance, nist_800_53, si]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(av|edr)"}
+      detection: {equals: "malware"}
+  alert: {title: "NIST SI-3: malware detection"}
+  enabled: true
+
+- id: 19271
+  level: 9
+  description: "NIST SI-4: IDS/IPS signature triggered"
+  groups: [compliance, nist_800_53, si]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {regex: "(?i)(snort|suricata|zeek)"}
+      action: {regex: "(alert|drop)"}
+  alert: {title: "NIST SI-4: IDS signature triggered"}
+  enabled: true
+
+- id: 19272
+  level: 8
+  description: "NIST SI-7: File integrity check failure"
+  groups: [compliance, nist_800_53, si]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      result: {equals: "checksum_mismatch"}
+  alert: {title: "NIST SI-7: FIM checksum mismatch"}
+  enabled: true
+
+- id: 19273
+  level: 10
+  description: "NIST AC-22: Public-facing system exposed PII"
+  groups: [compliance, nist_800_53, ac]
+  match:
+    type: "log.file"
+    fields:
+      service_zone: {equals: "public"}
+      data_class: {equals: "pii"}
+  alert: {title: "NIST AC-22: PII on public service"}
+  enabled: true
+
+- id: 19274
+  level: 9
+  description: "NIST AC-4: Information flow control violation"
+  groups: [compliance, nist_800_53, ac]
+  match:
+    type: "logs.syslog"
+    fields:
+      action: {equals: "drop"}
+      reason: {equals: "info_flow_policy"}
+  alert: {title: "NIST AC-4: info-flow policy violation"}
+  enabled: true
+
+- id: 19275
+  level: 8
+  description: "NIST CA-7: Continuous monitoring agent offline"
+  groups: [compliance, nist_800_53, ca]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "agent_health"}
+      status: {equals: "offline"}
+      hours: {regex: "^([2-9]|[1-9][0-9]+)$"}
+  alert: {title: "NIST CA-7: monitoring agent offline"}
+  enabled: true
+
+- id: 19276
+  level: 10
+  description: "NIST PS-4: Terminated user retained access"
+  groups: [compliance, nist_800_53, ps]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      user_status: {equals: "terminated"}
+  alert: {title: "NIST PS-4: terminated user logged in"}
+  enabled: true
+
+- id: 19277
+  level: 9
+  description: "NIST PS-6: Access agreement not on file"
+  groups: [compliance, nist_800_53, ps]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "hr_records"}
+      access_agreement: {equals: "missing"}
+  alert: {title: "NIST PS-6: missing access agreement"}
+  enabled: true
+
+- id: 19278
+  level: 11
+  description: "NIST SA-9: External service provider data leak"
+  groups: [compliance, nist_800_53, sa]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "vendor_breach_feed"}
+      incident_status: {equals: "confirmed"}
+  alert: {title: "NIST SA-9: third-party breach impacting us"}
+  enabled: true
+
+- id: 19279
+  level: 10
+  description: "NIST SR-3: Supply chain - unsigned package installed"
+  groups: [compliance, nist_800_53, sr, supply_chain]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "package_install"}
+      signature_verified: {equals: "false"}
+  alert: {title: "NIST SR-3: unsigned package install"}
+  enabled: true
+
+- id: 19280
+  level: 10
+  description: "NIST AC-5: Separation of duties violation (same user dev+approve)"
+  groups: [compliance, nist_800_53, ac, sod]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "deploy"}
+      committer: {equals: "approver"}
+  alert: {title: "NIST AC-5: SoD violation in CI/CD"}
+  enabled: true
+
+- id: 19281
+  level: 9
+  description: "NIST AC-8: Login banner missing"
+  groups: [compliance, nist_800_53, ac]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "host_policy"}
+      legal_banner: {equals: "missing"}
+  alert: {title: "NIST AC-8: login banner not configured"}
+  enabled: true
+
+- id: 19282
+  level: 8
+  description: "NIST AC-10: Concurrent session limit exceeded"
+  groups: [compliance, nist_800_53, ac]
+  match:
+    type: "log.file"
+    fields:
+      session_count: {regex: "^([4-9]|[1-9][0-9]+)$"}
+  alert: {title: "NIST AC-10: concurrent session limit exceeded"}
+  enabled: true
+
+- id: 19283
+  level: 10
+  description: "NIST AU-6: Audit review not performed in 24h"
+  groups: [compliance, nist_800_53, au]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "audit_review_log"}
+      hours_since_review: {regex: "^([2-9][4-9]|[3-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "NIST AU-6: daily audit review missed"}
+  enabled: true
+
+- id: 19284
+  level: 9
+  description: "NIST AU-11: Audit retention shorter than required"
+  groups: [compliance, nist_800_53, au, retention]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "retention_check"}
+      retention_days: {regex: "^([0-9]|[1-9][0-9]|[12][0-9][0-9]|3[0-5][0-9])$"}
+  alert: {title: "NIST AU-11: audit retention insufficient"}
+  enabled: true
+
+- id: 19285
+  level: 9
+  description: "NIST CP-2: Contingency plan not tested annually"
+  groups: [compliance, nist_800_53, cp]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "dr_drill_log"}
+      days_since_test: {regex: "^(36[6-9]|3[7-9][0-9]|[4-9][0-9]{2}|[1-9][0-9]{3,})$"}
+  alert: {title: "NIST CP-2: contingency test overdue"}
+  enabled: true
+
+- id: 19286
+  level: 10
+  description: "NIST SC-5: DoS attempt detected (volumetric)"
+  groups: [compliance, nist_800_53, sc, dos]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {regex: "(?i)(firewall|waf)"}
+      event: {regex: "(?i)(flood|ddos|syn flood)"}
+  alert: {title: "NIST SC-5: DoS event detected"}
+  enabled: true
+
+- id: 19287
+  level: 11
+  description: "NIST SI-10: Input validation failure (large/anomalous payload)"
+  groups: [compliance, nist_800_53, si]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "waf"}
+      rule_category: {equals: "input_validation"}
+      action: {equals: "block"}
+  alert: {title: "NIST SI-10: input validation block"}
+  enabled: true
+
+- id: 19288
+  level: 9
+  description: "NIST SI-11: Error message disclosure (stack trace in response)"
+  groups: [compliance, nist_800_53, si]
+  match:
+    type: "log.file"
+    fields:
+      response_body: {regex: "(?i)(at\\s+[a-z0-9.]+\\([a-z0-9./_]+:\\d+\\)|traceback)"}
+      response_code: {equals: "500"}
+  alert: {title: "NIST SI-11: stack trace exposed"}
+  enabled: true
+
+- id: 19289
+  level: 8
+  description: "NIST RA-3: Risk assessment overdue"
+  groups: [compliance, nist_800_53, ra]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "risk_register"}
+      days_since_assessment: {regex: "^(36[6-9]|3[7-9][0-9]|[4-9][0-9]{2}|[1-9][0-9]{3,})$"}
+  alert: {title: "NIST RA-3: risk assessment overdue"}
+  enabled: true

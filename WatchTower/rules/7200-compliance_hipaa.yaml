@@ -1,0 +1,651 @@
+# HIPAA Security & Privacy Rule Detection
+# IDs 19150-19199 (50 rules)
+# 45 CFR §164.308 (Administrative), §164.310 (Physical), §164.312 (Technical)
+
+- id: 19150
+  level: 11
+  description: "HIPAA §164.312(a)(1): ePHI access by unauthorized user"
+  groups: [compliance, hipaa, technical, access_control]
+  match:
+    type: "log.file"
+    fields:
+      data_class: {equals: "ephi"}
+      access_result: {equals: "denied"}
+  alert: {title: "HIPAA §164.312(a)(1): unauthorized ePHI access attempt"}
+  enabled: true
+
+- id: 19151
+  level: 12
+  description: "HIPAA §164.312(a)(2)(i): Generic/shared login for ePHI system"
+  groups: [compliance, hipaa, technical]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      app: {equals: "ehr"}
+      target_user: {regex: "(?i)^(shared|nurse|admin|temp)$"}
+  alert: {title: "HIPAA §164.312(a)(2)(i): generic login to ePHI system"}
+  enabled: true
+
+- id: 19152
+  level: 10
+  description: "HIPAA §164.312(a)(2)(iii): Auto-logoff disabled on EHR workstation"
+  groups: [compliance, hipaa, technical]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "endpoint_policy"}
+      auto_lock_minutes: {equals: "0"}
+      role: {regex: "(?i)clinical"}
+  alert: {title: "HIPAA §164.312(a)(2)(iii): auto-logoff disabled"}
+  enabled: true
+
+- id: 19153
+  level: 12
+  description: "HIPAA §164.312(a)(2)(iv): ePHI stored unencrypted"
+  groups: [compliance, hipaa, technical, encryption]
+  match:
+    type: "log.file"
+    fields:
+      data_class: {equals: "ephi"}
+      encrypted_at_rest: {equals: "false"}
+  alert: {title: "HIPAA §164.312(a)(2)(iv): ePHI stored unencrypted"}
+  enabled: true
+
+- id: 19154
+  level: 11
+  description: "HIPAA §164.312(b): Audit log disabled on ePHI system"
+  groups: [compliance, hipaa, technical]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4719}
+      app: {equals: "ehr"}
+  mitre:
+    - {tactic_id: "TA0005", technique_id: "T1562.002", technique_name: "Disable Windows Event Logging"}
+  alert: {title: "HIPAA §164.312(b): audit policy modified on ePHI system"}
+  enabled: true
+
+- id: 19155
+  level: 10
+  description: "HIPAA §164.312(c)(1): ePHI integrity check failed"
+  groups: [compliance, hipaa, technical, integrity]
+  match:
+    type: "log.file"
+    fields:
+      data_class: {equals: "ephi"}
+      hash_match: {equals: "false"}
+  alert: {title: "HIPAA §164.312(c)(1): ePHI integrity violation"}
+  enabled: true
+
+- id: 19156
+  level: 12
+  description: "HIPAA §164.312(e)(1): ePHI transmitted over insecure channel"
+  groups: [compliance, hipaa, technical]
+  match:
+    type: "log.file"
+    fields:
+      data_class: {equals: "ephi"}
+      tls: {equals: "false"}
+      direction: {equals: "egress"}
+  alert: {title: "HIPAA §164.312(e)(1): ePHI sent over cleartext"}
+  enabled: true
+
+- id: 19157
+  level: 9
+  description: "HIPAA §164.308(a)(1)(ii)(D): No risk analysis review in past year"
+  groups: [compliance, hipaa, administrative]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "compliance_calendar"}
+      task: {equals: "risk_analysis"}
+      days_overdue: {regex: "^([1-9][0-9]+)$"}
+  alert: {title: "HIPAA §164.308(a)(1)(ii)(D): risk analysis overdue"}
+  enabled: true
+
+- id: 19158
+  level: 10
+  description: "HIPAA §164.308(a)(3)(ii)(C): Workforce termination not revoked"
+  groups: [compliance, hipaa, administrative]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      user_status: {equals: "terminated"}
+  alert: {title: "HIPAA §164.308(a)(3)(ii)(C): terminated user logged in"}
+  enabled: true
+
+- id: 19159
+  level: 11
+  description: "HIPAA §164.308(a)(4): Inappropriate ePHI access (snooping celebrity record)"
+  groups: [compliance, hipaa, administrative]
+  match:
+    type: "log.file"
+    fields:
+      app: {equals: "ehr"}
+      action: {equals: "view_chart"}
+      patient_flag: {equals: "vip"}
+      provider_relationship: {equals: "none"}
+  alert: {title: "HIPAA §164.308(a)(4): unrelated VIP chart access"}
+  enabled: true
+
+- id: 19160
+  level: 12
+  description: "HIPAA §164.308(a)(6)(ii): Breach detected without notification within 60 days"
+  groups: [compliance, hipaa, breach]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "breach_register"}
+      days_since_discovery: {regex: "^(6[1-9]|[7-9][0-9]|[1-9][0-9]{2,})$"}
+      notification_sent: {equals: "false"}
+  alert: {title: "HIPAA §164.408: breach notification overdue"}
+  enabled: true
+
+- id: 19161
+  level: 8
+  description: "HIPAA §164.308(a)(5)(ii)(B): Malicious software protection lapsed"
+  groups: [compliance, hipaa, administrative]
+  match:
+    type: "log.file"
+    fields:
+      av_status: {equals: "outdated"}
+      role: {regex: "(?i)clinical"}
+  alert: {title: "HIPAA §164.308(a)(5)(ii)(B): AV outdated on clinical system"}
+  enabled: true
+
+- id: 19162
+  level: 10
+  description: "HIPAA §164.310(a)(1): Physical facility access by unauthorized"
+  groups: [compliance, hipaa, physical]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {contains: "badge"}
+      facility: {equals: "data_center"}
+      access_result: {equals: "denied"}
+  alert: {title: "HIPAA §164.310(a)(1): denied physical access"}
+  enabled: true
+
+- id: 19163
+  level: 11
+  description: "HIPAA §164.310(d)(2)(i): ePHI device disposed without sanitization"
+  groups: [compliance, hipaa, physical]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "asset_disposal"}
+      ephi_capable: {equals: "true"}
+      wipe_verified: {equals: "false"}
+  alert: {title: "HIPAA §164.310(d)(2)(i): ePHI device disposed unwiped"}
+  enabled: true
+
+- id: 19164
+  level: 9
+  description: "HIPAA §164.310(d)(2)(iii): ePHI removable media taken offsite"
+  groups: [compliance, hipaa, physical]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 6416}
+      device_class: {regex: "(?i)(usb|removable)"}
+      app: {equals: "ehr"}
+  alert: {title: "HIPAA §164.310(d)(2)(iii): ePHI USB removal"}
+  enabled: true
+
+- id: 19165
+  level: 10
+  description: "HIPAA §164.312(d): Person/entity authentication bypass attempt"
+  groups: [compliance, hipaa, technical]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4625}
+      app: {equals: "ehr"}
+  correlation: {window: "10m", threshold: 5, group_by: ["target_user"]}
+  alert: {title: "HIPAA §164.312(d): brute force on ePHI system"}
+  enabled: true
+
+- id: 19166
+  level: 11
+  description: "HIPAA Privacy Rule §164.502: PHI disclosure to unauthorized recipient"
+  groups: [compliance, hipaa, privacy]
+  match:
+    type: "log.file"
+    fields:
+      data_class: {equals: "phi"}
+      action: {equals: "export"}
+      recipient_authorized: {equals: "false"}
+  alert: {title: "HIPAA §164.502: PHI unauthorized disclosure"}
+  enabled: true
+
+- id: 19167
+  level: 9
+  description: "HIPAA §164.524: Patient access request not fulfilled within 30 days"
+  groups: [compliance, hipaa, privacy]
+  match:
+    type: "log.file"
+    fields:
+      request_type: {equals: "patient_access"}
+      days_pending: {regex: "^(3[1-9]|[4-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "HIPAA §164.524: patient access request overdue"}
+  enabled: true
+
+- id: 19168
+  level: 10
+  description: "HIPAA §164.526: Patient amendment request denied without review"
+  groups: [compliance, hipaa, privacy]
+  match:
+    type: "log.file"
+    fields:
+      request_type: {equals: "amendment"}
+      reviewer: {equals: ""}
+      decision: {equals: "denied"}
+  alert: {title: "HIPAA §164.526: amendment denied without review"}
+  enabled: true
+
+- id: 19169
+  level: 11
+  description: "HIPAA §164.504(e): Business Associate Agreement (BAA) missing"
+  groups: [compliance, hipaa, baa]
+  match:
+    type: "log.file"
+    fields:
+      vendor_class: {equals: "business_associate"}
+      baa_signed: {equals: "false"}
+      ephi_access: {equals: "true"}
+  alert: {title: "HIPAA §164.504(e): vendor with ePHI lacks BAA"}
+  enabled: true
+
+- id: 19170
+  level: 8
+  description: "HIPAA §164.308(a)(7)(ii)(A): Backup of ePHI not verified"
+  groups: [compliance, hipaa, backup]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "backup_job"}
+      data_class: {equals: "ephi"}
+      restore_test: {equals: "fail"}
+  alert: {title: "HIPAA §164.308(a)(7)(ii)(A): ePHI backup failed verification"}
+  enabled: true
+
+- id: 19171
+  level: 9
+  description: "HIPAA §164.308(a)(7)(ii)(C): Emergency mode operations not tested"
+  groups: [compliance, hipaa, dr]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "dr_drill_log"}
+      days_since_test: {regex: "^(36[6-9]|3[7-9][0-9]|[4-9][0-9]{2}|[1-9][0-9]{3,})$"}
+  alert: {title: "HIPAA §164.308(a)(7)(ii)(C): DR test overdue"}
+  enabled: true
+
+- id: 19172
+  level: 10
+  description: "HIPAA §164.308(a)(8): Periodic security evaluation overdue"
+  groups: [compliance, hipaa, administrative]
+  match:
+    type: "log.file"
+    fields:
+      task: {equals: "security_evaluation"}
+      days_overdue: {regex: "^([1-9][0-9]+)$"}
+  alert: {title: "HIPAA §164.308(a)(8): security evaluation overdue"}
+  enabled: true
+
+- id: 19173
+  level: 11
+  description: "HIPAA §164.402: Unsecured PHI lost (laptop/media reported missing)"
+  groups: [compliance, hipaa, breach]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "asset_management"}
+      status: {equals: "missing"}
+      ephi_capable: {equals: "true"}
+  alert: {title: "HIPAA §164.402: ePHI-capable asset reported missing"}
+  enabled: true
+
+- id: 19174
+  level: 9
+  description: "HIPAA §164.530(b): Workforce training not completed"
+  groups: [compliance, hipaa, administrative]
+  match:
+    type: "log.file"
+    fields:
+      task: {equals: "hipaa_training"}
+      status: {equals: "incomplete"}
+  alert: {title: "HIPAA §164.530(b): workforce training incomplete"}
+  enabled: true
+
+- id: 19175
+  level: 10
+  description: "HIPAA: Bulk ePHI export by single user"
+  groups: [compliance, hipaa, dlp]
+  match:
+    type: "log.file"
+    fields:
+      app: {equals: "ehr"}
+      action: {equals: "export"}
+  correlation: {window: "1h", threshold: 50, group_by: ["user"]}
+  mitre:
+    - {tactic_id: "TA0010", technique_id: "T1567", technique_name: "Exfiltration Over Web"}
+  alert: {title: "HIPAA: bulk ePHI export anomaly"}
+  enabled: true
+
+- id: 19176
+  level: 11
+  description: "HIPAA: ePHI access outside normal business hours"
+  groups: [compliance, hipaa, anomaly]
+  match:
+    type: "log.file"
+    fields:
+      app: {equals: "ehr"}
+      hour: {regex: "^([0-5]|2[2-3])$"}
+      day_of_week: {regex: "(0|6)"}
+      role: {regex: "(?i)(billing|coding|admin_staff)"}
+  alert: {title: "HIPAA: off-hours ePHI access by non-clinical role"}
+  enabled: true
+
+- id: 19177
+  level: 10
+  description: "HIPAA §164.312(a)(1): Role-based access bypass via direct DB query"
+  groups: [compliance, hipaa, technical]
+  match:
+    type: "log.file"
+    fields:
+      service: {regex: "(?i)(mssql|postgres|oracle)"}
+      database: {regex: "(?i)(ehr|patient|clinical)"}
+      client_app: {regex: "(?i)(sqlcli|psql|sqlplus|toad)"}
+  alert: {title: "HIPAA: direct DB query against ePHI store"}
+  enabled: true
+
+- id: 19178
+  level: 9
+  description: "HIPAA: Mobile device with ePHI not enrolled in MDM"
+  groups: [compliance, hipaa, mobile]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "device_inventory"}
+      ephi_apps: {regex: "(?i)(ehr|epic|cerner)"}
+      mdm_enrolled: {equals: "false"}
+  alert: {title: "HIPAA: ePHI mobile device not in MDM"}
+  enabled: true
+
+- id: 19179
+  level: 8
+  description: "HIPAA: Print job of patient record without retention log"
+  groups: [compliance, hipaa, dlp, physical]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "print_audit"}
+      doc_class: {equals: "phi"}
+      audit_logged: {equals: "false"}
+  alert: {title: "HIPAA: PHI print without audit trail"}
+  enabled: true
+
+- id: 19180
+  level: 11
+  description: "HIPAA: Sharing of patient data via personal email account"
+  groups: [compliance, hipaa, dlp]
+  match:
+    type: "log.file"
+    fields:
+      service: {equals: "smtp"}
+      recipient_domain: {regex: "(?i)(gmail|yahoo|hotmail|outlook\\.com|aol)"}
+      data_class: {equals: "phi"}
+  alert: {title: "HIPAA: PHI sent to personal email"}
+  enabled: true
+
+- id: 19181
+  level: 9
+  description: "HIPAA: Cloud storage upload of patient records"
+  groups: [compliance, hipaa, dlp, cloud]
+  match:
+    type: "log.file"
+    fields:
+      service: {regex: "(?i)(dropbox|gdrive|onedrive|box)"}
+      data_class: {equals: "phi"}
+      sanctioned: {equals: "false"}
+  alert: {title: "HIPAA: PHI upload to unsanctioned cloud storage"}
+  enabled: true
+
+- id: 19182
+  level: 10
+  description: "HIPAA §164.312(b): Audit reduction tool tampering"
+  groups: [compliance, hipaa, technical]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "siem"}
+      action: {regex: "(?i)(delete|modify)_rule"}
+      rule_group: {contains: "ephi"}
+  alert: {title: "HIPAA §164.312(b): ePHI detection rule tampered"}
+  enabled: true
+
+- id: 19183
+  level: 11
+  description: "HIPAA: VPN session from foreign country accessing ePHI"
+  groups: [compliance, hipaa, geo]
+  match:
+    type: "log.file"
+    fields:
+      vpn_session: {equals: "true"}
+      app: {equals: "ehr"}
+      country: {regex: "(?i)(china|russia|north korea|iran)"}
+  alert: {title: "HIPAA: ePHI access from high-risk geography"}
+  enabled: true
+
+- id: 19184
+  level: 8
+  description: "HIPAA §164.530(j): Documentation retention <6 years"
+  groups: [compliance, hipaa, retention]
+  match:
+    type: "log.file"
+    fields:
+      doc_type: {regex: "(?i)(policy|risk|baa)"}
+      retention_years: {regex: "^[0-5]$"}
+  alert: {title: "HIPAA §164.530(j): documentation retention <6yr"}
+  enabled: true
+
+- id: 19185
+  level: 10
+  description: "HIPAA: Service account used interactively in ePHI app"
+  groups: [compliance, hipaa]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      logon_type: {regex: "(2|10)"}
+      target_user: {regex: "(?i)^svc_"}
+      app: {equals: "ehr"}
+  alert: {title: "HIPAA: service account interactive logon to ePHI"}
+  enabled: true
+
+- id: 19186
+  level: 9
+  description: "HIPAA: Patient lookup with no associated encounter (snooping)"
+  groups: [compliance, hipaa, privacy]
+  match:
+    type: "log.file"
+    fields:
+      app: {equals: "ehr"}
+      action: {equals: "search_patient"}
+      encounter_link: {equals: "none"}
+  correlation: {window: "1h", threshold: 20, group_by: ["user"]}
+  alert: {title: "HIPAA: bulk patient lookups w/o encounter link"}
+  enabled: true
+
+- id: 19187
+  level: 10
+  description: "HIPAA: ePHI database backup copied to non-approved location"
+  groups: [compliance, hipaa, backup]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "backup_job"}
+      data_class: {equals: "ephi"}
+      destination_approved: {equals: "false"}
+  alert: {title: "HIPAA: ePHI backup to unapproved destination"}
+  enabled: true
+
+- id: 19188
+  level: 11
+  description: "HIPAA: Decryption key extracted from HSM (ePHI keys)"
+  groups: [compliance, hipaa, encryption]
+  match:
+    type: "log.file"
+    fields:
+      service: {equals: "hsm"}
+      action: {equals: "key_export"}
+      key_tag: {contains: "ephi"}
+  alert: {title: "HIPAA: ePHI key extracted from HSM"}
+  enabled: true
+
+- id: 19189
+  level: 9
+  description: "HIPAA: Provider impersonation - clinician account at >2 sites"
+  groups: [compliance, hipaa, anomaly]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      app: {equals: "ehr"}
+  correlation: {window: "5m", threshold: 1, group_by: ["target_user", "workstation"]}
+  alert: {title: "HIPAA: concurrent clinician sessions multiple workstations"}
+  enabled: true
+
+- id: 19190
+  level: 10
+  description: "HIPAA: SQL dump targeting patient schema"
+  groups: [compliance, hipaa, dlp]
+  match:
+    type: "log.file"
+    fields:
+      query: {regex: "(?i)select\\s+\\*\\s+from\\s+(patient|encounter|diagnos)"}
+  mitre:
+    - {tactic_id: "TA0009", technique_id: "T1213", technique_name: "Data from Info Repos"}
+  alert: {title: "HIPAA: bulk patient SQL extract"}
+  enabled: true
+
+- id: 19191
+  level: 8
+  description: "HIPAA §164.316(b): Required document not retained"
+  groups: [compliance, hipaa, administrative]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "delete_document"}
+      doc_class: {regex: "(?i)(hipaa_policy|risk_assessment|baa)"}
+  alert: {title: "HIPAA §164.316(b): required document deleted"}
+  enabled: true
+
+- id: 19192
+  level: 11
+  description: "HIPAA: Anonymized dataset re-identification attempt"
+  groups: [compliance, hipaa, privacy]
+  match:
+    type: "log.file"
+    fields:
+      dataset: {equals: "deidentified"}
+      action: {regex: "(?i)(join|enrich).*identifier"}
+  alert: {title: "HIPAA: re-identification attack on deidentified data"}
+  enabled: true
+
+- id: 19193
+  level: 10
+  description: "HIPAA: SMS/text containing PHI sent via non-secure channel"
+  groups: [compliance, hipaa, dlp]
+  match:
+    type: "log.file"
+    fields:
+      service: {regex: "(?i)(sms|twilio|messagebird)"}
+      body: {regex: "(?i)(diagnos|medication|patient\\s+\\w+)"}
+      secure_messaging: {equals: "false"}
+  alert: {title: "HIPAA: PHI sent via insecure SMS"}
+  enabled: true
+
+- id: 19194
+  level: 9
+  description: "HIPAA: Photo of patient/screen uploaded to social media"
+  groups: [compliance, hipaa, privacy]
+  match:
+    type: "log.file"
+    fields:
+      proxy_category: {equals: "social_media"}
+      method: {equals: "POST"}
+      upload_size: {regex: "^[1-9][0-9]{5,}$"}
+      device_class: {regex: "(?i)clinical"}
+  alert: {title: "HIPAA: clinical device social media upload"}
+  enabled: true
+
+- id: 19195
+  level: 10
+  description: "HIPAA: Telehealth session over non-HIPAA-compliant platform"
+  groups: [compliance, hipaa, telehealth]
+  match:
+    type: "log.file"
+    fields:
+      app: {regex: "(?i)(facetime|skype|whatsapp|hangouts)"}
+      session_type: {equals: "telehealth"}
+  alert: {title: "HIPAA: non-compliant telehealth platform"}
+  enabled: true
+
+- id: 19196
+  level: 11
+  description: "HIPAA: ePHI database snapshot copied to dev environment"
+  groups: [compliance, hipaa, dev]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "db_clone"}
+      source_env: {equals: "prod"}
+      dest_env: {equals: "dev"}
+      contains_ephi: {equals: "true"}
+  alert: {title: "HIPAA: ePHI cloned to dev environment"}
+  enabled: true
+
+- id: 19197
+  level: 10
+  description: "HIPAA: Failed login to ePHI app from new geography"
+  groups: [compliance, hipaa, anomaly]
+  match:
+    type: "log.file"
+    fields:
+      app: {equals: "ehr"}
+      auth_result: {equals: "fail"}
+      country_seen_before: {equals: "false"}
+  alert: {title: "HIPAA: failed ePHI login from new geography"}
+  enabled: true
+
+- id: 19198
+  level: 9
+  description: "HIPAA: Audit log query coverage gap (no events for ephi app >2h)"
+  groups: [compliance, hipaa, observability]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "silent_source_check"}
+      app: {equals: "ehr"}
+  alert: {title: "HIPAA: ePHI app silent — audit gap"}
+  enabled: true
+
+- id: 19199
+  level: 12
+  description: "HIPAA: Ransomware indicator on ePHI host (file mass encrypt)"
+  groups: [compliance, hipaa, ransomware]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      action: {equals: "rename"}
+      ext_to: {regex: "(?i)\\.(locked|crypt|enc|wcry|ryk)$"}
+  correlation: {window: "5m", threshold: 50, group_by: ["host"]}
+  mitre:
+    - {tactic_id: "TA0040", technique_id: "T1486", technique_name: "Data Encrypted for Impact"}
+  alert: {title: "HIPAA: ransomware encrypting ePHI"}
+  enabled: true

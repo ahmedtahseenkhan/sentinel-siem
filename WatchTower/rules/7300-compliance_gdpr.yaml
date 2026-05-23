@@ -1,0 +1,498 @@
+# GDPR (EU 2016/679) Compliance Detection Rules
+# IDs 19200-19239 (40 rules)
+
+- id: 19200
+  level: 11
+  description: "GDPR Art 5(1)(f): Personal data breach — unauthorized access"
+  groups: [compliance, gdpr, art_5]
+  match:
+    type: "log.file"
+    fields:
+      data_class: {equals: "personal_data"}
+      access_result: {equals: "denied"}
+  alert: {title: "GDPR Art 5(1)(f): unauthorized PII access"}
+  enabled: true
+
+- id: 19201
+  level: 12
+  description: "GDPR Art 32: PII transmitted unencrypted across EU border"
+  groups: [compliance, gdpr, art_32]
+  match:
+    type: "log.file"
+    fields:
+      data_class: {equals: "personal_data"}
+      tls: {equals: "false"}
+      dst_geo: {regex: "(?i)(non_eu|us|cn|ru|in)"}
+  alert: {title: "GDPR Art 32: PII cleartext cross-border"}
+  enabled: true
+
+- id: 19202
+  level: 11
+  description: "GDPR Art 33: Breach not reported to DPA within 72 hours"
+  groups: [compliance, gdpr, art_33]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "breach_register"}
+      hours_since_aware: {regex: "^(7[3-9]|[8-9][0-9]|[1-9][0-9]{2,})$"}
+      dpa_notified: {equals: "false"}
+  alert: {title: "GDPR Art 33: 72h breach notification missed"}
+  enabled: true
+
+- id: 19203
+  level: 10
+  description: "GDPR Art 17: Right to erasure request not fulfilled in 30 days"
+  groups: [compliance, gdpr, dsr]
+  match:
+    type: "log.file"
+    fields:
+      request_type: {equals: "erasure"}
+      days_pending: {regex: "^(3[1-9]|[4-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "GDPR Art 17: erasure request overdue"}
+  enabled: true
+
+- id: 19204
+  level: 9
+  description: "GDPR Art 15: Subject access request not fulfilled in 30 days"
+  groups: [compliance, gdpr, dsr]
+  match:
+    type: "log.file"
+    fields:
+      request_type: {equals: "access"}
+      days_pending: {regex: "^(3[1-9]|[4-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "GDPR Art 15: subject access overdue"}
+  enabled: true
+
+- id: 19205
+  level: 9
+  description: "GDPR Art 20: Data portability request not fulfilled"
+  groups: [compliance, gdpr, dsr]
+  match:
+    type: "log.file"
+    fields:
+      request_type: {equals: "portability"}
+      days_pending: {regex: "^(3[1-9]|[4-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "GDPR Art 20: portability request overdue"}
+  enabled: true
+
+- id: 19206
+  level: 10
+  description: "GDPR Art 6: Personal data processed without lawful basis recorded"
+  groups: [compliance, gdpr, art_6]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "process_pii"}
+      lawful_basis: {equals: ""}
+  alert: {title: "GDPR Art 6: processing without lawful basis"}
+  enabled: true
+
+- id: 19207
+  level: 11
+  description: "GDPR Art 7: Consent withdrawn but processing continues"
+  groups: [compliance, gdpr, art_7]
+  match:
+    type: "log.file"
+    fields:
+      consent_status: {equals: "withdrawn"}
+      action: {equals: "process_pii"}
+  alert: {title: "GDPR Art 7: processing despite withdrawn consent"}
+  enabled: true
+
+- id: 19208
+  level: 9
+  description: "GDPR Art 25: Data minimization violation - excess fields requested"
+  groups: [compliance, gdpr, art_25, privacy]
+  match:
+    type: "log.file"
+    fields:
+      form_id: {regex: "^.+$"}
+      excess_pii_fields: {regex: "^[1-9][0-9]*$"}
+  alert: {title: "GDPR Art 25: excess PII collection"}
+  enabled: true
+
+- id: 19209
+  level: 10
+  description: "GDPR Art 28: Sub-processor used without prior authorization"
+  groups: [compliance, gdpr, art_28]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "vendor_mgmt"}
+      sub_processor: {regex: "^.+$"}
+      authorized: {equals: "false"}
+  alert: {title: "GDPR Art 28: unauthorized sub-processor"}
+  enabled: true
+
+- id: 19210
+  level: 11
+  description: "GDPR Art 44: PII transferred outside EEA without safeguards"
+  groups: [compliance, gdpr, art_44]
+  match:
+    type: "log.file"
+    fields:
+      data_class: {equals: "personal_data"}
+      dst_in_eea: {equals: "false"}
+      adequacy_decision: {equals: "false"}
+      sccs_signed: {equals: "false"}
+  alert: {title: "GDPR Art 44: international transfer without safeguards"}
+  enabled: true
+
+- id: 19211
+  level: 10
+  description: "GDPR Art 30: Records of processing activities (RoPA) missing"
+  groups: [compliance, gdpr, art_30]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "process_pii"}
+      ropa_record_id: {equals: ""}
+  alert: {title: "GDPR Art 30: processing without RoPA entry"}
+  enabled: true
+
+- id: 19212
+  level: 9
+  description: "GDPR Art 35: DPIA required but not performed"
+  groups: [compliance, gdpr, art_35]
+  match:
+    type: "log.file"
+    fields:
+      processing_risk: {equals: "high"}
+      dpia_completed: {equals: "false"}
+  alert: {title: "GDPR Art 35: DPIA missing for high-risk processing"}
+  enabled: true
+
+- id: 19213
+  level: 8
+  description: "GDPR Art 37: Data Protection Officer (DPO) not designated"
+  groups: [compliance, gdpr, art_37]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "governance_check"}
+      dpo_designated: {equals: "false"}
+  alert: {title: "GDPR Art 37: DPO not designated"}
+  enabled: true
+
+- id: 19214
+  level: 11
+  description: "GDPR Art 9: Special category data (health, biometric) processed w/o explicit consent"
+  groups: [compliance, gdpr, art_9]
+  match:
+    type: "log.file"
+    fields:
+      data_class: {regex: "(?i)(health|biometric|genetic|religion|ethnic|sexual)"}
+      explicit_consent: {equals: "false"}
+  alert: {title: "GDPR Art 9: special category data w/o explicit consent"}
+  enabled: true
+
+- id: 19215
+  level: 10
+  description: "GDPR: Bulk PII export without DPO approval"
+  groups: [compliance, gdpr, dlp]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "export"}
+      data_class: {equals: "personal_data"}
+  correlation: {window: "1h", threshold: 100, group_by: ["user"]}
+  alert: {title: "GDPR: bulk PII export"}
+  enabled: true
+
+- id: 19216
+  level: 9
+  description: "GDPR Art 13: Privacy notice not shown before collection"
+  groups: [compliance, gdpr, art_13]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "collect_pii"}
+      notice_displayed: {equals: "false"}
+  alert: {title: "GDPR Art 13: collection without privacy notice"}
+  enabled: true
+
+- id: 19217
+  level: 10
+  description: "GDPR: Cookie set before consent banner accepted"
+  groups: [compliance, gdpr, eprivacy]
+  match:
+    type: "log.file"
+    fields:
+      cookie_class: {regex: "(?i)(marketing|analytics|tracking)"}
+      consent_state: {equals: "pending"}
+  alert: {title: "GDPR/ePrivacy: pre-consent tracking cookie"}
+  enabled: true
+
+- id: 19218
+  level: 9
+  description: "GDPR Art 5(1)(e): Retention exceeded for PII record"
+  groups: [compliance, gdpr, retention]
+  match:
+    type: "log.file"
+    fields:
+      data_class: {equals: "personal_data"}
+      retention_breach: {equals: "true"}
+  alert: {title: "GDPR Art 5(1)(e): PII retention exceeded"}
+  enabled: true
+
+- id: 19219
+  level: 10
+  description: "GDPR: Anonymization job failed leaving identifiers"
+  groups: [compliance, gdpr, privacy]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "anonymizer"}
+      status: {equals: "fail"}
+  alert: {title: "GDPR: anonymization failure left PII"}
+  enabled: true
+
+- id: 19220
+  level: 11
+  description: "GDPR: Joint controller agreement missing for data sharing"
+  groups: [compliance, gdpr, art_26]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "share_pii"}
+      jca_signed: {equals: "false"}
+  alert: {title: "GDPR Art 26: joint controller agreement missing"}
+  enabled: true
+
+- id: 19221
+  level: 10
+  description: "GDPR Art 21: Right to object not honoured (continued direct marketing)"
+  groups: [compliance, gdpr, art_21]
+  match:
+    type: "log.file"
+    fields:
+      objection_filed: {equals: "true"}
+      campaign_sent: {equals: "true"}
+  alert: {title: "GDPR Art 21: marketing despite objection"}
+  enabled: true
+
+- id: 19222
+  level: 9
+  description: "GDPR Art 22: Automated decision-making without human review"
+  groups: [compliance, gdpr, art_22, ai]
+  match:
+    type: "log.file"
+    fields:
+      decision_type: {equals: "automated"}
+      legal_effect: {equals: "true"}
+      human_review: {equals: "false"}
+  alert: {title: "GDPR Art 22: automated legal-effect decision"}
+  enabled: true
+
+- id: 19223
+  level: 11
+  description: "GDPR: Personal data leaked to public S3 bucket"
+  groups: [compliance, gdpr, cloud, dlp]
+  match:
+    type: "log.file"
+    fields:
+      service: {equals: "s3"}
+      acl: {equals: "public-read"}
+      data_class: {equals: "personal_data"}
+  alert: {title: "GDPR: PII in public S3 bucket"}
+  enabled: true
+
+- id: 19224
+  level: 10
+  description: "GDPR: Pseudonymization key co-located with data"
+  groups: [compliance, gdpr, art_32]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "kms"}
+      key_location: {equals: "same_db_as_data"}
+  alert: {title: "GDPR: pseudonymization key co-located"}
+  enabled: true
+
+- id: 19225
+  level: 9
+  description: "GDPR: PII shared with third party app via OAuth scope expansion"
+  groups: [compliance, gdpr, oauth]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "oauth"}
+      scope: {regex: "(?i)(profile|email|address|phone)"}
+      consent_recorded: {equals: "false"}
+  alert: {title: "GDPR: OAuth PII scope without consent"}
+  enabled: true
+
+- id: 19226
+  level: 10
+  description: "GDPR: User profile data sold/syndicated without lawful basis"
+  groups: [compliance, gdpr]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "data_export"}
+      recipient_type: {equals: "data_broker"}
+      lawful_basis: {equals: ""}
+  alert: {title: "GDPR: data broker share without basis"}
+  enabled: true
+
+- id: 19227
+  level: 11
+  description: "GDPR: PII appears in application error log"
+  groups: [compliance, gdpr, dlp]
+  match:
+    type: "log.file"
+    fields:
+      log_type: {equals: "error"}
+      content: {regex: "(?i)(email[:=]\\S+@|ssn[:=]\\d{3}-?\\d{2}-?\\d{4}|phone[:=]\\+?\\d{10,})"}
+  alert: {title: "GDPR: PII leaked into error log"}
+  enabled: true
+
+- id: 19228
+  level: 10
+  description: "GDPR: Tracking pixel/3rd-party JS loaded without consent"
+  groups: [compliance, gdpr, eprivacy]
+  match:
+    type: "log.file"
+    fields:
+      resource_class: {regex: "(?i)(facebook|google.*analytics|hotjar|criteo)"}
+      consent_state: {equals: "pending"}
+  alert: {title: "GDPR: pre-consent tracker loaded"}
+  enabled: true
+
+- id: 19229
+  level: 9
+  description: "GDPR Art 5(1)(d): Inaccurate PII not corrected within reasonable time"
+  groups: [compliance, gdpr, art_5]
+  match:
+    type: "log.file"
+    fields:
+      request_type: {equals: "rectification"}
+      days_pending: {regex: "^(3[1-9]|[4-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "GDPR Art 5(1)(d): rectification overdue"}
+  enabled: true
+
+- id: 19230
+  level: 10
+  description: "GDPR: Webform collecting child data without age verification"
+  groups: [compliance, gdpr, art_8, children]
+  match:
+    type: "log.file"
+    fields:
+      form_type: {equals: "registration"}
+      age_gate: {equals: "false"}
+  alert: {title: "GDPR Art 8: no age verification on registration"}
+  enabled: true
+
+- id: 19231
+  level: 11
+  description: "GDPR: PII processed in dev env without anonymization"
+  groups: [compliance, gdpr, dev]
+  match:
+    type: "log.file"
+    fields:
+      env: {equals: "dev"}
+      data_source: {equals: "prod_pii"}
+      anonymized: {equals: "false"}
+  alert: {title: "GDPR: prod PII in dev env"}
+  enabled: true
+
+- id: 19232
+  level: 10
+  description: "GDPR: Insider browsed >20 customer profiles in 10 min"
+  groups: [compliance, gdpr, insider]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "view_customer"}
+  correlation: {window: "10m", threshold: 20, group_by: ["user"]}
+  alert: {title: "GDPR: insider mass customer profile browsing"}
+  enabled: true
+
+- id: 19233
+  level: 9
+  description: "GDPR: Marketing email sent to opted-out address"
+  groups: [compliance, gdpr]
+  match:
+    type: "log.file"
+    fields:
+      campaign_type: {equals: "marketing"}
+      recipient_opt_out: {equals: "true"}
+  alert: {title: "GDPR: marketing to opted-out recipient"}
+  enabled: true
+
+- id: 19234
+  level: 10
+  description: "GDPR: Cross-border transfer logged via VPN bypass"
+  groups: [compliance, gdpr, art_44]
+  match:
+    type: "log.file"
+    fields:
+      data_class: {equals: "personal_data"}
+      egress_via: {equals: "vpn"}
+      country_appears_eu: {equals: "true"}
+      actual_dst_country: {regex: "(?i)(cn|ru|us)"}
+  alert: {title: "GDPR Art 44: transfer disguised via VPN"}
+  enabled: true
+
+- id: 19235
+  level: 11
+  description: "GDPR: Data leak — credentials/PII pasted in public Slack channel"
+  groups: [compliance, gdpr, dlp]
+  match:
+    type: "log.file"
+    fields:
+      app: {equals: "slack"}
+      channel_visibility: {equals: "public"}
+      message: {regex: "(?i)(password|api[_-]?key|email[:=]\\S+@)"}
+  alert: {title: "GDPR: secret/PII in public Slack"}
+  enabled: true
+
+- id: 19236
+  level: 10
+  description: "GDPR Art 32: Backups containing PII unencrypted"
+  groups: [compliance, gdpr, backup]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "backup_job"}
+      data_class: {equals: "personal_data"}
+      encrypted: {equals: "false"}
+  alert: {title: "GDPR: PII backup unencrypted"}
+  enabled: true
+
+- id: 19237
+  level: 9
+  description: "GDPR: Vendor risk assessment overdue for processor"
+  groups: [compliance, gdpr, art_28]
+  match:
+    type: "log.file"
+    fields:
+      vendor_class: {equals: "processor"}
+      days_since_review: {regex: "^(36[6-9]|3[7-9][0-9]|[4-9][0-9]{2}|[1-9][0-9]{3,})$"}
+  alert: {title: "GDPR: processor risk review overdue"}
+  enabled: true
+
+- id: 19238
+  level: 10
+  description: "GDPR: Profiling activity without information notice"
+  groups: [compliance, gdpr, profiling]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "profile_user"}
+      profiling_notice: {equals: "false"}
+  alert: {title: "GDPR: undisclosed profiling"}
+  enabled: true
+
+- id: 19239
+  level: 11
+  description: "GDPR: Mass deletion of consent records (audit tampering)"
+  groups: [compliance, gdpr, integrity]
+  match:
+    type: "log.file"
+    fields:
+      table: {equals: "consent_records"}
+      action: {equals: "delete"}
+  correlation: {window: "10m", threshold: 50, group_by: ["user"]}
+  alert: {title: "GDPR: bulk consent record deletion"}
+  enabled: true

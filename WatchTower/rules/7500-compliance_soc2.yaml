@@ -1,0 +1,498 @@
+# SOC 2 Trust Services Criteria (TSC 2017, rev 2022) Detection Rules
+# IDs 19290-19329 (40 rules) — Security, Availability, Processing Integrity, Confidentiality, Privacy
+
+- id: 19290
+  level: 10
+  description: "SOC2 CC6.1: Unauthorized access to production system"
+  groups: [compliance, soc2, security, cc6]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4625}
+      env: {equals: "production"}
+  correlation: {window: "10m", threshold: 3, group_by: ["target_user", "src_ip"]}
+  alert: {title: "SOC2 CC6.1: repeated prod access failures"}
+  enabled: true
+
+- id: 19291
+  level: 9
+  description: "SOC2 CC6.2: New user provisioned without ticket"
+  groups: [compliance, soc2, security, cc6]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4720}
+      jira_ticket: {equals: ""}
+  alert: {title: "SOC2 CC6.2: provisioning without ticket"}
+  enabled: true
+
+- id: 19292
+  level: 10
+  description: "SOC2 CC6.3: Excessive privilege grant without approval"
+  groups: [compliance, soc2, security, cc6]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4728}
+      group_name: {regex: "(?i)(admin|root|sudoers)"}
+      approval: {equals: "missing"}
+  alert: {title: "SOC2 CC6.3: privileged group add w/o approval"}
+  enabled: true
+
+- id: 19293
+  level: 11
+  description: "SOC2 CC6.6: External attack indicator"
+  groups: [compliance, soc2, security, cc6]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "edr"}
+      severity: {regex: "(high|critical)"}
+  alert: {title: "SOC2 CC6.6: EDR high-severity detection"}
+  enabled: true
+
+- id: 19294
+  level: 10
+  description: "SOC2 CC6.7: PII transmission without encryption"
+  groups: [compliance, soc2, confidentiality, cc6]
+  match:
+    type: "log.file"
+    fields:
+      data_class: {regex: "(pii|customer_data)"}
+      tls: {equals: "false"}
+  alert: {title: "SOC2 CC6.7: PII unencrypted in transit"}
+  enabled: true
+
+- id: 19295
+  level: 9
+  description: "SOC2 CC6.8: Unapproved software detected"
+  groups: [compliance, soc2, security, cc6]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "software_inventory"}
+      approved: {equals: "false"}
+  alert: {title: "SOC2 CC6.8: unapproved software"}
+  enabled: true
+
+- id: 19296
+  level: 11
+  description: "SOC2 CC7.1: Vulnerability above threshold not remediated"
+  groups: [compliance, soc2, security, cc7]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "vuln_scanner"}
+      severity: {equals: "critical"}
+      days_open: {regex: "^([8-9]|[1-9][0-9]+)$"}
+  alert: {title: "SOC2 CC7.1: critical vuln SLA breach"}
+  enabled: true
+
+- id: 19297
+  level: 10
+  description: "SOC2 CC7.2: Security event detected with no IR ticket opened"
+  groups: [compliance, soc2, security, cc7]
+  match:
+    type: "log.file"
+    fields:
+      alert_severity: {regex: "(high|critical)"}
+      ticket_id: {equals: ""}
+  correlation: {window: "1h", threshold: 1}
+  alert: {title: "SOC2 CC7.2: alert without IR ticket"}
+  enabled: true
+
+- id: 19298
+  level: 12
+  description: "SOC2 CC7.3: Confirmed security incident"
+  groups: [compliance, soc2, security, cc7]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "ir_platform"}
+      status: {equals: "confirmed_incident"}
+  alert: {title: "SOC2 CC7.3: confirmed incident"}
+  enabled: true
+
+- id: 19299
+  level: 10
+  description: "SOC2 CC7.4: Recovery objective not met (RTO breach)"
+  groups: [compliance, soc2, availability, cc7]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "incident"}
+      rto_breached: {equals: "true"}
+  alert: {title: "SOC2 CC7.4: RTO breach"}
+  enabled: true
+
+- id: 19300
+  level: 9
+  description: "SOC2 CC8.1: Change deployed without approval"
+  groups: [compliance, soc2, security, cc8]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "ci_cd"}
+      env: {equals: "production"}
+      approver: {equals: ""}
+  alert: {title: "SOC2 CC8.1: unapproved prod deploy"}
+  enabled: true
+
+- id: 19301
+  level: 10
+  description: "SOC2 CC9.1: Risk identified but not mitigated within SLA"
+  groups: [compliance, soc2, security, cc9]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "risk_register"}
+      status: {equals: "open"}
+      days_open: {regex: "^(3[1-9]|[4-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "SOC2 CC9.1: risk overdue"}
+  enabled: true
+
+- id: 19302
+  level: 10
+  description: "SOC2 CC9.2: Vendor breach affecting our data"
+  groups: [compliance, soc2, security, cc9]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "vendor_breach_feed"}
+      our_data_affected: {equals: "true"}
+  alert: {title: "SOC2 CC9.2: vendor breach impacting us"}
+  enabled: true
+
+- id: 19303
+  level: 11
+  description: "SOC2 Availability A1.2: Service downtime exceeded SLA"
+  groups: [compliance, soc2, availability]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "uptime"}
+      sla_breached: {equals: "true"}
+  alert: {title: "SOC2 A1.2: SLA breach"}
+  enabled: true
+
+- id: 19304
+  level: 10
+  description: "SOC2 A1.3: Backup verification failed"
+  groups: [compliance, soc2, availability]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "backup_test"}
+      result: {equals: "fail"}
+  alert: {title: "SOC2 A1.3: backup verify failed"}
+  enabled: true
+
+- id: 19305
+  level: 10
+  description: "SOC2 Processing Integrity PI1.1: Data validation error rate spike"
+  groups: [compliance, soc2, processing_integrity]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "data_pipeline"}
+      validation_error_rate_pct: {regex: "^([5-9]|[1-9][0-9]+)\\.[0-9]+$"}
+  alert: {title: "SOC2 PI1.1: data validation error spike"}
+  enabled: true
+
+- id: 19306
+  level: 9
+  description: "SOC2 PI1.4: Transaction reconciliation failure"
+  groups: [compliance, soc2, processing_integrity]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "recon_job"}
+      status: {equals: "mismatch"}
+  alert: {title: "SOC2 PI1.4: reconciliation mismatch"}
+  enabled: true
+
+- id: 19307
+  level: 11
+  description: "SOC2 Confidentiality C1.1: Confidential data shared externally"
+  groups: [compliance, soc2, confidentiality]
+  match:
+    type: "log.file"
+    fields:
+      data_class: {equals: "confidential"}
+      recipient_domain_external: {equals: "true"}
+  alert: {title: "SOC2 C1.1: confidential data sent externally"}
+  enabled: true
+
+- id: 19308
+  level: 10
+  description: "SOC2 C1.2: Confidential data retained past schedule"
+  groups: [compliance, soc2, confidentiality, retention]
+  match:
+    type: "log.file"
+    fields:
+      data_class: {equals: "confidential"}
+      retention_breach: {equals: "true"}
+  alert: {title: "SOC2 C1.2: confidential retention breach"}
+  enabled: true
+
+- id: 19309
+  level: 11
+  description: "SOC2 Privacy P1.1: PII collected without notice"
+  groups: [compliance, soc2, privacy]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "collect_pii"}
+      notice_id: {equals: ""}
+  alert: {title: "SOC2 P1.1: PII collection without notice"}
+  enabled: true
+
+- id: 19310
+  level: 10
+  description: "SOC2 P3.2: Consent not obtained before processing"
+  groups: [compliance, soc2, privacy]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "process_pii"}
+      consent_id: {equals: ""}
+  alert: {title: "SOC2 P3.2: processing without consent"}
+  enabled: true
+
+- id: 19311
+  level: 10
+  description: "SOC2 CC5.2: Logging service stopped (control failure)"
+  groups: [compliance, soc2, security, cc5]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 7036}
+      service_name: {regex: "(?i)(filebeat|fluentd|logstash|sentinel)"}
+      state: {equals: "stopped"}
+  alert: {title: "SOC2 CC5.2: logging service stopped"}
+  enabled: true
+
+- id: 19312
+  level: 9
+  description: "SOC2 CC1.4: Background check missing for new hire"
+  groups: [compliance, soc2, security, cc1]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "hr_onboarding"}
+      background_check: {equals: "missing"}
+  alert: {title: "SOC2 CC1.4: background check missing"}
+  enabled: true
+
+- id: 19313
+  level: 8
+  description: "SOC2 CC2.2: Communication of policy changes not acknowledged"
+  groups: [compliance, soc2, security, cc2]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "policy_portal"}
+      acknowledged: {equals: "false"}
+      overdue_days: {regex: "^([1-9][0-9]+)$"}
+  alert: {title: "SOC2 CC2.2: policy ack overdue"}
+  enabled: true
+
+- id: 19314
+  level: 9
+  description: "SOC2 CC4.1: Internal control test failed"
+  groups: [compliance, soc2, security, cc4]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "control_testing"}
+      result: {equals: "fail"}
+  alert: {title: "SOC2 CC4.1: control test failed"}
+  enabled: true
+
+- id: 19315
+  level: 10
+  description: "SOC2: Excessive failed MFA challenges"
+  groups: [compliance, soc2, security]
+  match:
+    type: "log.file"
+    fields:
+      mfa_result: {equals: "fail"}
+  correlation: {window: "5m", threshold: 5, group_by: ["user"]}
+  alert: {title: "SOC2: MFA fatigue / brute force"}
+  enabled: true
+
+- id: 19316
+  level: 11
+  description: "SOC2: Production database accessed from developer laptop"
+  groups: [compliance, soc2, security]
+  match:
+    type: "log.file"
+    fields:
+      service: {regex: "(?i)(postgres|mysql|mssql)"}
+      env: {equals: "production"}
+      src_device_class: {equals: "laptop"}
+  alert: {title: "SOC2: prod DB from dev laptop"}
+  enabled: true
+
+- id: 19317
+  level: 10
+  description: "SOC2: API key committed to git repo"
+  groups: [compliance, soc2, security, secrets]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "secret_scanner"}
+      finding: {regex: "(?i)(api[_-]?key|secret|token|password)"}
+  mitre:
+    - {tactic_id: "TA0006", technique_id: "T1552.001", technique_name: "Credentials In Files"}
+  alert: {title: "SOC2: secret leaked to git"}
+  enabled: true
+
+- id: 19318
+  level: 9
+  description: "SOC2: Code review SLA breach"
+  groups: [compliance, soc2, security]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "git"}
+      pr_state: {equals: "merged"}
+      reviewers: {equals: "0"}
+  alert: {title: "SOC2: PR merged without review"}
+  enabled: true
+
+- id: 19319
+  level: 10
+  description: "SOC2: Service offline / health check failing >5m"
+  groups: [compliance, soc2, availability]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "healthcheck"}
+      status: {equals: "fail"}
+  correlation: {window: "5m", threshold: 5, group_by: ["service"]}
+  alert: {title: "SOC2: service health sustained failure"}
+  enabled: true
+
+- id: 19320
+  level: 11
+  description: "SOC2: Production DB user accessed via root tunnel"
+  groups: [compliance, soc2, security]
+  match:
+    type: "log.file"
+    fields:
+      service: {equals: "ssh"}
+      user: {equals: "root"}
+      env: {equals: "production"}
+  alert: {title: "SOC2: prod root SSH access"}
+  enabled: true
+
+- id: 19321
+  level: 10
+  description: "SOC2: Encryption key rotation overdue"
+  groups: [compliance, soc2, security]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "kms"}
+      days_since_rotation: {regex: "^(36[6-9]|3[7-9][0-9]|[4-9][0-9]{2}|[1-9][0-9]{3,})$"}
+  alert: {title: "SOC2: encryption key rotation overdue"}
+  enabled: true
+
+- id: 19322
+  level: 9
+  description: "SOC2: Cloud security group opened to 0.0.0.0/0"
+  groups: [compliance, soc2, security, cloud]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(aws|azure|gcp)"}
+      action: {regex: "(?i)(securitygroup|firewall).*ingress"}
+      cidr: {equals: "0.0.0.0/0"}
+  alert: {title: "SOC2: world-open security group"}
+  enabled: true
+
+- id: 19323
+  level: 10
+  description: "SOC2: TLS certificate expired"
+  groups: [compliance, soc2, availability]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "cert_monitor"}
+      status: {equals: "expired"}
+  alert: {title: "SOC2: TLS cert expired"}
+  enabled: true
+
+- id: 19324
+  level: 8
+  description: "SOC2: TLS certificate expiring in <14 days"
+  groups: [compliance, soc2, availability]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "cert_monitor"}
+      days_to_expiry: {regex: "^([0-9]|1[0-3])$"}
+  alert: {title: "SOC2: TLS cert expiring soon"}
+  enabled: true
+
+- id: 19325
+  level: 10
+  description: "SOC2: Excessive 5xx error rate"
+  groups: [compliance, soc2, availability]
+  match:
+    type: "log.file"
+    fields:
+      response_code: {regex: "^5[0-9]{2}$"}
+  correlation: {window: "5m", threshold: 100, group_by: ["service"]}
+  alert: {title: "SOC2: 5xx error spike"}
+  enabled: true
+
+- id: 19326
+  level: 9
+  description: "SOC2: Capacity threshold breached"
+  groups: [compliance, soc2, availability]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "capacity_monitor"}
+      utilization_pct: {regex: "^(9[0-9]|100)$"}
+  alert: {title: "SOC2: capacity at 90%+"}
+  enabled: true
+
+- id: 19327
+  level: 11
+  description: "SOC2: Service account credential rotated outside schedule"
+  groups: [compliance, soc2, security]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "credential_rotation"}
+      account_type: {equals: "service"}
+      scheduled: {equals: "false"}
+  alert: {title: "SOC2: unscheduled svc-account rotation"}
+  enabled: true
+
+- id: 19328
+  level: 10
+  description: "SOC2: Customer data accessed by employee not on case"
+  groups: [compliance, soc2, confidentiality]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "view_customer"}
+      case_assignment: {equals: "none"}
+  alert: {title: "SOC2: out-of-case customer view"}
+  enabled: true
+
+- id: 19329
+  level: 9
+  description: "SOC2: SAML/SSO assertion not validated (signature missing)"
+  groups: [compliance, soc2, security]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "saml_idp"}
+      assertion_signed: {equals: "false"}
+  alert: {title: "SOC2: unsigned SAML assertion"}
+  enabled: true

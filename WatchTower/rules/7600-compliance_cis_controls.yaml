@@ -1,0 +1,745 @@
+# CIS Critical Security Controls v8 Detection Rules
+# IDs 19330-19389 (60 rules)
+
+- id: 19330
+  level: 9
+  description: "CIS 1.1: Unauthorized asset connected to network"
+  groups: [compliance, cis_v8, control_1]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "nac"}
+      device_known: {equals: "false"}
+  alert: {title: "CIS 1.1: unknown asset on network"}
+  enabled: true
+
+- id: 19331
+  level: 8
+  description: "CIS 1.4: DHCP lease for unknown MAC"
+  groups: [compliance, cis_v8, control_1]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {equals: "dhcp"}
+      mac_in_cmdb: {equals: "false"}
+  alert: {title: "CIS 1.4: unknown MAC got DHCP lease"}
+  enabled: true
+
+- id: 19332
+  level: 9
+  description: "CIS 2.1: Unauthorized software installed"
+  groups: [compliance, cis_v8, control_2]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "software_inventory"}
+      whitelisted: {equals: "false"}
+  alert: {title: "CIS 2.1: unauthorized software"}
+  enabled: true
+
+- id: 19333
+  level: 10
+  description: "CIS 2.6: Application allowlist bypass attempted"
+  groups: [compliance, cis_v8, control_2]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 8004}
+  alert: {title: "CIS 2.6: AppLocker bypass attempt"}
+  enabled: true
+
+- id: 19334
+  level: 11
+  description: "CIS 3.3: Data encryption at rest disabled"
+  groups: [compliance, cis_v8, control_3]
+  match:
+    type: "log.file"
+    fields:
+      action: {regex: "(?i)(disable|remove).*encryption"}
+  alert: {title: "CIS 3.3: encryption at rest disabled"}
+  enabled: true
+
+- id: 19335
+  level: 10
+  description: "CIS 3.10: Data in transit not encrypted"
+  groups: [compliance, cis_v8, control_3]
+  match:
+    type: "log.file"
+    fields:
+      protocol: {regex: "(?i)(ftp|telnet|http_plain|smtp_plain)"}
+      data_class: {regex: "(?i)(sensitive|confidential|pii)"}
+  alert: {title: "CIS 3.10: sensitive data in cleartext"}
+  enabled: true
+
+- id: 19336
+  level: 9
+  description: "CIS 4.1: Configuration baseline drift"
+  groups: [compliance, cis_v8, control_4]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "cis_benchmark"}
+      drift_count: {regex: "^([1-9][0-9]*)$"}
+  alert: {title: "CIS 4.1: baseline drift"}
+  enabled: true
+
+- id: 19337
+  level: 9
+  description: "CIS 4.6: Unmanaged endpoint joined domain"
+  groups: [compliance, cis_v8, control_4]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4742}
+      mdm_enrolled: {equals: "false"}
+  alert: {title: "CIS 4.6: unmanaged device joined domain"}
+  enabled: true
+
+- id: 19338
+  level: 10
+  description: "CIS 5.1: Default account in active use"
+  groups: [compliance, cis_v8, control_5]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      target_user: {regex: "(?i)^(admin|administrator|root|guest)$"}
+  alert: {title: "CIS 5.1: default account active"}
+  enabled: true
+
+- id: 19339
+  level: 9
+  description: "CIS 5.3: Dormant account login"
+  groups: [compliance, cis_v8, control_5]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      days_since_last_login: {regex: "^(4[5-9]|[5-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "CIS 5.3: dormant account login"}
+  enabled: true
+
+- id: 19340
+  level: 10
+  description: "CIS 5.5: Privileged account used for non-admin activity"
+  groups: [compliance, cis_v8, control_5]
+  match:
+    type: "log.file"
+    fields:
+      account_type: {equals: "privileged"}
+      action_class: {equals: "user_activity"}
+  alert: {title: "CIS 5.5: priv account doing user work"}
+  enabled: true
+
+- id: 19341
+  level: 11
+  description: "CIS 6.3: MFA not enforced for admin"
+  groups: [compliance, cis_v8, control_6]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      target_user: {regex: "(?i)admin"}
+      mfa_used: {equals: "false"}
+  alert: {title: "CIS 6.3: admin login without MFA"}
+  enabled: true
+
+- id: 19342
+  level: 10
+  description: "CIS 6.4: MFA not enforced for remote access"
+  groups: [compliance, cis_v8, control_6]
+  match:
+    type: "log.file"
+    fields:
+      connection_type: {equals: "remote"}
+      mfa_used: {equals: "false"}
+  alert: {title: "CIS 6.4: remote access without MFA"}
+  enabled: true
+
+- id: 19343
+  level: 9
+  description: "CIS 6.7: Centralized identity not used (local account)"
+  groups: [compliance, cis_v8, control_6]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      logon_authority: {equals: "local"}
+  alert: {title: "CIS 6.7: local account login (should be SSO)"}
+  enabled: true
+
+- id: 19344
+  level: 10
+  description: "CIS 7.1: Vuln management process gap (no scan in 30d)"
+  groups: [compliance, cis_v8, control_7]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "vuln_scanner"}
+      days_since_scan: {regex: "^(3[1-9]|[4-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "CIS 7.1: vuln scan overdue"}
+  enabled: true
+
+- id: 19345
+  level: 11
+  description: "CIS 7.4: Automated patch deployment failed"
+  groups: [compliance, cis_v8, control_7]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "patch_mgmt"}
+      status: {equals: "fail"}
+  alert: {title: "CIS 7.4: patch deploy failed"}
+  enabled: true
+
+- id: 19346
+  level: 10
+  description: "CIS 8.2: Audit logging disabled"
+  groups: [compliance, cis_v8, control_8]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4719}
+  alert: {title: "CIS 8.2: audit policy change"}
+  enabled: true
+
+- id: 19347
+  level: 9
+  description: "CIS 8.5: DNS query logging not active"
+  groups: [compliance, cis_v8, control_8]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "dns_health"}
+      query_logging: {equals: "false"}
+  alert: {title: "CIS 8.5: DNS query logging off"}
+  enabled: true
+
+- id: 19348
+  level: 8
+  description: "CIS 8.7: URL request log gap"
+  groups: [compliance, cis_v8, control_8]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "proxy_health"}
+      logging_state: {equals: "disabled"}
+  alert: {title: "CIS 8.7: proxy URL logging disabled"}
+  enabled: true
+
+- id: 19349
+  level: 10
+  description: "CIS 9.2: Browser/email malicious URL clicked"
+  groups: [compliance, cis_v8, control_9]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "url_filter"}
+      category: {regex: "(?i)(malware|phishing|c2)"}
+      action: {equals: "click_through"}
+  alert: {title: "CIS 9.2: malicious URL clicked"}
+  enabled: true
+
+- id: 19350
+  level: 11
+  description: "CIS 9.3: DNS filtering bypass (use of public resolver)"
+  groups: [compliance, cis_v8, control_9]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "dns"}
+      dst_ip: {regex: "^(8\\.8\\.[48]\\.[48]|1\\.1\\.1\\.1|9\\.9\\.9\\.9)$"}
+      dst_port: {equals: "53"}
+  mitre:
+    - {tactic_id: "TA0011", technique_id: "T1071.004", technique_name: "DNS"}
+  alert: {title: "CIS 9.3: DNS filter bypass"}
+  enabled: true
+
+- id: 19351
+  level: 10
+  description: "CIS 10.1: Anti-malware not running"
+  groups: [compliance, cis_v8, control_10]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 7036}
+      service_name: {regex: "(?i)(defender|sense|edr|av)"}
+      state: {equals: "stopped"}
+  alert: {title: "CIS 10.1: anti-malware service stopped"}
+  enabled: true
+
+- id: 19352
+  level: 9
+  description: "CIS 10.4: Auto-run from removable media triggered"
+  groups: [compliance, cis_v8, control_10]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)\\b[A-Z]:\\\\.+\\.(exe|bat|cmd|vbs|ps1)$"}
+      parent: {regex: "(?i)autorun"}
+  alert: {title: "CIS 10.4: removable media auto-execution"}
+  enabled: true
+
+- id: 19353
+  level: 11
+  description: "CIS 11.1: Backup process not running"
+  groups: [compliance, cis_v8, control_11]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "backup_job"}
+      last_success_hours_ago: {regex: "^(2[5-9]|[3-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "CIS 11.1: backup process stale"}
+  enabled: true
+
+- id: 19354
+  level: 10
+  description: "CIS 11.3: Backup not isolated (online only)"
+  groups: [compliance, cis_v8, control_11]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "backup_config"}
+      offline_copy: {equals: "false"}
+  alert: {title: "CIS 11.3: no offline backup copy"}
+  enabled: true
+
+- id: 19355
+  level: 11
+  description: "CIS 11.5: Backup destruction attempt"
+  groups: [compliance, cis_v8, control_11, ransomware]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "delete"}
+      object_type: {equals: "snapshot"}
+  correlation: {window: "10m", threshold: 5}
+  mitre:
+    - {tactic_id: "TA0040", technique_id: "T1490", technique_name: "Inhibit System Recovery"}
+  alert: {title: "CIS 11.5: bulk snapshot deletion"}
+  enabled: true
+
+- id: 19356
+  level: 9
+  description: "CIS 12.2: Network device with default credentials"
+  groups: [compliance, cis_v8, control_12]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_type: {equals: "network"}
+      auth_user: {regex: "(?i)^(admin|cisco|root)$"}
+      auth_result: {equals: "success"}
+  alert: {title: "CIS 12.2: network device default creds"}
+  enabled: true
+
+- id: 19357
+  level: 10
+  description: "CIS 12.4: Insecure mgmt protocol used"
+  groups: [compliance, cis_v8, control_12]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_type: {equals: "network"}
+      mgmt_protocol: {regex: "(?i)(telnet|http|snmpv1|snmpv2)"}
+  alert: {title: "CIS 12.4: insecure network mgmt protocol"}
+  enabled: true
+
+- id: 19358
+  level: 9
+  description: "CIS 12.6: VLAN misconfiguration (untagged trunk)"
+  groups: [compliance, cis_v8, control_12]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {equals: "switch_config_audit"}
+      finding: {regex: "(?i)(native_vlan|trunk_untagged)"}
+  alert: {title: "CIS 12.6: VLAN misconfig"}
+  enabled: true
+
+- id: 19359
+  level: 10
+  description: "CIS 13.1: Network monitoring agent offline"
+  groups: [compliance, cis_v8, control_13]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "netmon"}
+      status: {equals: "offline"}
+      minutes: {regex: "^([3-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "CIS 13.1: netmon offline >30m"}
+  enabled: true
+
+- id: 19360
+  level: 11
+  description: "CIS 13.6: Lateral movement (East-West traffic anomaly)"
+  groups: [compliance, cis_v8, control_13, lateral]
+  match:
+    type: "logs.syslog"
+    fields:
+      direction: {equals: "east_west"}
+      protocol: {regex: "(?i)(smb|wmi|rdp|psexec)"}
+  correlation: {window: "10m", threshold: 5, group_by: ["src_ip"]}
+  mitre:
+    - {tactic_id: "TA0008", technique_id: "T1021", technique_name: "Remote Services"}
+  alert: {title: "CIS 13.6: lateral movement pattern"}
+  enabled: true
+
+- id: 19361
+  level: 8
+  description: "CIS 14.1: Security awareness program metric below target"
+  groups: [compliance, cis_v8, control_14]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "phishing_simulation"}
+      click_rate_pct: {regex: "^([2-9][0-9]|100)$"}
+  alert: {title: "CIS 14.1: high phishing click rate"}
+  enabled: true
+
+- id: 19362
+  level: 9
+  description: "CIS 15.1: Service provider inventory missing"
+  groups: [compliance, cis_v8, control_15]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "vendor_register"}
+      provider_record: {equals: "missing"}
+  alert: {title: "CIS 15.1: service provider not in register"}
+  enabled: true
+
+- id: 19363
+  level: 10
+  description: "CIS 16.1: Application security testing skipped"
+  groups: [compliance, cis_v8, control_16]
+  match:
+    type: "log.file"
+    fields:
+      pipeline: {equals: "build"}
+      sast: {equals: "skipped"}
+  alert: {title: "CIS 16.1: SAST skipped"}
+  enabled: true
+
+- id: 19364
+  level: 10
+  description: "CIS 16.5: 3rd-party dependency with known CVE"
+  groups: [compliance, cis_v8, control_16, supply_chain]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "sca_scanner"}
+      cve_severity: {regex: "(high|critical)"}
+  alert: {title: "CIS 16.5: vulnerable dependency"}
+  enabled: true
+
+- id: 19365
+  level: 9
+  description: "CIS 16.11: Application secret hardcoded"
+  groups: [compliance, cis_v8, control_16, secrets]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "secret_scanner"}
+      location: {regex: "(?i)source|config"}
+  alert: {title: "CIS 16.11: hardcoded secret"}
+  enabled: true
+
+- id: 19366
+  level: 11
+  description: "CIS 17.1: Incident not assigned within SLA"
+  groups: [compliance, cis_v8, control_17]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "ir_platform"}
+      assignee: {equals: ""}
+      age_minutes: {regex: "^(3[1-9]|[4-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "CIS 17.1: incident unassigned"}
+  enabled: true
+
+- id: 19367
+  level: 10
+  description: "CIS 17.4: Post-incident review missing"
+  groups: [compliance, cis_v8, control_17]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "ir_platform"}
+      status: {equals: "closed"}
+      postmortem: {equals: "missing"}
+  alert: {title: "CIS 17.4: post-mortem missing"}
+  enabled: true
+
+- id: 19368
+  level: 9
+  description: "CIS 17.7: Tabletop exercise overdue"
+  groups: [compliance, cis_v8, control_17]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "ir_exercise"}
+      days_since: {regex: "^(36[6-9]|3[7-9][0-9]|[4-9][0-9]{2}|[1-9][0-9]{3,})$"}
+  alert: {title: "CIS 17.7: IR tabletop overdue"}
+  enabled: true
+
+- id: 19369
+  level: 11
+  description: "CIS 18.1: Penetration testing overdue"
+  groups: [compliance, cis_v8, control_18]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "pentest_record"}
+      days_since: {regex: "^(36[6-9]|3[7-9][0-9]|[4-9][0-9]{2}|[1-9][0-9]{3,})$"}
+  alert: {title: "CIS 18.1: pentest overdue"}
+  enabled: true
+
+- id: 19370
+  level: 10
+  description: "CIS 18.3: Pentest finding not remediated"
+  groups: [compliance, cis_v8, control_18]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "pentest_findings"}
+      severity: {regex: "(high|critical)"}
+      status: {equals: "open"}
+      days_open: {regex: "^(3[1-9]|[4-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "CIS 18.3: pentest finding overdue"}
+  enabled: true
+
+- id: 19371
+  level: 9
+  description: "CIS 5.6: User account inventory drift (>5% delta)"
+  groups: [compliance, cis_v8, control_5]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "account_inventory"}
+      delta_pct: {regex: "^([5-9]|[1-9][0-9]+)$"}
+  alert: {title: "CIS 5.6: account inventory drift"}
+  enabled: true
+
+- id: 19372
+  level: 10
+  description: "CIS 6.1: New SSO integration provisioned w/o approval"
+  groups: [compliance, cis_v8, control_6]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "idp_admin"}
+      action: {equals: "add_app"}
+      approver: {equals: ""}
+  alert: {title: "CIS 6.1: unapproved SSO app"}
+  enabled: true
+
+- id: 19373
+  level: 10
+  description: "CIS 6.8: Role-based access not used (direct user grants)"
+  groups: [compliance, cis_v8, control_6]
+  match:
+    type: "log.file"
+    fields:
+      action: {equals: "grant_permission"}
+      grant_type: {equals: "direct"}
+  alert: {title: "CIS 6.8: direct permission grant (no RBAC)"}
+  enabled: true
+
+- id: 19374
+  level: 10
+  description: "CIS 8.10: Log retention insufficient (< 90 days)"
+  groups: [compliance, cis_v8, control_8, retention]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "retention_check"}
+      retention_days: {regex: "^([0-9]|[1-8][0-9])$"}
+  alert: {title: "CIS 8.10: log retention <90d"}
+  enabled: true
+
+- id: 19375
+  level: 10
+  description: "CIS 8.11: Audit log review automation broken"
+  groups: [compliance, cis_v8, control_8]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "log_reviewer"}
+      status: {equals: "down"}
+      hours: {regex: "^([2-9][4-9]|[3-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "CIS 8.11: audit reviewer down >24h"}
+  enabled: true
+
+- id: 19376
+  level: 11
+  description: "CIS 4.7: Default account password unchanged"
+  groups: [compliance, cis_v8, control_4]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "host_audit"}
+      finding: {equals: "default_password"}
+  alert: {title: "CIS 4.7: default password still in use"}
+  enabled: true
+
+- id: 19377
+  level: 9
+  description: "CIS 4.9: Trusted DNS not enforced"
+  groups: [compliance, cis_v8, control_4]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "host_audit"}
+      dns_servers: {regex: "(?i)(public|external)"}
+  alert: {title: "CIS 4.9: untrusted DNS configured"}
+  enabled: true
+
+- id: 19378
+  level: 10
+  description: "CIS 4.11: Browser plugins/extensions not from allowlist"
+  groups: [compliance, cis_v8, control_4]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "browser_inventory"}
+      extension_approved: {equals: "false"}
+  alert: {title: "CIS 4.11: unapproved browser extension"}
+  enabled: true
+
+- id: 19379
+  level: 10
+  description: "CIS 10.7: Behavior-based EDR detection"
+  groups: [compliance, cis_v8, control_10]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "edr"}
+      detection_type: {equals: "behavioral"}
+      severity: {regex: "(high|critical)"}
+  alert: {title: "CIS 10.7: behavioral EDR detection"}
+  enabled: true
+
+- id: 19380
+  level: 9
+  description: "CIS 13.4: Network traffic to known bad domain"
+  groups: [compliance, cis_v8, control_13]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "threat_intel"}
+      indicator_type: {equals: "domain"}
+      match: {equals: "true"}
+  alert: {title: "CIS 13.4: traffic to bad domain"}
+  enabled: true
+
+- id: 19381
+  level: 10
+  description: "CIS 13.5: Remote device without endpoint protection"
+  groups: [compliance, cis_v8, control_13]
+  match:
+    type: "log.file"
+    fields:
+      connection_type: {equals: "remote"}
+      endpoint_protection: {equals: "missing"}
+  alert: {title: "CIS 13.5: remote device w/o EDR"}
+  enabled: true
+
+- id: 19382
+  level: 11
+  description: "CIS 13.10: Application-layer firewall bypass"
+  groups: [compliance, cis_v8, control_13]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "waf"}
+      bypass: {equals: "true"}
+  alert: {title: "CIS 13.10: WAF bypass"}
+  enabled: true
+
+- id: 19383
+  level: 10
+  description: "CIS 16.7: Default config for application accepted (no hardening)"
+  groups: [compliance, cis_v8, control_16]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "app_deploy_audit"}
+      hardening_pass: {equals: "false"}
+  alert: {title: "CIS 16.7: app deployed w/o hardening"}
+  enabled: true
+
+- id: 19384
+  level: 9
+  description: "CIS 16.10: Threat modeling not performed for new app"
+  groups: [compliance, cis_v8, control_16]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "sdlc"}
+      threat_model: {equals: "missing"}
+      env: {equals: "production"}
+  alert: {title: "CIS 16.10: prod app w/o threat model"}
+  enabled: true
+
+- id: 19385
+  level: 9
+  description: "CIS 16.12: Code review process not enforced"
+  groups: [compliance, cis_v8, control_16]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "git"}
+      branch_protection: {equals: "false"}
+  alert: {title: "CIS 16.12: branch protection disabled"}
+  enabled: true
+
+- id: 19386
+  level: 9
+  description: "CIS 3.7: Data classification labels missing"
+  groups: [compliance, cis_v8, control_3]
+  match:
+    type: "log.file"
+    fields:
+      data_class: {equals: "unclassified"}
+      data_volume_gb: {regex: "^([1-9][0-9]+)$"}
+  alert: {title: "CIS 3.7: large unclassified dataset"}
+  enabled: true
+
+- id: 19387
+  level: 11
+  description: "CIS 3.13: DLP egress event"
+  groups: [compliance, cis_v8, control_3, dlp]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "dlp"}
+      action: {equals: "block"}
+      data_class: {regex: "(?i)(pii|confidential|secret)"}
+  alert: {title: "CIS 3.13: DLP block on sensitive egress"}
+  enabled: true
+
+- id: 19388
+  level: 8
+  description: "CIS 3.14: Logging access to sensitive data"
+  groups: [compliance, cis_v8, control_3]
+  match:
+    type: "log.file"
+    fields:
+      data_class: {regex: "(?i)(pii|confidential)"}
+      access_log_enabled: {equals: "false"}
+  alert: {title: "CIS 3.14: sensitive store w/o access logging"}
+  enabled: true
+
+- id: 19389
+  level: 10
+  description: "CIS 2.5: Allowlist tool disabled on host"
+  groups: [compliance, cis_v8, control_2]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 7036}
+      service_name: {regex: "(?i)(applocker|appsense|wdac)"}
+      state: {equals: "stopped"}
+  alert: {title: "CIS 2.5: allowlist enforcement stopped"}
+  enabled: true
