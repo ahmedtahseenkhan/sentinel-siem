@@ -1,0 +1,187 @@
+# Data warehouse, lakehouse, ML pipeline, AI/LLM threats
+# IDs 19840-19853 (14 rules) — final batch to reach 3,000
+# Snowflake, BigQuery, Databricks, Redshift, AWS S3 data lakes, MLflow, SageMaker, LLM gateways
+
+- id: 19840
+  level: 11
+  description: "Snowflake: account-admin role used by non-admin user account"
+  groups: [data_warehouse, snowflake]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "snowflake_query_log"}
+      role: {equals: "ACCOUNTADMIN"}
+      user_class: {regex: "(?i)(?!.*admin).+"}
+  alert: {title: "Snowflake: ACCOUNTADMIN used by non-admin user"}
+  enabled: true
+
+- id: 19841
+  level: 12
+  description: "Snowflake: data exfiltration via COPY INTO external stage (S3/GCS/Azure)"
+  groups: [data_warehouse, snowflake, exfil]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "snowflake_query_log"}
+      query: {regex: "(?i)COPY\\s+INTO\\s+@.+(s3:|gcs:|azure:)"}
+      rows_unloaded: {regex: "^([1-9][0-9]{4,})$"}
+  mitre:
+    - {tactic_id: "TA0010", technique_id: "T1567.002", technique_name: "Exfil to Cloud Storage"}
+  alert: {title: "Snowflake: large COPY INTO external stage"}
+  enabled: true
+
+- id: 19842
+  level: 11
+  description: "Snowflake: network policy modified to allow 0.0.0.0/0"
+  groups: [data_warehouse, snowflake]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "snowflake_audit"}
+      query: {regex: "(?i)ALTER NETWORK POLICY.*0\\.0\\.0\\.0/0"}
+  alert: {title: "Snowflake: network policy widened to world"}
+  enabled: true
+
+- id: 19843
+  level: 12
+  description: "Snowflake: user without MFA enrolled accessing production warehouse"
+  groups: [data_warehouse, snowflake, mfa]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "snowflake_login"}
+      mfa_enrolled: {equals: "false"}
+      warehouse: {regex: "(?i)prod"}
+  alert: {title: "Snowflake: prod warehouse access without MFA"}
+  enabled: true
+
+- id: 19844
+  level: 11
+  description: "BigQuery: query scanned > 1TB (cost + potential bulk exfil)"
+  groups: [data_warehouse, bigquery, cost]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "bigquery_audit"}
+      bytes_scanned: {regex: "^([1-9][0-9]{12,})$"}
+  alert: {title: "BigQuery: >1TB scanned in one query"}
+  enabled: true
+
+- id: 19845
+  level: 11
+  description: "BigQuery: dataset ACL granted to allUsers / allAuthenticatedUsers"
+  groups: [data_warehouse, bigquery, public_exposure]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "bigquery_audit"}
+      operation: {equals: "datasetacl.update"}
+      principal: {regex: "(?i)(allUsers|allAuthenticatedUsers)"}
+  alert: {title: "BigQuery: dataset made public"}
+  enabled: true
+
+- id: 19846
+  level: 11
+  description: "Databricks: notebook run with secrets retrieved via dbutils.secrets in shared workspace"
+  groups: [data_warehouse, databricks]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "databricks_audit"}
+      operation: {equals: "runNotebook"}
+      notebook_content: {regex: "(?i)dbutils\\.secrets\\.get"}
+      workspace_visibility: {equals: "shared"}
+  alert: {title: "Databricks: secret retrieved in shared notebook"}
+  enabled: true
+
+- id: 19847
+  level: 11
+  description: "Databricks: cluster created with init-script downloading from external URL"
+  groups: [data_warehouse, databricks, supply_chain]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "databricks_audit"}
+      operation: {equals: "createCluster"}
+      init_script_url: {regex: "(?i)(?!.*(corp|s3://corp-)).+"}
+  alert: {title: "Databricks: init script from external URL"}
+  enabled: true
+
+- id: 19848
+  level: 11
+  description: "S3 data lake: bucket policy granting Principal '*' on PII-tagged bucket"
+  groups: [data_warehouse, s3, public_exposure]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "cloudtrail"}
+      event_name: {equals: "PutBucketPolicy"}
+      bucket_tag_class: {equals: "pii"}
+      principal: {equals: "*"}
+  alert: {title: "S3: PII bucket policy opened to *"}
+  enabled: true
+
+- id: 19849
+  level: 11
+  description: "MLflow: model registered with attacker-controlled artifact URI"
+  groups: [ai, mlflow, supply_chain]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "mlflow_audit"}
+      operation: {equals: "registerModel"}
+      artifact_uri: {regex: "(?i)(?!.*(corp|s3://corp-|gs://corp-)).+"}
+  alert: {title: "MLflow: model artifact from external URI"}
+  enabled: true
+
+- id: 19850
+  level: 11
+  description: "SageMaker: notebook instance launched with public internet access"
+  groups: [ai, sagemaker]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "cloudtrail"}
+      event_name: {equals: "CreateNotebookInstance"}
+      direct_internet_access: {equals: "Enabled"}
+  alert: {title: "SageMaker: notebook with public internet"}
+  enabled: true
+
+- id: 19851
+  level: 11
+  description: "LLM: prompt injection signature detected in user input"
+  groups: [ai, llm, prompt_injection]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "llm_gateway"}
+      prompt: {regex: "(?i)(ignore (all )?previous instructions|system prompt is|jailbreak|DAN mode|disregard your guidelines)"}
+  mitre:
+    - {tactic_id: "TA0001", technique_id: "T1059", technique_name: "Command and Scripting Interpreter"}
+  alert: {title: "LLM: prompt injection attempt"}
+  enabled: true
+
+- id: 19852
+  level: 11
+  description: "LLM: model response contained leaked secrets (api key/password regex)"
+  groups: [ai, llm, dlp]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "llm_gateway"}
+      response_body: {regex: "(?i)(api[_-]?key|aws_secret|password|bearer)\\s*[:=]\\s*\\S{8,}"}
+  alert: {title: "LLM: secrets leaked in model response"}
+  enabled: true
+
+- id: 19853
+  level: 12
+  description: "LLM: training data exfiltration via repeated targeted prompts"
+  groups: [ai, llm, exfil]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "llm_gateway"}
+      prompt: {regex: "(?i)(extract|repeat|memorized).*(training|fine.?tun|embeddings)"}
+  correlation: {window: "10m", threshold: 10, group_by: ["user"]}
+  alert: {title: "LLM: training data extraction probing"}
+  enabled: true

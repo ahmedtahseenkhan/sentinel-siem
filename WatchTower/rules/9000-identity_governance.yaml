@@ -1,0 +1,387 @@
+# Identity governance, PAM/PIM, JIT/JEA, federation, IGA workflows
+# IDs 19810-19839 (30 rules)
+
+- id: 19810
+  level: 11
+  description: "PAM: Privileged session checked out outside of break-glass window"
+  groups: [identity, pam]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(cyberark|delinea|beyondtrust|hashicorp_boundary)"}
+      operation: {equals: "session_checkout"}
+      break_glass: {equals: "false"}
+      schedule_match: {equals: "false"}
+  alert: {title: "PAM: unscheduled privileged session"}
+  enabled: true
+
+- id: 19811
+  level: 12
+  description: "PAM: Break-glass account used"
+  groups: [identity, pam, break_glass]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(cyberark|delinea|beyondtrust)"}
+      account_class: {equals: "break_glass"}
+      operation: {equals: "session_checkout"}
+  alert: {title: "PAM: break-glass account checkout"}
+  enabled: true
+
+- id: 19812
+  level: 11
+  description: "PAM: Privileged credential checked out but never checked in (>4h)"
+  groups: [identity, pam]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(cyberark|delinea|beyondtrust)"}
+      session_open_minutes: {regex: "^(2[5-9][0-9]|[3-9][0-9]{2,})$"}
+  alert: {title: "PAM: session left open >4h"}
+  enabled: true
+
+- id: 19813
+  level: 11
+  description: "PIM: Azure AD eligible role activated outside JIT window"
+  groups: [identity, pim, azure]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "azure_audit"}
+      operation: {regex: "(?i)Add member to role.*PIM"}
+      activation_duration_minutes: {regex: "^([0-9]|[1-5][0-9])$"}
+      role: {regex: "(?i)global_admin|privileged_role"}
+  alert: {title: "PIM: high-privilege role activated"}
+  enabled: true
+
+- id: 19814
+  level: 11
+  description: "PIM: role assignment made permanent (eligible -> active)"
+  groups: [identity, pim]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "azure_audit"}
+      operation: {regex: "(?i)Update role setting"}
+      change: {regex: "(?i)Eligible.*Active"}
+  alert: {title: "PIM: eligible role made permanent"}
+  enabled: true
+
+- id: 19815
+  level: 10
+  description: "IGA: Access request approved by manager+requester being same user"
+  groups: [identity, iga, sod]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(sailpoint|saviynt|okta_workflows)"}
+      requester: {equals: "approver"}
+  alert: {title: "IGA: self-approval"}
+  enabled: true
+
+- id: 19816
+  level: 11
+  description: "IGA: certification campaign overdue >30 days"
+  groups: [identity, iga, compliance]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(sailpoint|saviynt)"}
+      campaign_status: {equals: "overdue"}
+      days_overdue: {regex: "^(3[1-9]|[4-9][0-9]|[1-9][0-9]{2,})$"}
+  alert: {title: "IGA: certification campaign overdue"}
+  enabled: true
+
+- id: 19817
+  level: 11
+  description: "Federation: new identity provider added (SAML/OIDC trust)"
+  groups: [identity, federation]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(azure_audit|okta_audit|google_workspace_admin)"}
+      operation: {regex: "(?i)(add|create) identity provider"}
+  alert: {title: "Federation: new IdP trust added"}
+  enabled: true
+
+- id: 19818
+  level: 12
+  description: "Federation: SAML signing cert changed unexpectedly"
+  groups: [identity, federation, integrity]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(adfs|azure_audit|okta)"}
+      operation: {regex: "(?i)update.*signing.*certificate"}
+      change_ticket: {equals: ""}
+  alert: {title: "Federation: SAML signing cert changed"}
+  enabled: true
+
+- id: 19819
+  level: 11
+  description: "Identity: MFA method downgraded (TOTP -> SMS)"
+  groups: [identity, mfa]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(azure_audit|okta_audit)"}
+      operation: {regex: "(?i)update.*mfa.*method"}
+      new_method: {regex: "(?i)(sms|voice)"}
+      old_method: {regex: "(?i)(totp|push|fido2|webauthn)"}
+  alert: {title: "Identity: MFA downgraded"}
+  enabled: true
+
+- id: 19820
+  level: 11
+  description: "Identity: FIDO2/WebAuthn key registered from unmanaged device"
+  groups: [identity, mfa]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(azure_audit|okta_audit)"}
+      operation: {equals: "register_fido2"}
+      device_compliant: {equals: "false"}
+  alert: {title: "Identity: FIDO2 registered on unmanaged device"}
+  enabled: true
+
+- id: 19821
+  level: 11
+  description: "JEA: Just Enough Administration session command outside role capability"
+  groups: [identity, jea, powershell]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4104}
+      session_type: {equals: "constrained"}
+      command_allowed: {equals: "false"}
+  alert: {title: "JEA: out-of-role command attempt"}
+  enabled: true
+
+- id: 19822
+  level: 10
+  description: "Identity: AAD app secret rotation overdue (>180 days)"
+  groups: [identity, oauth, hygiene]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "azure_app_audit"}
+      secret_age_days: {regex: "^(18[1-9]|19[0-9]|[2-9][0-9]{2,})$"}
+  alert: {title: "AAD: app secret older than 180 days"}
+  enabled: true
+
+- id: 19823
+  level: 11
+  description: "Identity: AAD app credential added by non-app-owner"
+  groups: [identity, oauth]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "azure_audit"}
+      operation: {regex: "(?i)Update application.*Certificates and secrets"}
+      actor_owner: {equals: "false"}
+  alert: {title: "AAD: app secret added by non-owner"}
+  enabled: true
+
+- id: 19824
+  level: 11
+  description: "Okta: app assignment to user from off-corp IP"
+  groups: [identity, okta]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "okta_audit"}
+      operation: {equals: "user.assign_to_app"}
+      actor_ip_corp: {equals: "false"}
+  alert: {title: "Okta: app assignment off-corp"}
+  enabled: true
+
+- id: 19825
+  level: 12
+  description: "Okta: super-admin role granted to API token"
+  groups: [identity, okta, identity_threat]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "okta_audit"}
+      operation: {equals: "user.account.update_admin_role"}
+      target_type: {equals: "api_token"}
+  alert: {title: "Okta: super-admin to API token"}
+  enabled: true
+
+- id: 19826
+  level: 11
+  description: "Identity: AAD Conditional Access policy disabled"
+  groups: [identity, conditional_access]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "azure_audit"}
+      operation: {regex: "(?i)update conditional access policy"}
+      new_state: {equals: "disabled"}
+  alert: {title: "AAD: Conditional Access disabled"}
+  enabled: true
+
+- id: 19827
+  level: 11
+  description: "Identity: Cross-tenant access policy widened"
+  groups: [identity, b2b]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "azure_audit"}
+      operation: {regex: "(?i)Update cross-tenant access setting"}
+      direction: {regex: "(?i)inbound|both"}
+  alert: {title: "AAD: cross-tenant access widened"}
+  enabled: true
+
+- id: 19828
+  level: 11
+  description: "Identity: Guest user invited to high-privilege group"
+  groups: [identity, b2b]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "azure_audit"}
+      operation: {regex: "(?i)Add member to group"}
+      target_user_type: {equals: "guest"}
+      group_name: {regex: "(?i)(admin|finance|payroll|secret)"}
+  alert: {title: "AAD: guest added to privileged group"}
+  enabled: true
+
+- id: 19829
+  level: 11
+  description: "IGA: orphan account detected (no manager / no owner)"
+  groups: [identity, iga, hygiene]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(sailpoint|saviynt)"}
+      account_state: {equals: "orphan"}
+  alert: {title: "IGA: orphan account"}
+  enabled: true
+
+- id: 19830
+  level: 11
+  description: "IGA: toxic combo (developer + production approver)"
+  groups: [identity, iga, sod]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(sailpoint|saviynt)"}
+      sod_violation: {equals: "true"}
+  alert: {title: "IGA: toxic role combination"}
+  enabled: true
+
+- id: 19831
+  level: 11
+  description: "Identity: service principal token requested with .default scope (broad)"
+  groups: [identity, oauth]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "azure_signin"}
+      scope: {regex: "\\.default"}
+      app_id_corp: {equals: "false"}
+  alert: {title: "AAD: third-party app using .default scope"}
+  enabled: true
+
+- id: 19832
+  level: 11
+  description: "Identity: password write-back enabled (AAD Connect)"
+  groups: [identity, aad_connect]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "azure_audit"}
+      operation: {regex: "(?i)Update password writeback"}
+      new_state: {equals: "enabled"}
+  alert: {title: "AAD: password writeback enabled"}
+  enabled: true
+
+- id: 19833
+  level: 11
+  description: "Identity: Workspace OU admin role granted"
+  groups: [identity, google_workspace]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "google_workspace_admin"}
+      operation: {regex: "(?i)(ASSIGN_ROLE|CREATE_ROLE)"}
+      role_name: {regex: "(?i)super.*admin|user.*admin"}
+  alert: {title: "Workspace: admin role granted"}
+  enabled: true
+
+- id: 19834
+  level: 11
+  description: "PAM: vault config exported by admin"
+  groups: [identity, pam, exfil]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(cyberark|delinea)"}
+      operation: {regex: "(?i)(export|backup) safe"}
+  alert: {title: "PAM: vault safe exported"}
+  enabled: true
+
+- id: 19835
+  level: 11
+  description: "PAM: dual control (Mã / approver) overridden by admin"
+  groups: [identity, pam]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(cyberark|delinea)"}
+      operation: {equals: "dual_control_override"}
+  alert: {title: "PAM: dual control overridden"}
+  enabled: true
+
+- id: 19836
+  level: 11
+  description: "Identity: kerberos delegation enabled on user account"
+  groups: [identity, ad]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 5136}
+      attribute: {regex: "(?i)msDS-AllowedToDelegateTo|TrustedForDelegation"}
+  alert: {title: "AD: delegation enabled on account"}
+  enabled: true
+
+- id: 19837
+  level: 11
+  description: "Identity: AAD application 'AppId URI' added (token confusion vector)"
+  groups: [identity, oauth]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "azure_audit"}
+      operation: {regex: "(?i)Update application.*identifierUris"}
+  alert: {title: "AAD: appId URI updated"}
+  enabled: true
+
+- id: 19838
+  level: 12
+  description: "Identity: Suspicious sign-in from anomalous IP + impossible travel"
+  groups: [identity, anomaly]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(azure_signin|okta_audit)"}
+      risk_level: {equals: "high"}
+      travel_impossible: {equals: "true"}
+  alert: {title: "Identity: high-risk impossible travel sign-in"}
+  enabled: true
+
+- id: 19839
+  level: 11
+  description: "IGA: bulk role assignment via API token"
+  groups: [identity, iga]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(sailpoint|saviynt|okta)"}
+      operation: {regex: "(?i)assign.*role"}
+      actor_type: {equals: "api"}
+  correlation: {window: "10m", threshold: 20, group_by: ["actor"]}
+  alert: {title: "IGA: bulk role assign via API"}
+  enabled: true

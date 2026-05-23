@@ -1,0 +1,392 @@
+# DLP edge cases + browser/extension exploits
+# IDs 19780-19809 (30 rules)
+
+- id: 19780
+  level: 11
+  description: "DLP: Source code repository pushed to personal GitHub"
+  groups: [dlp, code]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "git"}
+      action: {equals: "push"}
+      remote_host: {regex: "(?i)github\\.com"}
+      remote_owner_corp: {equals: "false"}
+  alert: {title: "DLP: source pushed to personal GitHub"}
+  enabled: true
+
+- id: 19781
+  level: 11
+  description: "DLP: large GitHub Gist created from corp account"
+  groups: [dlp, code]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "github_audit"}
+      operation: {equals: "gist.create"}
+      size_kb: {regex: "^([1-9][0-9]{2,})$"}
+  alert: {title: "DLP: large gist created"}
+  enabled: true
+
+- id: 19782
+  level: 11
+  description: "DLP: customer DB query result downloaded via BI tool"
+  groups: [dlp, data]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(tableau|powerbi|looker|metabase)"}
+      action: {equals: "export"}
+      row_count: {regex: "^([1-9][0-9]{4,})$"}
+      dataset: {regex: "(?i)customer"}
+  alert: {title: "DLP: large BI export of customer data"}
+  enabled: true
+
+- id: 19783
+  level: 11
+  description: "DLP: clipboard exfil into personal webmail in browser"
+  groups: [dlp, browser]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "browser_dlp"}
+      event: {equals: "paste"}
+      target_domain: {regex: "(?i)(gmail|outlook\\.com|yahoo|protonmail)"}
+      clipboard_size_chars: {regex: "^([1-9][0-9]{3,})$"}
+  alert: {title: "DLP: large paste to webmail"}
+  enabled: true
+
+- id: 19784
+  level: 10
+  description: "DLP: print job >100 pages of confidential doc"
+  groups: [dlp, print]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "print_audit"}
+      doc_class: {regex: "(?i)(confidential|secret)"}
+      pages: {regex: "^([1-9][0-9]{2,})$"}
+  alert: {title: "DLP: large print of confidential doc"}
+  enabled: true
+
+- id: 19785
+  level: 11
+  description: "DLP: ChatGPT/Claude/Gemini upload of source code or PII"
+  groups: [dlp, genai]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "browser_dlp"}
+      target_domain: {regex: "(?i)(chatgpt\\.com|chat\\.openai|claude\\.ai|gemini\\.google\\.com|bard)"}
+      content_class: {regex: "(?i)(source_code|pii|secret)"}
+  alert: {title: "DLP: sensitive content to GenAI"}
+  enabled: true
+
+- id: 19786
+  level: 11
+  description: "DLP: file uploaded to personal cloud storage"
+  groups: [dlp, cloud]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "casb"}
+      app: {regex: "(?i)(dropbox|gdrive|onedrive_personal|box|mega)"}
+      account_type: {equals: "personal"}
+  alert: {title: "DLP: upload to personal cloud"}
+  enabled: true
+
+- id: 19787
+  level: 10
+  description: "DLP: USB mass-storage write of confidential file"
+  groups: [dlp, removable]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4663}
+      object_name: {regex: "(?i)\\\\Device\\\\Harddisk[1-9]\\\\Removable"}
+      access_mask: {regex: "0x2|0x4|0x6"}
+  alert: {title: "DLP: USB write of file"}
+  enabled: true
+
+- id: 19788
+  level: 11
+  description: "Browser: Chrome extension installed outside force-list"
+  groups: [browser, extension]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "browser_inventory"}
+      browser: {equals: "chrome"}
+      extension_in_forcelist: {equals: "false"}
+  alert: {title: "Browser: unmanaged extension installed"}
+  enabled: true
+
+- id: 19789
+  level: 11
+  description: "Browser: Chrome extension requesting cookies/all_urls scope"
+  groups: [browser, extension]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "browser_inventory"}
+      browser: {equals: "chrome"}
+      permissions: {regex: "(?i)(cookies|<all_urls>|webRequest|tabs)"}
+      publisher_verified: {equals: "false"}
+  alert: {title: "Browser: high-risk extension permissions"}
+  enabled: true
+
+- id: 19790
+  level: 11
+  description: "Browser: Chrome remote debugging port enabled (cookie theft)"
+  groups: [browser, evasion]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)chrome\\.exe.*--remote-debugging-port"}
+  mitre:
+    - {tactic_id: "TA0006", technique_id: "T1539", technique_name: "Steal Web Session Cookie"}
+  alert: {title: "Browser: Chrome --remote-debugging-port"}
+  enabled: true
+
+- id: 19791
+  level: 11
+  description: "Browser: Chrome user-data-dir pointing to non-default location"
+  groups: [browser, evasion]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)chrome\\.exe.*--user-data-dir=\\S+(temp|programdata|appdata\\\\local\\\\temp)"}
+  alert: {title: "Browser: chrome user-data-dir override"}
+  enabled: true
+
+- id: 19792
+  level: 11
+  description: "Browser: Firefox profile copied (cookie/credential theft)"
+  groups: [browser, credential_access]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 11}
+      target_filename: {regex: "(?i)\\\\Mozilla\\\\Firefox\\\\Profiles\\\\.+\\\\(cookies\\.sqlite|logins\\.json|key4\\.db)"}
+      image: {regex: "(?i)(?!.*firefox\\.exe$).+"}
+  alert: {title: "Browser: Firefox profile file copied"}
+  enabled: true
+
+- id: 19793
+  level: 11
+  description: "Browser: Cookie file access via process other than browser"
+  groups: [browser, credential_access]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 10}
+      target_filename: {regex: "(?i)\\\\(Default|Profile [0-9]+)\\\\(Cookies|Login Data|Web Data)$"}
+      image: {regex: "(?i)(?!.*\\\\(chrome|msedge|firefox|brave)\\.exe).+"}
+  alert: {title: "Browser: cookie store accessed by non-browser"}
+  enabled: true
+
+- id: 19794
+  level: 11
+  description: "Browser: Edge enterprise policy disabled (CloudExtension force list)"
+  groups: [browser, evasion]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 13}
+      target_object: {regex: "(?i)\\\\Microsoft\\\\Edge\\\\ExtensionInstallForcelist"}
+      action: {regex: "(?i)delete"}
+  alert: {title: "Browser: Edge forcelist policy deleted"}
+  enabled: true
+
+- id: 19795
+  level: 11
+  description: "Browser: malicious extension with auto-update from non-store URL"
+  groups: [browser, extension, supply_chain]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "browser_inventory"}
+      update_url: {regex: "(?i)(?!.*google\\.com|microsoft\\.com|mozilla\\.org).+"}
+  alert: {title: "Browser: extension auto-update from third-party URL"}
+  enabled: true
+
+- id: 19796
+  level: 11
+  description: "Browser: WebAssembly download from low-rep domain (cryptominer)"
+  groups: [browser, cryptomining]
+  match:
+    type: "log.file"
+    fields:
+      content_type: {equals: "application/wasm"}
+      domain_rep: {equals: "low"}
+  alert: {title: "Browser: WASM from low-rep domain"}
+  enabled: true
+
+- id: 19797
+  level: 11
+  description: "DLP: Slack file upload of customer DB dump"
+  groups: [dlp, collab]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "slack_audit"}
+      operation: {equals: "file_upload"}
+      filename: {regex: "(?i)(dump|export|customers|leads)\\.(csv|sql|xlsx)$"}
+  alert: {title: "DLP: customer dump uploaded to Slack"}
+  enabled: true
+
+- id: 19798
+  level: 10
+  description: "DLP: Teams external channel sharing of confidential doc"
+  groups: [dlp, collab]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "teams_audit"}
+      operation: {equals: "share_external"}
+      doc_class: {regex: "(?i)(confidential|secret|restricted)"}
+  alert: {title: "DLP: external Teams share of confidential"}
+  enabled: true
+
+- id: 19799
+  level: 11
+  description: "DLP: Notion / Confluence page made public containing PII"
+  groups: [dlp, collab]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(notion|confluence)"}
+      page_visibility: {equals: "public"}
+      content_class: {regex: "(?i)(pii|secret)"}
+  alert: {title: "DLP: wiki public page with PII"}
+  enabled: true
+
+- id: 19800
+  level: 11
+  description: "DLP: secrets in pull request diff (api keys / passwords / tokens)"
+  groups: [dlp, code, secrets]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "secret_scanner"}
+      surface: {equals: "pull_request"}
+      finding_count: {regex: "^[1-9][0-9]*$"}
+  alert: {title: "DLP: secrets detected in PR"}
+  enabled: true
+
+- id: 19801
+  level: 11
+  description: "DLP: outbound to file.io / transfer.sh / anonfiles"
+  groups: [dlp, exfil]
+  match:
+    type: "log.file"
+    fields:
+      hostname: {regex: "(?i)(file\\.io|transfer\\.sh|anonfiles|gofile\\.io|wetransfer|sendspace)"}
+      method: {equals: "POST"}
+      upload_size_mb: {regex: "^([1-9][0-9]?|[1-9][0-9]{2,})$"}
+  alert: {title: "DLP: upload to anon file host"}
+  enabled: true
+
+- id: 19802
+  level: 11
+  description: "Browser: Mark-of-the-Web (MOTW) bypass via ISO/img extraction"
+  groups: [browser, evasion]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)\\.exe$"}
+      parent: {regex: "(?i)\\\\explorer\\.exe"}
+      cmd_origin: {regex: "(?i)\\\\(VHD|ISO|IMG)\\\\"}
+  alert: {title: "Browser: MOTW bypass via ISO mount"}
+  enabled: true
+
+- id: 19803
+  level: 11
+  description: "DLP: scan output (vuln scanner) shared externally"
+  groups: [dlp, security_data]
+  match:
+    type: "log.file"
+    fields:
+      doc_class: {regex: "(?i)(pentest|vulnerability_scan|sbom)"}
+      recipient_domain_external: {equals: "true"}
+  alert: {title: "DLP: security report shared externally"}
+  enabled: true
+
+- id: 19804
+  level: 10
+  description: "DLP: PII in unstructured chat log (Slack/Teams)"
+  groups: [dlp, collab]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(slack|teams)_audit"}
+      message: {regex: "(?i)(\\b\\d{3}-\\d{2}-\\d{4}\\b|[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+)"}
+      channel_visibility: {equals: "public"}
+  alert: {title: "DLP: PII in public collab channel"}
+  enabled: true
+
+- id: 19805
+  level: 11
+  description: "Browser: Web push notifications used to deliver scareware"
+  groups: [browser, malvertising]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "browser_telemetry"}
+      event: {equals: "push_notification_click"}
+      domain_rep: {equals: "low"}
+  alert: {title: "Browser: scareware push click"}
+  enabled: true
+
+- id: 19806
+  level: 11
+  description: "DLP: large outbound rclone/scp transfer"
+  groups: [dlp, exfil]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)(rclone|scp|sftp).*(--transfers|-r).*\\b([1-9][0-9]{2,}|gb)"}
+  alert: {title: "DLP: bulk rclone/scp egress"}
+  enabled: true
+
+- id: 19807
+  level: 11
+  description: "DLP: zip with password set with sensitive files staged for exfil"
+  groups: [dlp, exfil]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)(7z|zip|rar).*-p\\S+.*(customer|hr|finance|secret)"}
+  alert: {title: "DLP: password-protected archive of sensitive data"}
+  enabled: true
+
+- id: 19808
+  level: 11
+  description: "Browser: NPAPI/legacy plugin loaded (CVE exposure)"
+  groups: [browser, legacy]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 7}
+      image: {regex: "(?i)\\\\(chrome|msedge|iexplore)\\.exe"}
+      image_loaded: {regex: "(?i)\\\\(npswf|flash|silverlight|java_plugin)"}
+  alert: {title: "Browser: legacy plugin loaded"}
+  enabled: true
+
+- id: 19809
+  level: 11
+  description: "DLP: AirDrop / Quick Share sending corporate file to outside account"
+  groups: [dlp, peer_to_peer]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(macos_es|android_enterprise)"}
+      protocol: {regex: "(?i)(airdrop|quick.?share|nearby_share)"}
+      recipient_external: {equals: "true"}
+  alert: {title: "DLP: AirDrop/QuickShare to external"}
+  enabled: true
