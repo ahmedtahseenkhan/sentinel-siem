@@ -10,10 +10,18 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/watchnode/watchnode/internal/models"
 	"go.uber.org/zap"
+)
+
+// activeBlocks tracks IPs currently blocked by this agent so duplicate
+// firewall-drop commands are idempotent. Keyed by IP string.
+var (
+	activeBlocksMu sync.Mutex
+	activeBlocks   = map[string]time.Time{}
 )
 
 // Argument validators — strict allowlists per command type.
@@ -74,10 +82,11 @@ func validateUsername(username string) error {
 // defaultBuiltinCommands is the set of commands available when AllowedCommands
 // is empty but ActiveResponse.Enabled is true.
 var defaultBuiltinCommands = map[string]bool{
-	"kill-process":    true,
-	"restart-service": true,
-	"disable-account": true,
-	"firewall-drop":   true,
+	"kill-process":     true,
+	"restart-service":  true,
+	"disable-account":  true,
+	"firewall-drop":    true,
+	"firewall-unblock": true,
 }
 
 func (a *Agent) commandTimeout() time.Duration {
@@ -205,15 +214,127 @@ func (a *Agent) executeCommand(commandType, arg string) error {
 		if err := validateUsername(arg); err != nil {
 			return err
 		}
+		if a.userSafelisted(arg) {
+			return fmt.Errorf("disable-account: user %q is in safelist", arg)
+		}
 		return runDisableAccount(arg, a.commandTimeout())
 	case "firewall-drop":
 		if err := validateFirewallTarget(arg); err != nil {
 			return err
 		}
-		return runFirewallDrop(arg, a.commandTimeout())
+		if a.ipSafelisted(arg) {
+			return fmt.Errorf("firewall-drop: ip %q is in safelist", arg)
+		}
+		if alreadyBlocked(arg) {
+			// Idempotent: skip the netsh/iptables call entirely, but still
+			// report executed so the manager sees the policy was satisfied.
+			return nil
+		}
+		if err := runFirewallDrop(arg, a.commandTimeout()); err != nil {
+			return err
+		}
+		recordBlock(arg)
+		// Schedule auto-unblock if a TTL is configured.
+		a.configMu.RLock()
+		ttl := a.Config.ActiveResponse.BlockTTLSecs
+		a.configMu.RUnlock()
+		if ttl > 0 {
+			go a.scheduleUnblock(arg, time.Duration(ttl)*time.Second)
+		}
+		return nil
+	case "firewall-unblock":
+		if err := validateFirewallTarget(arg); err != nil {
+			return err
+		}
+		err := runFirewallUnblock(arg, a.commandTimeout())
+		forgetBlock(arg)
+		return err
 	default:
 		return fmt.Errorf("unsupported manager command type: %s", commandType)
 	}
+}
+
+// ipSafelisted returns true if target matches any safelist entry. Entries may
+// be a bare IP or a CIDR.
+func (a *Agent) ipSafelisted(target string) bool {
+	ip := net.ParseIP(target)
+	if ip == nil {
+		return false
+	}
+	a.configMu.RLock()
+	safelist := a.Config.ActiveResponse.SafelistIPs
+	a.configMu.RUnlock()
+	for _, entry := range safelist {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if strings.Contains(entry, "/") {
+			if _, ipnet, err := net.ParseCIDR(entry); err == nil && ipnet.Contains(ip) {
+				return true
+			}
+			continue
+		}
+		if net.ParseIP(entry) != nil && entry == target {
+			return true
+		}
+	}
+	return false
+}
+
+// userSafelisted returns true if username is in the safelist (case-insensitive).
+func (a *Agent) userSafelisted(username string) bool {
+	a.configMu.RLock()
+	safelist := a.Config.ActiveResponse.SafelistUsers
+	a.configMu.RUnlock()
+	low := strings.ToLower(username)
+	for _, entry := range safelist {
+		if strings.ToLower(strings.TrimSpace(entry)) == low {
+			return true
+		}
+	}
+	return false
+}
+
+// alreadyBlocked reports whether target was blocked by this agent and the
+// block has not yet expired according to bookkeeping.
+func alreadyBlocked(target string) bool {
+	activeBlocksMu.Lock()
+	defer activeBlocksMu.Unlock()
+	_, ok := activeBlocks[target]
+	return ok
+}
+
+func recordBlock(target string) {
+	activeBlocksMu.Lock()
+	activeBlocks[target] = time.Now()
+	activeBlocksMu.Unlock()
+}
+
+func forgetBlock(target string) {
+	activeBlocksMu.Lock()
+	delete(activeBlocks, target)
+	activeBlocksMu.Unlock()
+}
+
+// scheduleUnblock runs runFirewallUnblock after ttl has elapsed, regardless of
+// whether the manager sends an explicit firewall-unblock command. Survives
+// across rule re-fires because recordBlock keeps the entry until TTL.
+func (a *Agent) scheduleUnblock(target string, ttl time.Duration) {
+	time.Sleep(ttl)
+	if err := runFirewallUnblock(target, a.commandTimeout()); err != nil {
+		a.Logger.Warn("auto-unblock failed",
+			zap.String("target", target),
+			zap.Error(err),
+		)
+	} else {
+		a.Logger.Info("auto-unblock executed",
+			zap.String("target", target),
+			zap.Duration("ttl", ttl),
+		)
+	}
+	forgetBlock(target)
+	a.reportCommandResult("firewall-unblock", target, "executed", "auto-ttl")
 }
 
 func runKillProcess(target string, timeout time.Duration) error {
@@ -281,6 +402,29 @@ func runFirewallDrop(target string, timeout time.Duration) error {
 	return exec.CommandContext(ctx, "iptables", "-A", "INPUT", "-s", target, "-j", "DROP").Run()
 }
 
+// runFirewallUnblock reverses runFirewallDrop. On Windows we delete by the
+// deterministic rule name; on Linux we issue iptables -D with the same
+// arguments. Both are tolerant of "not found" (returns nil) since the rule
+// may have been removed manually or by a TTL race.
+func runFirewallUnblock(target string, timeout time.Duration) error {
+	if target == "" {
+		return fmt.Errorf("missing target")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if runtime.GOOS == "windows" {
+		ruleName := "WatchNode_Block_" + target
+		// netsh exits 1 if rule not found; treat as success for idempotency.
+		_ = exec.CommandContext(ctx,
+			"netsh", "advfirewall", "firewall", "delete", "rule",
+			"name="+ruleName,
+		).Run()
+		return nil
+	}
+	_ = exec.CommandContext(ctx, "iptables", "-D", "INPUT", "-s", target, "-j", "DROP").Run()
+	return nil
+}
+
 // configUpdatePayload describes the subset of agent config fields that the
 // manager is permitted to update at runtime via a config_update command.
 // Only included fields are changed; omitted fields remain at their current value.
@@ -289,6 +433,9 @@ type configUpdatePayload struct {
 		Enabled            *bool    `json:"enabled"`
 		AllowedCommands    []string `json:"allowed_commands"`
 		CommandTimeoutSecs *int     `json:"command_timeout_secs"`
+		BlockTTLSecs       *int     `json:"block_ttl_secs"`
+		SafelistIPs        []string `json:"safelist_ips"`
+		SafelistUsers      []string `json:"safelist_users"`
 	} `json:"active_response,omitempty"`
 }
 
@@ -319,6 +466,19 @@ func (a *Agent) handleConfigUpdate(payload []byte) error {
 		}
 		if ar.CommandTimeoutSecs != nil && *ar.CommandTimeoutSecs > 0 {
 			a.Config.ActiveResponse.CommandTimeoutSecs = *ar.CommandTimeoutSecs
+		}
+		if ar.BlockTTLSecs != nil {
+			a.Config.ActiveResponse.BlockTTLSecs = *ar.BlockTTLSecs
+		}
+		if ar.SafelistIPs != nil {
+			cp := make([]string, len(ar.SafelistIPs))
+			copy(cp, ar.SafelistIPs)
+			a.Config.ActiveResponse.SafelistIPs = cp
+		}
+		if ar.SafelistUsers != nil {
+			cp := make([]string, len(ar.SafelistUsers))
+			copy(cp, ar.SafelistUsers)
+			a.Config.ActiveResponse.SafelistUsers = cp
 		}
 	}
 

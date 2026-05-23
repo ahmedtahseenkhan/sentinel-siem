@@ -28,6 +28,15 @@ type ActiveResponseConfig struct {
 	AllowedCommands []string `yaml:"allowed_commands"`
 	// CommandTimeoutSecs overrides the default per-command timeout.
 	CommandTimeoutSecs int `yaml:"command_timeout_secs"`
+	// BlockTTLSecs is the lifetime of a firewall-drop block before it is
+	// automatically removed. Zero or negative means "permanent" (legacy behavior).
+	BlockTTLSecs int `yaml:"block_ttl_secs"`
+	// SafelistIPs contains CIDRs/IPs that firewall-drop must refuse. Protects
+	// the operator's own mgmt subnet, DNS resolvers, default gateway, etc.
+	SafelistIPs []string `yaml:"safelist_ips"`
+	// SafelistUsers contains usernames that disable-account must refuse
+	// (Administrator, root, break-glass IDs).
+	SafelistUsers []string `yaml:"safelist_users"`
 }
 
 // AutoUpdateConfig controls automatic binary updates.
@@ -423,8 +432,15 @@ func DefaultConfig() *Config {
 				"restart-service",
 				"disable-account",
 				"firewall-drop",
+				"firewall-unblock",
 			},
 			CommandTimeoutSecs: 15,
+			// 1 hour auto-unblock by default; operators can override to 0
+			// for permanent or to a smaller window for noisy environments.
+			BlockTTLSecs: 3600,
+			// Safe defaults: never block loopback or auto-disable admin/root.
+			SafelistIPs:   []string{"127.0.0.1", "::1"},
+			SafelistUsers: []string{"Administrator", "root", "SYSTEM"},
 		},
 		Performance: PerformanceConfig{
 			MaxCPUPercent:  20,
