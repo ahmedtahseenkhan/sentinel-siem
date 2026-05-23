@@ -19,13 +19,30 @@ REM   install.bat -Uninstall
 
 setlocal
 set "SCRIPT_DIR=%~dp0"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%install.ps1" %*
+
+REM Log everything to file so we can see what happened even if all windows close.
+set "LOG_DIR=%ProgramData%\SentinelAgent\install-logs"
+if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
+set "LOG_FILE=%LOG_DIR%\install-%date:~-4%%date:~3,2%%date:~0,2%-%time:~0,2%%time:~3,2%%time:~6,2%.log"
+set "LOG_FILE=%LOG_FILE: =0%"
+
+echo === Sentinel Agent Installer ===
+echo Log file: %LOG_FILE%
+echo.
+
+REM Forward to PowerShell and tee everything into the log file.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+  "& {& '%SCRIPT_DIR%install.ps1' %* *>&1 | Tee-Object -FilePath '%LOG_FILE%'; exit $LASTEXITCODE}"
 set "EXIT_CODE=%ERRORLEVEL%"
 
-if not "%EXIT_CODE%"=="0" (
-    echo.
-    echo Installer exited with code %EXIT_CODE%.
-    echo Press any key to close this window...
-    pause >nul
+echo.
+if "%EXIT_CODE%"=="0" (
+    echo [SUCCESS] Installer completed. Log saved to:
+) else (
+    echo [FAILED]  Installer exited with code %EXIT_CODE%. Log saved to:
 )
+echo   %LOG_FILE%
+echo.
+echo Press any key to close this window...
+pause >nul
 exit /b %EXIT_CODE%

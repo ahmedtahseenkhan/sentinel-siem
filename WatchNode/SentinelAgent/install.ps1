@@ -41,6 +41,30 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     Start-Process powershell.exe -Verb RunAs -ArgumentList $argsList
     exit
 }
+
+# --- We're elevated. Start a transcript so a copy of all output survives
+# --- even if the user closes the window or it crashes before -NoExit applies.
+$LogDir = "$env:ProgramData\SentinelAgent\install-logs"
+if (-not (Test-Path $LogDir)) { New-Item -ItemType Directory -Path $LogDir -Force | Out-Null }
+$LogFile = Join-Path $LogDir ("install-" + (Get-Date -Format "yyyyMMdd-HHmmss") + ".log")
+try { Start-Transcript -Path $LogFile -Force | Out-Null } catch {}
+Write-Host "Logging this session to: $LogFile" -ForegroundColor DarkGray
+
+# Wrap everything below so we ALWAYS pause on errors before the window closes —
+# the most common support ticket is "the window flashed and disappeared".
+trap {
+    Write-Host ""
+    Write-Host "==========================================================" -ForegroundColor Red
+    Write-Host "INSTALL FAILED" -ForegroundColor Red
+    Write-Host "==========================================================" -ForegroundColor Red
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Log:   $LogFile" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Press any key to close this window..." -ForegroundColor Yellow
+    try { Stop-Transcript | Out-Null } catch {}
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+}
 $ServiceName   = "SentinelAgent"
 $DisplayName   = "Sentinel Core SIEM Agent"
 $InstallDir    = "C:\Program Files\SentinelAgent"
@@ -458,3 +482,13 @@ Write-Host "    Stop agent   : Stop-Service $ServiceName" -ForegroundColor DarkG
 Write-Host "    Start agent  : Start-Service $ServiceName" -ForegroundColor DarkGray
 Write-Host "    Uninstall    : .\install.ps1 -Uninstall" -ForegroundColor DarkGray
 Write-Host ""
+Write-Host "  Install log saved to: $LogFile" -ForegroundColor DarkGray
+Write-Host ""
+try { Stop-Transcript | Out-Null } catch {}
+
+# Always pause so the user can read the success message — the window auto-closes
+# instantly otherwise and they think nothing happened.
+if (-not $Silent) {
+    Write-Host "Press any key to close this window..." -ForegroundColor Yellow
+    try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { Read-Host "Press Enter" }
+}
