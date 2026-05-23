@@ -1,0 +1,449 @@
+# WatchTower — MITRE ATT&CK Initial Access (TA0001)
+# Rule IDs: 18400-18429
+#
+# Fills coverage for techniques not already addressed in other rule packs:
+#   T1189 Drive-by Compromise
+#   T1190 Exploit Public-Facing Application
+#   T1133 External Remote Services
+#   T1200 Hardware Additions
+#   T1566 Phishing
+#   T1078 Valid Accounts (gaps)
+#   T1091 Replication Through Removable Media
+#   T1199 Trusted Relationship
+#   T1195 Supply Chain Compromise
+
+rules:
+  - id: 18400
+    level: 13
+    description: "T1189 — drive-by: browser process spawned new executable from Downloads"
+    groups: [mitre, t1189, drive_by, ingress]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\(chrome|firefox|msedge|brave|opera|safari)\\.exe$"}
+        Image: {regex: "(?i)\\\\Downloads\\\\.*\\.(exe|scr|msi|bat|ps1|hta|vbs|js)$"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1189", technique_name: "Drive-by Compromise"}
+    alert: {title: "T1189: Browser spawned executable from Downloads"}
+    enabled: true
+
+  - id: 18401
+    level: 13
+    description: "T1189 — browser process loading DLL from temp / appdata (drive-by suspect)"
+    groups: [mitre, t1189, drive_by]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 7}
+        Image: {regex: "(?i)\\\\(chrome|firefox|msedge)\\.exe$"}
+        ImageLoaded: {regex: "(?i)\\\\(Temp|AppData)\\\\.*\\.dll$"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1189"}]
+    alert: {title: "T1189: Browser loaded DLL from user/temp path"}
+    enabled: true
+
+  - id: 18402
+    level: 14
+    description: "T1190 — well-known vuln scanner User-Agent against public app (likely exploit attempt)"
+    groups: [mitre, t1190, exploit_public_app, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)User-Agent:.*(metasploit|exploitdb|impacket|httpx|nuclei|httprint|wapiti)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190", technique_name: "Exploit Public-Facing Application"}
+    alert: {title: "T1190: Exploit scanner User-Agent"}
+    enabled: true
+
+  - id: 18403
+    level: 14
+    description: "T1190 — JNDI/SSRF/RCE payload pattern observed in HTTP headers / body"
+    groups: [mitre, t1190, exploit_public_app, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(\\$\\{jndi:|java\\.lang\\.Runtime|System\\.Diagnostics\\.Process|cmd=\\$\\(|;wget |;curl )"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "T1190: RCE payload in HTTP traffic"}
+    enabled: true
+
+  - id: 18404
+    level: 13
+    description: "T1133 — VPN concentrator / remote-access service exposed to internet (SSH/RDP on 22/3389)"
+    groups: [mitre, t1133, external_remote, exposure]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 3}
+        DestinationPort: {regex: "^(22|3389|5900|5938)$"}
+        DestinationIp: {regex: "^(?!10\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.|127\\.|169\\.254\\.)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1133", technique_name: "External Remote Services"}
+    alert: {title: "T1133: External RDP/SSH/VNC connection"}
+    enabled: true
+
+  - id: 18405
+    level: 13
+    description: "T1133 — TeamViewer / AnyDesk / ScreenConnect installed on endpoint"
+    groups: [mitre, t1133, remote_access, rmm]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\(TeamViewer|AnyDesk|ScreenConnect|Splashtop|LogMeIn|GoToAssist|Atera|Connectwise)\\\\.*\\.(exe|dll)$"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1133"}]
+    alert: {title: "T1133: RMM tool installed"}
+    enabled: true
+
+  - id: 18406
+    level: 13
+    description: "T1200 — USB mass-storage device attached (potential hardware addition)"
+    groups: [mitre, t1200, hardware_addition, usb]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 20001}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1200", technique_name: "Hardware Additions"}
+    alert: {title: "T1200: USB device attached"}
+    enabled: true
+
+  - id: 18407
+    level: 14
+    description: "T1200 — USB HID device acting as keyboard injects commands (rubber-ducky)"
+    groups: [mitre, t1200, rubber_ducky, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\runtimebroker\\.exe$"}
+        CommandLine: {regex: "(?i)powershell.*-(enc|w hidden|nop)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1200"}
+    alert: {title: "T1200: HID injection (rubber-ducky pattern)"}
+    enabled: true
+
+  - id: 18408
+    level: 13
+    description: "T1566.001 — spearphishing attachment: macro-enabled Office doc opened"
+    groups: [mitre, t1566_001, phishing, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\Outlook\\\\.*\\.(docm|xlsm|pptm|xlsb|dotm|xls)$"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1566.001"}
+    alert: {title: "T1566.001: Macro-enabled doc from Outlook"}
+    enabled: true
+
+  - id: 18409
+    level: 14
+    description: "T1566.001 — ISO / IMG attachment opened (container bypass)"
+    groups: [mitre, t1566_001, phishing, container_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\Outlook\\\\.*\\.(iso|img|vhd|vhdx)$"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1566.001"}
+    alert: {title: "T1566.001: ISO/IMG/VHD attachment from Outlook"}
+    enabled: true
+
+  - id: 18410
+    level: 14
+    description: "T1566.002 — spearphishing link: browser following Outlook-opened URL to executable"
+    groups: [mitre, t1566_002, phishing_link, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\outlook\\.exe$"}
+        Image: {regex: "(?i)\\\\(chrome|msedge|firefox|brave)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1566.002"}
+    alert: {title: "T1566.002: Outlook spawned browser (phish link)"}
+    enabled: true
+
+  - id: 18411
+    level: 14
+    description: "T1566.003 — service / chat link (Teams / Slack) spawning shell or downloading file"
+    groups: [mitre, t1566_003, phishing_service, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\(teams|slack|discord)\\.exe$"}
+        Image: {regex: "(?i)\\\\(powershell|cmd|wscript|cscript)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1566.003"}
+    alert: {title: "T1566.003: Chat app spawned shell"}
+    enabled: true
+
+  - id: 18412
+    level: 13
+    description: "T1078 — login from unfamiliar IP for high-privilege account"
+    groups: [mitre, t1078, valid_accounts]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4624}
+        TargetUserName: {regex: "(?i)(admin|administrator|root|svc[-_])"}
+    enrich:
+      baseline: "user.source_ip"
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1078"}
+    alert: {title: "T1078: Privileged login from new IP"}
+    enabled: true
+
+  - id: 18413
+    level: 13
+    description: "T1078.001 — default / built-in credentials used (Administrator/Guest)"
+    groups: [mitre, t1078_001, default_account]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4624}
+        TargetUserName: {regex: "(?i)^(Administrator|Guest|HelpAssistant|DefaultAccount)$"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1078.001"}
+    alert: {title: "T1078.001: Default/built-in account login"}
+    enabled: true
+
+  - id: 18414
+    level: 13
+    description: "T1091 — autorun.inf / lnk on removable media (replication via USB)"
+    groups: [mitre, t1091, removable_media, worm]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)^[D-Z]:\\\\(autorun\\.inf|.*\\.lnk)$"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1091", technique_name: "Replication Through Removable Media"}
+    alert: {title: "T1091: autorun.inf / lnk on USB"}
+    enabled: true
+
+  - id: 18415
+    level: 13
+    description: "T1091 — executable copied to root of removable drive"
+    groups: [mitre, t1091, removable_media, exfil_or_worm]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)^[D-Z]:\\\\[^\\\\]+\\.(exe|scr|bat|ps1|vbs|js|com)$"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1091"}]
+    alert: {title: "T1091: Executable to removable drive root"}
+    enabled: true
+
+  - id: 18416
+    level: 13
+    description: "T1199 — connection from trusted partner / MSP IP outside business hours"
+    groups: [mitre, t1199, trusted_relationship]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4624}
+        LogonType: {regex: "^(3|10)$"}
+    enrich:
+      baseline: "partner.business_hours"
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1199", technique_name: "Trusted Relationship"}
+    alert: {title: "T1199: Trusted partner connection off-hours"}
+    enabled: true
+
+  - id: 18417
+    level: 14
+    description: "T1195.002 — supply-chain pkg installed (npm/pip/gem) with suspicious post-install"
+    groups: [mitre, t1195_002, supply_chain, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\(npm|pip|pip3|gem|composer)\\.(exe|cmd)?$"}
+        Image: {regex: "(?i)\\\\(node|python|ruby|cmd|powershell|sh|bash)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1195.002"}
+    alert: {title: "T1195.002: Package manager spawned shell"}
+    enabled: true
+
+  - id: 18418
+    level: 14
+    description: "T1195.002 — install of known typosquat package (researcher / TI watchlist)"
+    groups: [mitre, t1195_002, typosquat, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(npm install|pip install|gem install)\\s+\\S+"}
+      enrich:
+        ti_source: "typosquat_packages"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.002"}]
+    alert: {title: "T1195.002: Known typosquat package installed"}
+    enabled: true
+
+  - id: 18419
+    level: 13
+    description: "T1190 — large 400/500 status burst (mass exploit probing)"
+    groups: [mitre, t1190, recon, scan]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "\\s(40[0-9]|50[0-9])\\s\\d+"}
+    correlation:
+      window: "5m"
+      threshold: 100
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "T1190: 4xx/5xx burst (exploit probing)"}
+    enabled: true
+
+  - id: 18420
+    level: 13
+    description: "T1133 — VPN client process executed (e.g. openvpn / wireguard / ssh) from unusual user"
+    groups: [mitre, t1133, vpn_client]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(openvpn|wireguard|tunnelblick|wg|ssh)\\.exe$"}
+    enrich:
+      baseline: "user.vpn_allowed"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1133"}]
+    alert: {title: "T1133: VPN client execution (unexpected user)"}
+    enabled: true
+
+  - id: 18421
+    level: 13
+    description: "T1190 — webshell access pattern (POST to .aspx/.jsp/.php with cmd= parameter)"
+    groups: [mitre, t1190, web_shell, post_exploit]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)POST\\s+\\S+\\.(aspx|jsp|jspx|php)\\?(cmd|exec|do|c|q)="}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "T1190: webshell cmd parameter pattern"}
+    enabled: true
+
+  - id: 18422
+    level: 13
+    description: "T1133 — unusually long-lived VPN session (>24h) for service account"
+    groups: [mitre, t1133, vpn_long_session]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)vpn.*session.*duration.*([2-9]\\d|\\d{3,})h"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1133"}]
+    alert: {title: "T1133: VPN session >24h"}
+    enabled: true
+
+  - id: 18423
+    level: 13
+    description: "T1190 — TLS handshake from IP on known-malicious ASN against public service"
+    groups: [mitre, t1190, threat_intel, network]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)TLS.*handshake.*from\\s+\\d+\\.\\d+\\.\\d+\\.\\d+"}
+      enrich:
+        ti_source: "malicious_asns"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "T1190: TLS handshake from malicious ASN"}
+    enabled: true
+
+  - id: 18424
+    level: 14
+    description: "T1566.001 — Office app spawns shell within 1 min of email attachment open"
+    groups: [mitre, t1566_001, phishing_macro, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\(winword|excel|powerpnt)\\.exe$"}
+        Image: {regex: "(?i)\\\\(cmd|powershell|wscript|cscript|mshta|regsvr32|certutil|rundll32|bitsadmin)\\.exe$"}
+    correlation:
+      window: "1m"
+      threshold: 1
+      precondition_match:
+        regex: "TargetFilename.*Outlook.*\\.(docm|xlsm|pptm|doc|xls|ppt)"
+        precondition_count: 1
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1566.001"}
+    alert: {title: "T1566.001: Office shell spawn after Outlook attachment"}
+    enabled: true
+
+  - id: 18425
+    level: 13
+    description: "T1190 — webserver process w3wp/nginx/apache loaded unsigned DLL (webshell loader)"
+    groups: [mitre, t1190, web_shell, dll_load]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 7}
+        Image: {regex: "(?i)\\\\(w3wp|nginx|httpd|apache2)\\.exe$"}
+        Signed: {equals: "false"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "T1190: Web server loaded unsigned DLL"}
+    enabled: true
+
+  - id: 18426
+    level: 13
+    description: "T1078.002 — domain admin login from non-admin workstation"
+    groups: [mitre, t1078_002, domain_admin]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4624}
+        TargetUserName: {regex: "(?i)^(Domain|Enterprise)\\s+Admin"}
+    enrich:
+      baseline: "user.allowed_workstations"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078.002"}]
+    alert: {title: "T1078.002: Domain admin from non-admin workstation"}
+    enabled: true
+
+  - id: 18427
+    level: 14
+    description: "T1566.001 — HTML smuggling pattern (blob URL + a.download in body)"
+    groups: [mitre, t1566_001, html_smuggling, phishing]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(URL\\.createObjectURL\\(blob|window\\.URL\\.createObjectURL).*\\.download\\s*="}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1566.001"}
+    alert: {title: "T1566.001: HTML smuggling pattern"}
+    enabled: true
+
+  - id: 18428
+    level: 13
+    description: "T1190 — TFTP/SMB scan against many internal hosts (worm-like spreading inbound)"
+    groups: [mitre, t1190, worm_pattern]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 3}
+        DestinationPort: {regex: "^(69|139|445)$"}
+    correlation:
+      window: "5m"
+      threshold: 50
+      distinct: ["agent_name"]
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "T1190: Worm-style scanning pattern"}
+    enabled: true
+
+  - id: 18429
+    level: 13
+    description: "T1190 — many distinct vulnerable URI paths probed from one IP (recon)"
+    groups: [mitre, t1190, recon, scan]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\\s\\S+(/wp-admin|/admin/|/phpmyadmin|/server-status|/.env|/.git|/api/v1)"}
+    correlation:
+      window: "10m"
+      threshold: 20
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "T1190: vulnerable-URI probing burst"}
+    enabled: true

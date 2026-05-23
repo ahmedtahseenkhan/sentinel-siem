@@ -1,0 +1,551 @@
+# WatchTower — MITRE ATT&CK Execution (TA0002)
+# Rule IDs: 18500-18539
+#
+# Techniques: T1059 (Command/Scripting Interpreter & sub), T1047 WMI,
+# T1053 Scheduled Task/Job, T1106 Native API, T1129 Shared Modules,
+# T1203 Exploit for Client Execution, T1559 IPC, T1569 System Services,
+# T1204 User Execution, T1610 Deploy Container, T1648 Serverless Execution
+
+rules:
+  - id: 18500
+    level: 13
+    description: "T1059.001 — Powershell Invoke-Expression on web content (fileless stager)"
+    groups: [mitre, t1059_001, powershell, fileless, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Invoke-Expression\\s*\\(\\s*\\(?Invoke-WebRequest|IEX\\s*\\(\\s*New-Object\\s+System\\.Net\\.WebClient"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1059.001"}
+    alert: {title: "T1059.001: IEX web stager"}
+    enabled: true
+
+  - id: 18501
+    level: 13
+    description: "T1059.003 — cmd.exe with chained 'for' loop iterating files (LOLBin abuse)"
+    groups: [mitre, t1059_003, cmd, evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\cmd\\.exe$"}
+        CommandLine: {regex: "(?i)for\\s+/[fr]\\s+"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1059.003"}
+    alert: {title: "T1059.003: cmd.exe for-loop pattern"}
+    enabled: true
+
+  - id: 18502
+    level: 13
+    description: "T1059.004 — unix shell -i (interactive) launched by web server / DB process"
+    groups: [mitre, t1059_004, unix_shell, reverse_shell]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=EXECVE.*(comm=\"(nginx|httpd|apache2|mysqld|postgres|node|java)\")\\s.*((bash|sh)\\s+-i)"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1059.004"}
+    alert: {title: "T1059.004: web/db process spawned interactive shell"}
+    enabled: true
+
+  - id: 18503
+    level: 13
+    description: "T1059.005 — VBScript execution from temp/user path"
+    groups: [mitre, t1059_005, vbscript]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(wscript|cscript)\\.exe$"}
+        CommandLine: {regex: "(?i)\\\\(Temp|AppData|Users\\\\Public)\\\\.*\\.(vbs|vbe|wsf)"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059.005"}]
+    alert: {title: "T1059.005: VBScript from temp/user path"}
+    enabled: true
+
+  - id: 18504
+    level: 13
+    description: "T1059.006 — Python script run from temp/user path"
+    groups: [mitre, t1059_006, python]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\python(3|w)?\\.exe$"}
+        CommandLine: {regex: "(?i)\\\\(Temp|AppData|Users\\\\Public)\\\\.*\\.py"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059.006"}]
+    alert: {title: "T1059.006: Python from temp/user path"}
+    enabled: true
+
+  - id: 18505
+    level: 13
+    description: "T1059.007 — JScript / JavaScript via mshta / wscript with http payload"
+    groups: [mitre, t1059_007, javascript]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(mshta|wscript|cscript)\\.exe$"}
+        CommandLine: {regex: "(?i)(\\.js|\\.jse|javascript:|https?://.*\\.js)"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059.007"}]
+    alert: {title: "T1059.007: JScript proxy execution"}
+    enabled: true
+
+  - id: 18506
+    level: 13
+    description: "T1059.008 — network device CLI command from suspicious source"
+    groups: [mitre, t1059_008, network_cli]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(cli|console)\\s+command.*(configure terminal|enable|debug|copy run)"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059.008"}]
+    alert: {title: "T1059.008: network CLI command"}
+    enabled: true
+
+  - id: 18507
+    level: 13
+    description: "T1047 — Windows Management Instrumentation create process on remote host"
+    groups: [mitre, t1047, wmi, lateral]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)wmic\\s+/node:\\S+\\s+process\\s+call\\s+create"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1047"}
+    alert: {title: "T1047: WMI remote process create"}
+    enabled: true
+
+  - id: 18508
+    level: 13
+    description: "T1053.002 — at-style scheduled job (legacy) used"
+    groups: [mitre, t1053_002, at_legacy]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\at\\.exe$"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1053.002"}]
+    alert: {title: "T1053.002: at.exe (legacy scheduler)"}
+    enabled: true
+
+  - id: 18509
+    level: 13
+    description: "T1053.003 — cron job added on Linux"
+    groups: [mitre, t1053_003, cron]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=PATH.*name=\"/(etc/cron|var/spool/cron)"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1053.003"}]
+    alert: {title: "T1053.003: cron job added"}
+    enabled: true
+
+  - id: 18510
+    level: 13
+    description: "T1053.005 — schtasks /run /tn (manual scheduled-task trigger)"
+    groups: [mitre, t1053_005, scheduled_task]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\schtasks\\.exe$"}
+        CommandLine: {regex: "(?i)/run\\s+/tn"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1053.005"}]
+    alert: {title: "T1053.005: schtasks /run /tn"}
+    enabled: true
+
+  - id: 18511
+    level: 13
+    description: "T1106 — direct Win32 API process creation (CreateProcessAsUserW reference in script-block)"
+    groups: [mitre, t1106, native_api]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(CreateProcessAsUser|CreateProcessWithToken|ShellExecuteEx|WinExec)"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1106"}]
+    alert: {title: "T1106: Native API process create in script"}
+    enabled: true
+
+  - id: 18512
+    level: 13
+    description: "T1129 — shared-module DLL loaded via LoadLibrary from non-system path"
+    groups: [mitre, t1129, shared_module]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)\\[System\\.Reflection\\.Assembly\\]::LoadFrom"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1129"}]
+    alert: {title: "T1129: Reflection LoadFrom DLL"}
+    enabled: true
+
+  - id: 18513
+    level: 13
+    description: "T1203 — exploit for client execution (crash followed by child shell)"
+    groups: [mitre, t1203, client_exploit]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\(AcroRd32|WinRAR|7-Zip|Foxit)\\.exe$"}
+        Image: {regex: "(?i)\\\\(cmd|powershell|cscript|wscript)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1203"}
+    alert: {title: "T1203: Reader/Archiver spawned shell"}
+    enabled: true
+
+  - id: 18514
+    level: 14
+    description: "T1559.001 — DCOM ShellWindows / ShellBrowserWindow lateral exec"
+    groups: [mitre, t1559_001, dcom, lateral, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)\\[System\\.Activator\\]::CreateInstance\\(\\[Type\\]::GetTypeFromProgID\\(['\"]?(ShellWindows|ShellBrowserWindow|MMC20\\.Application|Excel\\.Application)['\"]?"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1559.001"}
+    alert: {title: "T1559.001: DCOM ShellWindows / ShellBrowserWindow"}
+    enabled: true
+
+  - id: 18515
+    level: 13
+    description: "T1559.002 — DDE (Dynamic Data Exchange) field in Office doc"
+    groups: [mitre, t1559_002, dde, office]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)dde(auto)?\\s+\\[?cmd|dde\\s+'?powershell"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1559.002"}
+    alert: {title: "T1559.002: DDE field in document"}
+    enabled: true
+
+  - id: 18516
+    level: 13
+    description: "T1569.001 — launchctl loaded plist on macOS (service execution)"
+    groups: [mitre, t1569_001, launchctl, macos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)launchctl\\s+(load|bootstrap)\\s+.*\\.plist"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1569.001"}]
+    alert: {title: "T1569.001: launchctl load plist"}
+    enabled: true
+
+  - id: 18517
+    level: 13
+    description: "T1569.002 — service execution via sc.exe or PowerShell New-Service"
+    groups: [mitre, t1569_002, service_execution]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)(sc\\.exe\\s+create|New-Service)"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1569.002"}]
+    alert: {title: "T1569.002: service execution"}
+    enabled: true
+
+  - id: 18518
+    level: 13
+    description: "T1204.001 — user opened malicious link (browser launched LOLBin downloader)"
+    groups: [mitre, t1204_001, user_link]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\(chrome|msedge|firefox)\\.exe$"}
+        Image: {regex: "(?i)\\\\(certutil|bitsadmin|curl|wget|powershell)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1204.001"}
+    alert: {title: "T1204.001: Browser spawned downloader"}
+    enabled: true
+
+  - id: 18519
+    level: 13
+    description: "T1204.002 — user opened malicious file (Office app spawned shell — see also T1566)"
+    groups: [mitre, t1204_002, user_file, macro]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\(winword|excel|powerpnt)\\.exe$"}
+        Image: {regex: "(?i)\\\\(powershell|cmd|cscript|wscript)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1204.002"}
+    alert: {title: "T1204.002: User-opened file → shell"}
+    enabled: true
+
+  - id: 18520
+    level: 13
+    description: "T1610 — container deployed from compromised CI / non-standard registry"
+    groups: [mitre, t1610, container_deploy]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(docker|kubectl|podman)\\s+(run|create|apply).*image:\\s*\\S+"}
+      enrich:
+        baseline: "registry.allowlist"
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1610"}
+    alert: {title: "T1610: Container deploy from non-allowlist"}
+    enabled: true
+
+  - id: 18521
+    level: 13
+    description: "T1648 — serverless function invoked at high rate (resource hijack / mining)"
+    groups: [mitre, t1648, serverless, mining]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(aws_lambda|google\\.cloud\\.functions|Microsoft\\.Web/sites/functions).*Invoke"}
+    correlation:
+      window: "5m"
+      threshold: 1000
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1648"}
+    alert: {title: "T1648: Serverless invocation burst"}
+    enabled: true
+
+  - id: 18522
+    level: 13
+    description: "T1059.001 — PowerShell hidden window + base64-encoded + WebClient"
+    groups: [mitre, t1059_001, powershell_stager]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\powershell\\.exe$"}
+        CommandLine: {regex: "(?i)-(w(in)?\\s+hidden|nop).*-(e|enc).*WebClient"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059.001"}]
+    alert: {title: "T1059.001: PowerShell hidden + enc + WebClient"}
+    enabled: true
+
+  - id: 18523
+    level: 13
+    description: "T1059.005 — VBA macro auto-executing function name (AutoOpen, Document_Open)"
+    groups: [mitre, t1059_005, macro_auto]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(AutoOpen|Document_Open|AutoExec|AutoExit|Workbook_Open|Auto_Open)"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059.005"}]
+    alert: {title: "T1059.005: macro auto-exec function"}
+    enabled: true
+
+  - id: 18524
+    level: 13
+    description: "T1059 — multi-stage script chain (cmd.exe runs powershell which runs another script)"
+    groups: [mitre, t1059, multi_stage]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\cmd\\.exe$"}
+        Image: {regex: "(?i)\\\\powershell\\.exe$"}
+        CommandLine: {regex: "(?i)-(File|Command|c)\\s"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059"}]
+    alert: {title: "T1059: cmd → powershell -File/-Command chain"}
+    enabled: true
+
+  - id: 18525
+    level: 13
+    description: "T1129 — PowerShell using [System.Reflection.Assembly]::Load with byte buffer"
+    groups: [mitre, t1129, reflective_load]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)\\[System\\.Reflection\\.Assembly\\]::Load\\(\\$?\\[byte\\[\\]\\]"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1129"}]
+    alert: {title: "T1129: Reflection Assembly Load byte[]"}
+    enabled: true
+
+  - id: 18526
+    level: 13
+    description: "T1059 — encoded one-liner: bash -c $(echo BASE64 | base64 -d)"
+    groups: [mitre, t1059, linux_encoded]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=EXECVE.*bash.*-c.*\\$\\(echo\\s+[A-Za-z0-9+/=]{40,}\\s*\\|\\s*base64\\s+-d"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059.004"}]
+    alert: {title: "T1059.004: bash base64-decode stager"}
+    enabled: true
+
+  - id: 18527
+    level: 13
+    description: "T1059.001 — PowerShell with -EncodedCommand decoding to IEX / DownloadString"
+    groups: [mitre, t1059_001, encoded_stager]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)\\$\\(.*FromBase64String.*\\).*\\|.*(iex|invoke-expression)"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1059.001"}
+    alert: {title: "T1059.001: base64-decoded IEX stager"}
+    enabled: true
+
+  - id: 18528
+    level: 13
+    description: "T1610 — kubectl run from outside known CI/CD"
+    groups: [mitre, t1610, k8s_run]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)kubectl\\s+run\\s"}
+    enrich:
+      baseline: "kubectl.allowed_ip"
+    mitre: [{tactic_id: "TA0002", technique_id: "T1610"}]
+    alert: {title: "T1610: kubectl run from non-CI IP"}
+    enabled: true
+
+  - id: 18529
+    level: 13
+    description: "T1106 — direct call to NtCreateProcess / NtAllocateVirtualMemory via syscall stub"
+    groups: [mitre, t1106, syscall_stub]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(NtCreateProcess|NtAllocateVirtualMemory|NtMapViewOfSection|NtWriteVirtualMemory)"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1106"}]
+    alert: {title: "T1106: Direct syscall API reference"}
+    enabled: true
+
+  - id: 18530
+    level: 13
+    description: "T1059.001 — fileless PowerShell module loaded by IEX (no .ps1 on disk)"
+    groups: [mitre, t1059_001, fileless]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Invoke-Expression\\s+\\(\\(?Get-Content|Invoke-Expression\\s+\\(\\$"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059.001"}]
+    alert: {title: "T1059.001: fileless IEX module load"}
+    enabled: true
+
+  - id: 18531
+    level: 13
+    description: "T1610 — docker run from inside a container (nested container, container escape vector)"
+    groups: [mitre, t1610, nested_container, container_escape]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)container_id=\\S+.*docker\\s+(run|build|exec)"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1610"}
+    alert: {title: "T1610: nested docker invocation"}
+    enabled: true
+
+  - id: 18532
+    level: 13
+    description: "T1059.001 — PowerShell encoding chain — IEX inside IEX (multi-layer)"
+    groups: [mitre, t1059_001, multi_layer]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Invoke-Expression.*Invoke-Expression"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059.001"}]
+    alert: {title: "T1059.001: nested IEX"}
+    enabled: true
+
+  - id: 18533
+    level: 13
+    description: "T1059.005 — VBA execute Shell with environment variable expansion"
+    groups: [mitre, t1059_005, vba_shell]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Shell\\(\\s*Environ\\(.*\\)\\s*&|Shell\\s+\"%(SystemRoot|UserProfile|AppData)%"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059.005"}]
+    alert: {title: "T1059.005: VBA Shell with env var"}
+    enabled: true
+
+  - id: 18534
+    level: 13
+    description: "T1569.002 — service started with binPath containing PowerShell / cmd"
+    groups: [mitre, t1569_002, service_binpath, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)sc\\.exe\\s+(create|config).*binPath=.*?(powershell|cmd\\.exe)"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1569.002"}
+    alert: {title: "T1569.002: service binPath uses shell"}
+    enabled: true
+
+  - id: 18535
+    level: 13
+    description: "T1059.004 — Linux Python -c oneliner running socket / pty"
+    groups: [mitre, t1059_004, python_oneliner]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=EXECVE.*python(3)?\\s+-c\\s+['\"]?(import\\s+socket|pty\\.spawn)"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059.006"}]
+    alert: {title: "T1059.006: Python -c socket / pty stager"}
+    enabled: true
+
+  - id: 18536
+    level: 14
+    description: "T1059.001 — PowerShell IEX of remote .ps1 from Pastebin / GitHub Gist"
+    groups: [mitre, t1059_001, remote_script, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(IEX|Invoke-Expression).*(pastebin\\.com|gist\\.githubusercontent\\.com|raw\\.githubusercontent\\.com|ghbinpaste)"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1059.001"}
+    alert: {title: "T1059.001: IEX from Pastebin/GitHub raw"}
+    enabled: true
+
+  - id: 18537
+    level: 13
+    description: "T1559 — IPC via Mailslot (rare, suspicious)"
+    groups: [mitre, t1559, ipc, mailslot]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\mailslot\\\\"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1559"}]
+    alert: {title: "T1559: Mailslot file write"}
+    enabled: true
+
+  - id: 18538
+    level: 13
+    description: "T1059.003 — cmd.exe /c chained with & or && (LOLBin chain)"
+    groups: [mitre, t1059_003, cmd_chain]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\cmd\\.exe$"}
+        CommandLine: {regex: "(?i)/c\\s+\\S+\\s+(&|&&|\\|\\|)\\s+\\S+"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059.003"}]
+    alert: {title: "T1059.003: cmd.exe chained commands"}
+    enabled: true
+
+  - id: 18539
+    level: 13
+    description: "T1059.007 — chrome --headless launching script (Chrome as LOLBin)"
+    groups: [mitre, t1059_007, chrome_lolbin]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(chrome|msedge)\\.exe$"}
+        CommandLine: {regex: "(?i)--headless.*--remote-debugging-port"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059.007"}]
+    alert: {title: "T1059.007: Chrome --headless debug port"}
+    enabled: true

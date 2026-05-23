@@ -1,0 +1,680 @@
+# WatchTower — MITRE ATT&CK Defense Evasion (TA0005)
+# Rule IDs: 18800-18849
+#
+# Techniques: T1027 Obfuscated Files, T1036 Masquerading, T1055 Process
+# Injection, T1070 Indicator Removal, T1112 Modify Registry, T1140 Deobfuscate,
+# T1202 Indirect Command Execution, T1218 System Binary Proxy Execution,
+# T1220 XSL Script Processing, T1480 Execution Guardrails, T1497 VM Evasion,
+# T1553 Subvert Trust Controls, T1562 Impair Defenses, T1564 Hide Artifacts,
+# T1620 Reflective Code Loading
+
+rules:
+  - id: 18800
+    level: 13
+    description: "T1027 — high-entropy string in script-block (likely encoded payload)"
+    groups: [mitre, t1027, obfuscation]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "[A-Za-z0-9+/=]{300,}"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1027"}
+    alert: {title: "T1027: Large base64 blob"}
+    enabled: true
+
+  - id: 18801
+    level: 13
+    description: "T1027.002 — packed executable detected (compile/build tool output with high entropy)"
+    groups: [mitre, t1027_002, packed]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 7}
+        Signed: {equals: "false"}
+        OriginalFileName: {regex: "(?i)^(-|null|none|\\s*)$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1027.002"}]
+    alert: {title: "T1027.002: Unsigned DLL with no OriginalFileName"}
+    enabled: true
+
+  - id: 18802
+    level: 13
+    description: "T1027.010 — command-line obfuscation (heavy ^/`/+ concatenation)"
+    groups: [mitre, t1027_010, cmdline_obfuscation]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(\\^){5,}|(`){4,}|((\")?\\+(\")?){10,}"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1027.010"}]
+    alert: {title: "T1027.010: Heavy cmdline obfuscation"}
+    enabled: true
+
+  - id: 18803
+    level: 13
+    description: "T1036.002 — RTLO unicode (right-to-left override) in filename"
+    groups: [mitre, t1036_002, rtlo]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "\\u202E"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1036.002"}]
+    alert: {title: "T1036.002: RTLO in filename"}
+    enabled: true
+
+  - id: 18804
+    level: 13
+    description: "T1036.003 — process named after system binary in non-system path"
+    groups: [mitre, t1036_003, masquerade]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(svchost|csrss|lsass|winlogon|services|wininit|smss|spoolsv)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1036.003"}
+    alert: {title: "T1036.003: System-binary name in non-system path"}
+    enabled: true
+
+  - id: 18805
+    level: 13
+    description: "T1036.004 — service masquerade as legitimate Windows service"
+    groups: [mitre, t1036_004, service_masq]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 7045}
+        message: {regex: "(?i)(WinDefender|WindowsUpdater|WUAUSERV|MSSQL|TermService|RpcSs)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1036.004"}]
+    alert: {title: "T1036.004: Service name masquerade"}
+    enabled: true
+
+  - id: 18806
+    level: 13
+    description: "T1036.005 — match legitimate filename in temp / user-writable path"
+    groups: [mitre, t1036_005, location_masq]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(Temp|AppData|Users\\\\Public)\\\\(svchost|lsass|chrome|explorer|notepad|cmd|powershell)\\.exe$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1036.005"}]
+    alert: {title: "T1036.005: System binary in user-writable path"}
+    enabled: true
+
+  - id: 18807
+    level: 13
+    description: "T1036.007 — double extension (file.pdf.exe / file.docx.scr)"
+    groups: [mitre, t1036_007, double_ext]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\[^\\\\]+\\.(pdf|doc|docx|xls|xlsx|ppt|pptx|jpg|png|txt|zip|rar)\\.(exe|scr|com|bat|cmd|ps1|vbs|js|hta)$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1036.007"}]
+    alert: {title: "T1036.007: Double extension executable"}
+    enabled: true
+
+  - id: 18808
+    level: 14
+    description: "T1055.001 — DLL injection: CreateRemoteThread API call"
+    groups: [mitre, t1055_001, dll_injection, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 8}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1055.001"}
+    alert: {title: "T1055.001: CreateRemoteThread"}
+    enabled: true
+
+  - id: 18809
+    level: 14
+    description: "T1055.002 — Portable Executable injection: VirtualAllocEx + WriteProcessMemory"
+    groups: [mitre, t1055_002, pe_injection, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)VirtualAllocEx.*WriteProcessMemory"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1055.002"}
+    alert: {title: "T1055.002: PE injection API"}
+    enabled: true
+
+  - id: 18810
+    level: 14
+    description: "T1055.003 — Thread Execution Hijacking: SetThreadContext"
+    groups: [mitre, t1055_003, thread_hijack, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(SetThreadContext|NtSetContextThread|QueueUserAPC)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1055.003"}
+    alert: {title: "T1055.003: SetThreadContext / APC injection"}
+    enabled: true
+
+  - id: 18811
+    level: 14
+    description: "T1055.004 — Asynchronous Procedure Call (APC) injection"
+    groups: [mitre, t1055_004, apc_injection, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(NtQueueApcThread|QueueUserAPC|NtSetContextThread)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1055.004"}
+    alert: {title: "T1055.004: APC queue"}
+    enabled: true
+
+  - id: 18812
+    level: 14
+    description: "T1055.012 — Process Hollowing: NtUnmapViewOfSection"
+    groups: [mitre, t1055_012, hollowing, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(NtUnmapViewOfSection|ZwUnmapViewOfSection)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1055.012"}
+    alert: {title: "T1055.012: Process hollowing API"}
+    enabled: true
+
+  - id: 18813
+    level: 14
+    description: "T1070.001 — Security event log cleared (eventlog 1102)"
+    groups: [mitre, t1070_001, log_clear, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1102}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1070.001"}
+    alert: {title: "T1070.001: Security log cleared"}
+    enabled: true
+
+  - id: 18814
+    level: 13
+    description: "T1070.002 — Linux log files truncated/deleted"
+    groups: [mitre, t1070_002, linux_log_clear]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=EXECVE.*(rm|truncate|shred|:>).*\\b(/var/log/)?(auth|secure|messages|syslog|audit)\\.log\\b"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070.002"}]
+    alert: {title: "T1070.002: Linux log file destroyed"}
+    enabled: true
+
+  - id: 18815
+    level: 13
+    description: "T1070.003 — bash history cleared"
+    groups: [mitre, t1070_003, history_clear]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=EXECVE.*(unset HISTFILE|HISTFILE=/dev/null|history -c|>\\s*\\.bash_history)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070.003"}]
+    alert: {title: "T1070.003: Shell history cleared"}
+    enabled: true
+
+  - id: 18816
+    level: 13
+    description: "T1070.004 — File deletion (rm -f / sdelete / shred) of executable / dropper"
+    groups: [mitre, t1070_004, file_delete]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(sdelete|cipher)\\.exe$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070.004"}]
+    alert: {title: "T1070.004: sdelete / cipher /w used"}
+    enabled: true
+
+  - id: 18817
+    level: 13
+    description: "T1070.006 — file timestomp (FileCreateTime changed)"
+    groups: [mitre, t1070_006, timestomp]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 2}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070.006"}]
+    alert: {title: "T1070.006: FileCreateTime changed"}
+    enabled: true
+
+  - id: 18818
+    level: 13
+    description: "T1112 — registry value renamed / deleted (Reg.exe + delete/rename)"
+    groups: [mitre, t1112, registry_modify]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\reg\\.exe$"}
+        CommandLine: {regex: "(?i)\\s(delete|export|copy|save)\\s+HK"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1112"}]
+    alert: {title: "T1112: reg.exe delete/export/save"}
+    enabled: true
+
+  - id: 18819
+    level: 13
+    description: "T1140 — base64 decoding command chain (certutil -decode / openssl base64)"
+    groups: [mitre, t1140, deobfuscate]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)(certutil\\s+(-decode|-decodehex)|openssl\\s+base64\\s+-d|base64\\s+-d)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1140"}
+    alert: {title: "T1140: Deobfuscation tool used"}
+    enabled: true
+
+  - id: 18820
+    level: 13
+    description: "T1202 — indirect command execution via forfiles / pcalua"
+    groups: [mitre, t1202, indirect_exec]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(forfiles|pcalua|conhost|cdb)\\.exe$"}
+        CommandLine: {regex: "(?i)/c\\s+\\S+|/[ckep]\\s+"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1202"}]
+    alert: {title: "T1202: forfiles / pcalua indirect exec"}
+    enabled: true
+
+  - id: 18821
+    level: 13
+    description: "T1218.001 — compiled HTML help (hh.exe) loading remote .chm"
+    groups: [mitre, t1218_001, hh_lolbin]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\hh\\.exe$"}
+        CommandLine: {regex: "(?i)(http|https|file)://"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218.001"}]
+    alert: {title: "T1218.001: hh.exe remote .chm"}
+    enabled: true
+
+  - id: 18822
+    level: 13
+    description: "T1218.002 — Control Panel item used as proxy (control.exe)"
+    groups: [mitre, t1218_002, control_panel]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\control\\.exe$"}
+        CommandLine: {regex: "(?i)\\\\(Temp|AppData|Users\\\\Public)\\\\.*\\.(cpl|dll)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218.002"}]
+    alert: {title: "T1218.002: control.exe loading from temp"}
+    enabled: true
+
+  - id: 18823
+    level: 13
+    description: "T1218.005 — mshta.exe with javascript:/vbscript: URI scheme"
+    groups: [mitre, t1218_005, mshta]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\mshta\\.exe$"}
+        CommandLine: {regex: "(?i)(javascript:|vbscript:)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218.005"}]
+    alert: {title: "T1218.005: mshta script URI"}
+    enabled: true
+
+  - id: 18824
+    level: 13
+    description: "T1218.007 — msiexec installing MSI from URL"
+    groups: [mitre, t1218_007, msiexec]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\msiexec\\.exe$"}
+        CommandLine: {regex: "(?i)/i\\s+https?://"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218.007"}]
+    alert: {title: "T1218.007: msiexec install from URL"}
+    enabled: true
+
+  - id: 18825
+    level: 13
+    description: "T1218.010 — regsvr32 /i:http (Squiblydoo)"
+    groups: [mitre, t1218_010, squiblydoo]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\regsvr32\\.exe$"}
+        CommandLine: {regex: "(?i)/i:https?://"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218.010"}]
+    alert: {title: "T1218.010: regsvr32 Squiblydoo"}
+    enabled: true
+
+  - id: 18826
+    level: 13
+    description: "T1218.011 — rundll32 executing JavaScript / VBScript via RunHTMLApplication"
+    groups: [mitre, t1218_011, rundll32]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\rundll32\\.exe$"}
+        CommandLine: {regex: "(?i)(javascript:|mshtml\\s*,\\s*RunHTMLApplication|shell32\\s*,\\s*ShellExec_RunDLL)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218.011"}]
+    alert: {title: "T1218.011: rundll32 RunHTMLApplication"}
+    enabled: true
+
+  - id: 18827
+    level: 13
+    description: "T1218.012 — verclsid.exe (LOLBin proxy)"
+    groups: [mitre, t1218_012, verclsid_lolbin]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\verclsid\\.exe$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218.012"}]
+    alert: {title: "T1218.012: verclsid.exe used"}
+    enabled: true
+
+  - id: 18828
+    level: 13
+    description: "T1218.013 — Mavinject.exe DLL injection via /INJECTRUNNING"
+    groups: [mitre, t1218_013, mavinject]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\mavinject(32|64)?\\.exe$"}
+        CommandLine: {regex: "(?i)/INJECTRUNNING"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218.013"}]
+    alert: {title: "T1218.013: Mavinject /INJECTRUNNING"}
+    enabled: true
+
+  - id: 18829
+    level: 13
+    description: "T1218.014 — MMC.exe loading remote .msc via /a"
+    groups: [mitre, t1218_014, mmc_lolbin]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\mmc\\.exe$"}
+        CommandLine: {regex: "(?i)\\s\\\\\\\\|\\s/a\\s"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218.014"}]
+    alert: {title: "T1218.014: mmc.exe remote MSC"}
+    enabled: true
+
+  - id: 18830
+    level: 13
+    description: "T1220 — wmic /format with XSL (script processing proxy)"
+    groups: [mitre, t1220, xsl]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)wmic\\s.*/format:\\S+\\.xsl"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1220"}]
+    alert: {title: "T1220: wmic /format XSL proxy"}
+    enabled: true
+
+  - id: 18831
+    level: 13
+    description: "T1480.001 — execution guardrail: VM artifact check (CPUID / hardware queries)"
+    groups: [mitre, t1480_001, anti_sandbox]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Get-WmiObject.*Win32_ComputerSystem.*Manufacturer|VBoxBox|VMwareVM|QEMU|virtualbox|vmware-tools)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1480.001"}]
+    alert: {title: "T1480.001: VM-evasion check"}
+    enabled: true
+
+  - id: 18832
+    level: 13
+    description: "T1497 — sandbox-evasion: Sleep large duration, GetTickCount"
+    groups: [mitre, t1497, sandbox_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Start-Sleep\\s+-Seconds\\s+\\d{4,}|Sleep\\(\\d{6,}\\)|GetTickCount)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1497.003"}]
+    alert: {title: "T1497: Long sleep / sandbox check"}
+    enabled: true
+
+  - id: 18833
+    level: 14
+    description: "T1553.001 — code signing certificate import to Root store"
+    groups: [mitre, t1553_001, cert_root, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Import-Certificate.*-CertStoreLocation.*\\\\Root"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1553.004"}
+    alert: {title: "T1553.001: Root cert imported"}
+    enabled: true
+
+  - id: 18834
+    level: 14
+    description: "T1553.005 — Mark-of-the-Web (MOTW) Zone.Identifier removed"
+    groups: [mitre, t1553_005, motw_bypass, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)Unblock-File|streams.*-d|del\\s+.*:Zone\\.Identifier"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1553.005"}
+    alert: {title: "T1553.005: MOTW removed"}
+    enabled: true
+
+  - id: 18835
+    level: 14
+    description: "T1562.001 — Defender disable via Set-MpPreference"
+    groups: [mitre, t1562_001, defender_disable, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Set-MpPreference.*-Disable(Realtime|Behavior|Block|IOAV)Monitoring"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "T1562.001: Defender disabled"}
+    enabled: true
+
+  - id: 18836
+    level: 14
+    description: "T1562.002 — Windows event log service stopped"
+    groups: [mitre, t1562_002, log_service_stop, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 7036}
+        message: {regex: "(?i)EventLog.*service.*stopped"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.002"}
+    alert: {title: "T1562.002: Event log service stopped"}
+    enabled: true
+
+  - id: 18837
+    level: 14
+    description: "T1562.004 — Firewall disabled via netsh advfirewall set ... state off"
+    groups: [mitre, t1562_004, firewall_disable, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)netsh\\s+advfirewall.*state\\s+off"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.004"}
+    alert: {title: "T1562.004: Firewall disabled"}
+    enabled: true
+
+  - id: 18838
+    level: 14
+    description: "T1562.006 — PowerShell ScriptBlockLogging disabled in registry"
+    groups: [mitre, t1562_006, log_tamper, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\PowerShell\\\\ScriptBlockLogging\\\\EnableScriptBlockLogging$"}
+        Details: {regex: "(?i)DWORD \\(0x00000000\\)|^0$"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.006"}
+    alert: {title: "T1562.006: ScriptBlockLogging disabled"}
+    enabled: true
+
+  - id: 18839
+    level: 13
+    description: "T1564.001 — hidden file/directory attribute set (attrib +h +s)"
+    groups: [mitre, t1564_001, hidden_artifact]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\attrib\\.exe$"}
+        CommandLine: {regex: "(?i)\\+h\\s.*\\+s|\\+s\\s.*\\+h"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1564.001"}]
+    alert: {title: "T1564.001: attrib +h +s"}
+    enabled: true
+
+  - id: 18840
+    level: 13
+    description: "T1564.003 — hidden window: WindowStyle Hidden in script"
+    groups: [mitre, t1564_003, hidden_window]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(WindowStyle\\s+Hidden|-w\\s+hidden|CreateNoWindow)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1564.003"}]
+    alert: {title: "T1564.003: Hidden window flag"}
+    enabled: true
+
+  - id: 18841
+    level: 13
+    description: "T1564.004 — NTFS Alternate Data Stream write"
+    groups: [mitre, t1564_004, ads]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 15}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1564.004"}]
+    alert: {title: "T1564.004: NTFS Alternate Data Stream"}
+    enabled: true
+
+  - id: 18842
+    level: 14
+    description: "T1620 — reflective code loading: [System.Reflection.Assembly]::Load([byte[]])"
+    groups: [mitre, t1620, reflective_load, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)\\[System\\.Reflection\\.Assembly\\]::Load\\("}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1620"}
+    alert: {title: "T1620: Reflective Assembly load"}
+    enabled: true
+
+  - id: 18843
+    level: 13
+    description: "T1027.003 — steganography: image file written immediately followed by IEX of bytes"
+    groups: [mitre, t1027_003, steganography]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(\\.GetPixel|BitmapImage|\\.LockBits).*Reflection\\.Assembly\\]::Load"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1027.003"}]
+    alert: {title: "T1027.003: Steganography decoder pattern"}
+    enabled: true
+
+  - id: 18844
+    level: 13
+    description: "T1027.005 — indicator removal from tools: clearing UserAssist / AppCompat caches"
+    groups: [mitre, t1027_005, anti_forensics]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)reg\\s+delete.*\\\\UserAssist\\\\|cipher\\.exe\\s+/w"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1027.005"}]
+    alert: {title: "T1027.005: UserAssist / disk wipe"}
+    enabled: true
+
+  - id: 18845
+    level: 13
+    description: "T1027.007 — DLL stomping: process write to its own module section"
+    groups: [mitre, t1027_007, dynamic_resolve]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 25}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1027.007"}]
+    alert: {title: "T1027.007: ProcessTampering / stomping"}
+    enabled: true
+
+  - id: 18846
+    level: 14
+    description: "T1562.008 — cloud audit log disabled (CloudTrail/StackdriverConfig/DiagnosticSettings)"
+    groups: [mitre, t1562_008, cloud_audit, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(StopLogging|DeleteTrail|DeleteSink|Microsoft\\.Insights/diagnosticSettings/delete)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.008"}
+    alert: {title: "T1562.008: cloud audit log disabled"}
+    enabled: true
+
+  - id: 18847
+    level: 13
+    description: "T1562.012 — Linux audit rules disabled (auditctl -e 0)"
+    groups: [mitre, t1562_012, auditd_disable]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=EXECVE.*auditctl\\s+-e\\s+0"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.012"}]
+    alert: {title: "T1562.012: auditctl -e 0 (disable)"}
+    enabled: true
+
+  - id: 18848
+    level: 13
+    description: "T1562 — host firewall rule deleted (Windows or Linux)"
+    groups: [mitre, t1562, firewall_rule_delete]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)(netsh\\s+advfirewall.*delete\\s+rule|iptables\\s+-D|nft\\s+delete)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.004"}]
+    alert: {title: "T1562: Firewall rule deleted"}
+    enabled: true
+
+  - id: 18849
+    level: 13
+    description: "T1140 — XOR decoder loop pattern in script"
+    groups: [mitre, t1140, xor_decoder]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)foreach.*\\$_\\s*-bxor\\s+\\$|(?:%\\s*\\{\\s*[$_]+\\s*-bxor)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1140"}]
+    alert: {title: "T1140: XOR decoder pattern"}
+    enabled: true

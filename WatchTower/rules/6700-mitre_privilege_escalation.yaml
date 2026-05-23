@@ -1,0 +1,405 @@
+# WatchTower — MITRE ATT&CK Privilege Escalation (TA0004)
+# Rule IDs: 18700-18729
+#
+# Techniques: T1068 Exploitation for PrivEsc, T1078 Valid Accounts,
+# T1134 Access Token Manipulation, T1484 Domain Policy Modification,
+# T1547 Boot/Logon Autostart (shared with persistence), T1548 Abuse
+# Elevation Control Mechanism, T1574 Hijack Execution Flow,
+# T1611 Escape to Host
+
+rules:
+  - id: 18700
+    level: 14
+    description: "T1068 — known LPE exploit binary executed (PrintNightmare/HiveNightmare/Spoolfool/PwnKit)"
+    groups: [mitre, t1068, lpe_exploit, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(printnightmare|hivenightmare|spoolfool|pwnkit|hot_potato|juicy_potato|rotten_potato|sweetpotato|godpotato|seimpersonate|seassignprimary|chimichurri)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1068", technique_name: "Exploitation for Privilege Escalation"}
+    alert: {title: "T1068: Known LPE binary executed"}
+    enabled: true
+
+  - id: 18701
+    level: 14
+    description: "T1068 — process accessed with PROCESS_ALL_ACCESS by non-admin (kernel exploit pattern)"
+    groups: [mitre, t1068, process_access, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 10}
+        GrantedAccess: {regex: "(?i)0x1F0FFF|0x1FFFFF"}
+        TargetImage: {regex: "(?i)\\\\(services|lsass|winlogon|csrss)\\.exe$"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1068"}]
+    alert: {title: "T1068: PROCESS_ALL_ACCESS on system process"}
+    enabled: true
+
+  - id: 18702
+    level: 14
+    description: "T1078.003 — local Administrator login from non-admin workstation (lateral / privesc)"
+    groups: [mitre, t1078_003, local_admin]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4624}
+        TargetUserName: {regex: "(?i)^Administrator$"}
+        LogonType: {regex: "^(3|10)$"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1078.003"}
+    alert: {title: "T1078.003: Local Administrator remote logon"}
+    enabled: true
+
+  - id: 18703
+    level: 13
+    description: "T1134.001 — token impersonation (SeImpersonatePrivilege used by non-system)"
+    groups: [mitre, t1134_001, token_impersonation]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4673}
+        PrivilegeList: {contains: "SeImpersonatePrivilege"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1134.001"}]
+    alert: {title: "T1134.001: SeImpersonate used"}
+    enabled: true
+
+  - id: 18704
+    level: 13
+    description: "T1134.002 — process created with explicit credentials (CreateProcessAsUser)"
+    groups: [mitre, t1134_002, runas_explicit]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4624}
+        LogonType: {equals: "9"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1134.002"}]
+    alert: {title: "T1134.002: Explicit credentials logon (LogonType 9)"}
+    enabled: true
+
+  - id: 18705
+    level: 14
+    description: "T1134.003 — SeDebugPrivilege used by non-debugger process"
+    groups: [mitre, t1134_003, sedebug, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4673}
+        PrivilegeList: {contains: "SeDebugPrivilege"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1134.003"}
+    alert: {title: "T1134.003: SeDebug used"}
+    enabled: true
+
+  - id: 18706
+    level: 13
+    description: "T1134.005 — SID-history injection: sIDHistory attribute modified on user object"
+    groups: [mitre, t1134_005, sid_history]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 5136}
+        AttributeLDAPDisplayName: {contains: "sIDHistory"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1134.005"}]
+    alert: {title: "T1134.005: sIDHistory attribute modified"}
+    enabled: true
+
+  - id: 18707
+    level: 14
+    description: "T1484.001 — Group Policy Object modified (GPO can run startup scripts)"
+    groups: [mitre, t1484_001, gpo, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 5136}
+        ObjectClass: {equals: "groupPolicyContainer"}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1484.001"}
+    alert: {title: "T1484.001: GPO modified"}
+    enabled: true
+
+  - id: 18708
+    level: 14
+    description: "T1484.002 — domain trust created/modified (cross-domain privesc)"
+    groups: [mitre, t1484_002, domain_trust, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {regex: "^(4706|4716|4707)$"}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1484.002"}
+    alert: {title: "T1484.002: Domain trust changed"}
+    enabled: true
+
+  - id: 18709
+    level: 14
+    description: "T1548.002 — UAC bypass: cmstp / fodhelper / sdclt / eventvwr COM hijack"
+    groups: [mitre, t1548_002, uac_bypass, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\(fodhelper|sdclt|eventvwr|computerdefaults|silentcleanup|wsreset|slui|werfault)\\.exe$"}
+        Image: {regex: "(?i)\\\\(cmd|powershell|rundll32)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1548.002"}
+    alert: {title: "T1548.002: UAC bypass pattern"}
+    enabled: true
+
+  - id: 18710
+    level: 13
+    description: "T1548.003 — sudo elevation: sudoers.d file modified"
+    groups: [mitre, t1548_003, sudo_persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=PATH.*name=\"/etc/sudoers(\\.d/.+)?\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1548.003"}]
+    alert: {title: "T1548.003: sudoers / sudoers.d modified"}
+    enabled: true
+
+  - id: 18711
+    level: 13
+    description: "T1548.001 — setuid bit added to file (chmod 4xxx)"
+    groups: [mitre, t1548_001, setuid]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=EXECVE.*chmod\\s+[+-]?(u\\+s|[0-7]?4\\d{3})"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1548.001"}]
+    alert: {title: "T1548.001: setuid bit added"}
+    enabled: true
+
+  - id: 18712
+    level: 13
+    description: "T1548.004 — macOS authorization plugin loaded (auth-pipeline tamper)"
+    groups: [mitre, t1548_004, macos_auth]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/Library/Security/SecurityAgentPlugins/.+\\.bundle"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1548.004"}]
+    alert: {title: "T1548.004: macOS auth plugin loaded"}
+    enabled: true
+
+  - id: 18713
+    level: 13
+    description: "T1574.001 — DLL search-order hijack: system DLL written next to app binary"
+    groups: [mitre, t1574_001, dll_search_hijack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\Program Files( \\(x86\\))?\\\\.*\\\\(version|crypt32|wininet|shell32|kernel32|advapi32|user32)\\.dll$"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1574.001"}]
+    alert: {title: "T1574.001: DLL search-order hijack"}
+    enabled: true
+
+  - id: 18714
+    level: 13
+    description: "T1574.002 — DLL side-load: signed binary loading unsigned DLL from same dir"
+    groups: [mitre, t1574_002, dll_sideload]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 7}
+        Signed: {equals: "false"}
+        ImageLoaded: {regex: "(?i)\\\\Program Files\\\\.*\\\\\\S+\\.dll$"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1574.002"}]
+    alert: {title: "T1574.002: DLL side-load (unsigned in Program Files)"}
+    enabled: true
+
+  - id: 18715
+    level: 14
+    description: "T1574.006 — LD_PRELOAD environment variable set"
+    groups: [mitre, t1574_006, ld_preload, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=EXECVE.*LD_PRELOAD="}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1574.006"}
+    alert: {title: "T1574.006: LD_PRELOAD set"}
+    enabled: true
+
+  - id: 18716
+    level: 14
+    description: "T1574.008 — path interception via PATHEXT / unquoted service path"
+    groups: [mitre, t1574_008, path_intercept]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Services\\\\[^\\\\]+\\\\ImagePath$"}
+        Details: {regex: "^(?!.*\").*\\s+\\S+\\.exe"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1574.008"}
+    alert: {title: "T1574.008: Unquoted service path"}
+    enabled: true
+
+  - id: 18717
+    level: 14
+    description: "T1611 — container escape primitive (mount /proc / ptrace from container)"
+    groups: [mitre, t1611, container_escape, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)container_id=\\S+.*syscall=(mount|ptrace|init_module)"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1611", technique_name: "Escape to Host"}
+    alert: {title: "T1611: Container escape syscall"}
+    enabled: true
+
+  - id: 18718
+    level: 14
+    description: "T1611 — container with hostPath mount of /etc / /root / docker.sock"
+    groups: [mitre, t1611, hostpath, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"hostPath\":\\{[^}]*\"path\":\\s*\"/(etc|root|var/run/docker\\.sock|proc|sys)\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "T1611: Pod with sensitive hostPath"}
+    enabled: true
+
+  - id: 18719
+    level: 13
+    description: "T1547.011 — Plist modification on macOS (LaunchAgent / LaunchDaemon)"
+    groups: [mitre, t1547_011, macos_plist]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)~?/Library/Launch(Agents|Daemons)/.+\\.plist"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1547.011"}]
+    alert: {title: "T1547.011: macOS LaunchAgent/Daemon plist"}
+    enabled: true
+
+  - id: 18720
+    level: 13
+    description: "T1547.015 — login items added on macOS"
+    groups: [mitre, t1547_015, macos_login_items]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)osascript.*tell.*application\\s+\"System Events\".*make new login item"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1547.015"}]
+    alert: {title: "T1547.015: macOS login item created"}
+    enabled: true
+
+  - id: 18721
+    level: 14
+    description: "T1068 — SeLoadDriverPrivilege used (kernel driver load)"
+    groups: [mitre, t1068, kernel_driver, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4673}
+        PrivilegeList: {contains: "SeLoadDriverPrivilege"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1068"}
+    alert: {title: "T1068: SeLoadDriverPrivilege used"}
+    enabled: true
+
+  - id: 18722
+    level: 14
+    description: "T1068 — BYOVD: unsigned vulnerable driver loaded by attacker"
+    groups: [mitre, t1068, byovd, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 6}
+        Signed: {equals: "false"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1068"}
+    alert: {title: "T1068: Unsigned driver loaded (BYOVD)"}
+    enabled: true
+
+  - id: 18723
+    level: 13
+    description: "T1078.004 — cloud admin role activated in PIM"
+    groups: [mitre, t1078_004, pim_activate]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Activate (eligible )?role\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1078.004"}]
+    alert: {title: "T1078.004: PIM role activated"}
+    enabled: true
+
+  - id: 18724
+    level: 13
+    description: "T1134.005 — Azure / AWS / GCP impersonation header used"
+    groups: [mitre, t1134_005, cloud_impersonation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(Impersonate-User|x-goog-impersonate|sts:AssumeRole.*RoleSessionName)"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1134.005"}]
+    alert: {title: "T1134.005: cloud impersonation"}
+    enabled: true
+
+  - id: 18725
+    level: 13
+    description: "T1574 — DLL written under same dir as service binary (sideload prep)"
+    groups: [mitre, t1574, dll_drop]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\(Program Files|System32)\\\\.*\\\\\\S+\\.dll$"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1574"}]
+    alert: {title: "T1574: DLL written near service binary"}
+    enabled: true
+
+  - id: 18726
+    level: 13
+    description: "T1547.014 — Active Setup registry persistence (StubPath)"
+    groups: [mitre, t1547_014, active_setup]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Active Setup\\\\Installed Components\\\\.*\\\\StubPath$"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1547.014"}]
+    alert: {title: "T1547.014: Active Setup StubPath persistence"}
+    enabled: true
+
+  - id: 18727
+    level: 13
+    description: "T1548.005 — eBPF temporary capabilities (CAP_BPF / CAP_PERFMON) used by container"
+    groups: [mitre, t1548_005, ebpf_cap, container_escape]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)container.*cap_(bpf|perfmon|sys_admin).*granted"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "T1548.005: Container eBPF capabilities"}
+    enabled: true
+
+  - id: 18728
+    level: 14
+    description: "T1068 — exploit pattern: process accessing other process token via OpenProcessToken"
+    groups: [mitre, t1068, token_steal, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)OpenProcessToken.*TOKEN_(ADJUST_DEFAULT|ADJUST_PRIVILEGES|ALL_ACCESS|DUPLICATE)"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1134"}
+    alert: {title: "T1068: OpenProcessToken w/ adjust/dup access"}
+    enabled: true
+
+  - id: 18729
+    level: 14
+    description: "T1068 — unexpected privilege escalation: 4672 (special privileges) for non-system user"
+    groups: [mitre, t1068, special_privileges]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4672}
+        SubjectUserName: {regex: "(?i)^(?!.*\\$|SYSTEM|LOCAL SERVICE|NETWORK SERVICE).*$"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1068"}
+    alert: {title: "T1068: 4672 special privileges to non-system user"}
+    enabled: true

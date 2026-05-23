@@ -1,0 +1,433 @@
+# WatchTower — MITRE ATT&CK Discovery (TA0007) + Lateral Movement (TA0008)
+# Rule IDs: 19000-19029
+#
+# Techniques: T1007/T1016/T1018/T1033/T1049/T1057/T1069/T1082/T1083/T1087/
+# T1135/T1518/T1538/T1614 (Discovery); T1021 Remote Services subs,
+# T1072 Software Deployment Tools, T1080 Taint Shared Content,
+# T1210 Exploitation of Remote Services, T1534 Internal Spearphishing,
+# T1550 Use Alternate Authentication, T1563 Remote Service Session
+# Hijacking, T1570 Lateral Tool Transfer, T1572 Protocol Tunneling
+
+rules:
+  - id: 19000
+    level: 12
+    description: "T1007 — service enumeration (sc query / Get-Service burst)"
+    groups: [mitre, t1007, service_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\sc\\.exe$"}
+        CommandLine: {regex: "(?i)\\s(query|queryex|qc|enumdepend)\\s"}
+    correlation:
+      window: "5m"
+      threshold: 5
+    mitre:
+      - {tactic_id: "TA0007", technique_id: "T1007"}
+    alert: {title: "T1007: sc.exe query burst"}
+    enabled: true
+
+  - id: 19001
+    level: 12
+    description: "T1016 — network config recon (ipconfig /all, route print, arp -a)"
+    groups: [mitre, t1016, network_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(ipconfig|route|arp|netstat|getmac|nbtstat)\\.exe$"}
+    correlation:
+      window: "2m"
+      threshold: 4
+    mitre: [{tactic_id: "TA0007", technique_id: "T1016"}]
+    alert: {title: "T1016: network config recon burst"}
+    enabled: true
+
+  - id: 19002
+    level: 13
+    description: "T1018 — remote system discovery (ping sweep / net view)"
+    groups: [mitre, t1018, remote_system_disco]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(ping|net|net1)\\.exe$"}
+        CommandLine: {regex: "(?i)(\\s-n\\s+1\\s+\\d+\\.\\d+\\.\\d+\\.\\d+|view\\s+\\\\\\\\)"}
+    correlation:
+      window: "5m"
+      threshold: 10
+    mitre: [{tactic_id: "TA0007", technique_id: "T1018"}]
+    alert: {title: "T1018: remote system discovery burst"}
+    enabled: true
+
+  - id: 19003
+    level: 12
+    description: "T1033 — whoami /priv /groups (user/privilege recon)"
+    groups: [mitre, t1033, user_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\whoami\\.exe$"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1033"}]
+    alert: {title: "T1033: whoami"}
+    enabled: true
+
+  - id: 19004
+    level: 12
+    description: "T1049 — netstat network-connection enumeration"
+    groups: [mitre, t1049, netconn_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\netstat\\.exe$"}
+        CommandLine: {regex: "(?i)-(a|an|ano|na|nao)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1049"}]
+    alert: {title: "T1049: netstat enumeration"}
+    enabled: true
+
+  - id: 19005
+    level: 12
+    description: "T1057 — process enumeration (tasklist / Get-Process / ps -ef)"
+    groups: [mitre, t1057, process_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\tasklist\\.exe$"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1057"}]
+    alert: {title: "T1057: tasklist process enum"}
+    enabled: true
+
+  - id: 19006
+    level: 13
+    description: "T1069.001 — local group discovery (net localgroup)"
+    groups: [mitre, t1069_001, local_group_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\net1?\\.exe$"}
+        CommandLine: {regex: "(?i)localgroup"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1069.001"}]
+    alert: {title: "T1069.001: net localgroup"}
+    enabled: true
+
+  - id: 19007
+    level: 13
+    description: "T1069.002 — domain group discovery (net group /domain)"
+    groups: [mitre, t1069_002, domain_group_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\net1?\\.exe$"}
+        CommandLine: {regex: "(?i)group.*\\/domain"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1069.002"}]
+    alert: {title: "T1069.002: net group /domain"}
+    enabled: true
+
+  - id: 19008
+    level: 12
+    description: "T1082 — system info recon (systeminfo / hostnamectl)"
+    groups: [mitre, t1082, system_info]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(systeminfo|hostnamectl|uname)\\.exe$"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1082"}]
+    alert: {title: "T1082: systeminfo"}
+    enabled: true
+
+  - id: 19009
+    level: 12
+    description: "T1083 — file/directory discovery burst (dir / Get-ChildItem)"
+    groups: [mitre, t1083, file_directory_disco]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Get-ChildItem\\s+.*-Recurse|gci\\s+.*-Recurse"}
+    correlation:
+      window: "5m"
+      threshold: 10
+    mitre: [{tactic_id: "TA0007", technique_id: "T1083"}]
+    alert: {title: "T1083: Get-ChildItem -Recurse burst"}
+    enabled: true
+
+  - id: 19010
+    level: 13
+    description: "T1087.001 — local account discovery (net user / wmic useraccount)"
+    groups: [mitre, t1087_001, local_user_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(net1?|wmic)\\.exe$"}
+        CommandLine: {regex: "(?i)(\\buser\\b|useraccount)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1087.001"}]
+    alert: {title: "T1087.001: local account discovery"}
+    enabled: true
+
+  - id: 19011
+    level: 13
+    description: "T1087.002 — domain account discovery (net user /domain / nltest /domain_trusts)"
+    groups: [mitre, t1087_002, domain_user_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(net1?|nltest)\\.exe$"}
+        CommandLine: {regex: "(?i)(user.*\\/domain|/domain_trusts|/dclist|/all_trusts)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1087.002"}]
+    alert: {title: "T1087.002: domain account / trust recon"}
+    enabled: true
+
+  - id: 19012
+    level: 13
+    description: "T1135 — network share discovery (net view / Get-SmbShare)"
+    groups: [mitre, t1135, share_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)(net\\s+view\\s+\\\\\\\\|Get-SmbShare|net\\s+share)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1135"}]
+    alert: {title: "T1135: network share discovery"}
+    enabled: true
+
+  - id: 19013
+    level: 12
+    description: "T1518 — installed software discovery (wmic product / Get-Package)"
+    groups: [mitre, t1518, software_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)(wmic\\s+product\\s+get|Get-Package|Get-WmiObject\\s+.*Win32_Product)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1518"}]
+    alert: {title: "T1518: software inventory enum"}
+    enabled: true
+
+  - id: 19014
+    level: 13
+    description: "T1518.001 — security software discovery (wmic .. SecurityCenter / Get-MpComputerStatus)"
+    groups: [mitre, t1518_001, security_software_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(SecurityCenter|Get-MpComputerStatus|Get-MpPreference|AntiVirusProduct)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1518.001"}]
+    alert: {title: "T1518.001: security software enumeration"}
+    enabled: true
+
+  - id: 19015
+    level: 12
+    description: "T1614 — system location discovery (locale / timezone / region check)"
+    groups: [mitre, t1614, location_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Get-Culture|Get-TimeZone|GetSystemDefaultLCID|GetUserDefaultLCID)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1614"}]
+    alert: {title: "T1614: locale/timezone check"}
+    enabled: true
+
+  - id: 19016
+    level: 14
+    description: "T1021.001 — Remote Desktop (RDP) login from internal IP (lateral move)"
+    groups: [mitre, t1021_001, rdp_lateral, lateral_movement]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4624}
+        LogonType: {equals: "10"}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1021.001"}
+    alert: {title: "T1021.001: RDP login (review source)"}
+    enabled: true
+
+  - id: 19017
+    level: 14
+    description: "T1021.002 — SMB / admin$ access from non-baseline host"
+    groups: [mitre, t1021_002, smb_lateral, lateral_movement]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 5140}
+        ShareName: {regex: "(?i)\\\\\\\\\\*\\\\(ADMIN\\$|C\\$|IPC\\$)"}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1021.002"}
+    alert: {title: "T1021.002: SMB admin/C/IPC$ access"}
+    enabled: true
+
+  - id: 19018
+    level: 13
+    description: "T1021.003 — DCOM (MMC20.Application / ShellWindows) executed remotely"
+    groups: [mitre, t1021_003, dcom_lateral]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(MMC20\\.Application.*ExecuteShellCommand|ShellWindows\\(\\).*Document\\.Application)"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1021.003"}]
+    alert: {title: "T1021.003: DCOM lateral exec"}
+    enabled: true
+
+  - id: 19019
+    level: 13
+    description: "T1021.004 — SSH from internal Linux host to another internal host (lateral)"
+    groups: [mitre, t1021_004, ssh_lateral]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=EXECVE.*ssh\\s+.*@(10|172|192\\.168)\\."}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1021.004"}]
+    alert: {title: "T1021.004: SSH lateral (internal->internal)"}
+    enabled: true
+
+  - id: 19020
+    level: 13
+    description: "T1021.005 — VNC connection (5900/5901) — visible-graphics lateral"
+    groups: [mitre, t1021_005, vnc_lateral]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 3}
+        DestinationPort: {regex: "^(590[0-9])$"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1021.005"}]
+    alert: {title: "T1021.005: VNC connection"}
+    enabled: true
+
+  - id: 19021
+    level: 13
+    description: "T1021.006 — Windows Remote Management (WinRM 5985/5986)"
+    groups: [mitre, t1021_006, winrm_lateral]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 3}
+        DestinationPort: {regex: "^(598[56])$"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1021.006"}]
+    alert: {title: "T1021.006: WinRM connection"}
+    enabled: true
+
+  - id: 19022
+    level: 14
+    description: "T1072 — SCCM / Intune / Salt / Ansible execution of remote command on many endpoints"
+    groups: [mitre, t1072, software_deployment, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(SCCM|ConfigMgr|salt-call|ansible-playbook|intune.*deploy)"}
+    correlation:
+      window: "10m"
+      threshold: 5
+      distinct: ["agent_name"]
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1072"}
+    alert: {title: "T1072: Software deployment tool fan-out"}
+    enabled: true
+
+  - id: 19023
+    level: 14
+    description: "T1080 — file written to network share root (taint shared content)"
+    groups: [mitre, t1080, taint_share, lateral_movement, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\\\\\[^\\\\]+\\\\[^\\\\]+\\\\(.+\\.(exe|ps1|bat|vbs|js|hta|scr|lnk))$"}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1080"}
+    alert: {title: "T1080: Executable written to share"}
+    enabled: true
+
+  - id: 19024
+    level: 14
+    description: "T1210 — exploitation of remote service (EternalBlue / SMB exploit signature)"
+    groups: [mitre, t1210, remote_exploit, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(EternalBlue|MS17-010|SMB1.*exploit|psexec_psh|cve-2017-0144)"}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1210"}
+    alert: {title: "T1210: SMB / remote-service exploit"}
+    enabled: true
+
+  - id: 19025
+    level: 13
+    description: "T1534 — internal spearphishing: email from compromised internal user with attachment"
+    groups: [mitre, t1534, internal_phish]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)from=<[^>]+@yourdomain\\.com>.*\\.exe|attachment.*\\.(zip|docm|hta)"}
+    correlation:
+      window: "10m"
+      threshold: 5
+    mitre: [{tactic_id: "TA0008", technique_id: "T1534"}]
+    alert: {title: "T1534: internal phishing burst"}
+    enabled: true
+
+  - id: 19026
+    level: 14
+    description: "T1550.002 — pass-the-hash: NTLM auth via Kerberos protocol mismatch"
+    groups: [mitre, t1550_002, pth, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4624}
+        AuthenticationPackageName: {equals: "Kerberos"}
+        LogonType: {equals: "3"}
+        LmPackageName: {equals: "-"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1550.002"}
+    alert: {title: "T1550.002: PTH suspect"}
+    enabled: true
+
+  - id: 19027
+    level: 14
+    description: "T1550.003 — pass-the-ticket: anomalous Kerberos ticket use (forged TGT)"
+    groups: [mitre, t1550_003, ptt, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4769}
+        TicketOptions: {regex: "(?i)0x40810000|0x40800000"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1550.003"}
+    alert: {title: "T1550.003: anomalous Kerberos ticket"}
+    enabled: true
+
+  - id: 19028
+    level: 13
+    description: "T1570 — Lateral tool transfer: file copy to remote SMB share (PowerShell Copy-Item)"
+    groups: [mitre, t1570, lateral_tool_transfer]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Copy-Item\\s+.*-Destination\\s+\\\\\\\\"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1570"}]
+    alert: {title: "T1570: Copy-Item to remote share"}
+    enabled: true
+
+  - id: 19029
+    level: 13
+    description: "T1572 — protocol tunneling (ssh -L / ssh -D / ngrok / chisel)"
+    groups: [mitre, t1572, tunneling]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)(ssh.*-[LRDW]\\s+\\d+|ngrok\\s+tcp|chisel\\s+(client|server))"}
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1572"}
+    alert: {title: "T1572: protocol tunneling"}
+    enabled: true

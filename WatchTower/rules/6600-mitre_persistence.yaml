@@ -1,0 +1,532 @@
+# WatchTower — MITRE ATT&CK Persistence (TA0003)
+# Rule IDs: 18600-18639
+#
+# Techniques: T1098 Account Manipulation, T1136 Create Account,
+# T1505 Server Software Component, T1525 Implant Internal Image,
+# T1542 Pre-OS Boot, T1543 Create or Modify System Process,
+# T1546 Event Triggered Execution (many subs), T1547 Boot or Logon
+# Autostart Execution (many subs), T1554 Compromise Client Software
+# Binary, T1556 Modify Authentication Process
+
+rules:
+  - id: 18600
+    level: 13
+    description: "T1098.001 — additional cloud credential added to user (AWS access key / Azure secret)"
+    groups: [mitre, t1098_001, cloud_creds]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*(\"CreateAccessKey\"|\"Add service principal credentials\")"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1098.001"}
+    alert: {title: "T1098.001: cloud credential added"}
+    enabled: true
+
+  - id: 18601
+    level: 13
+    description: "T1098.002 — Exchange mailbox FullAccess granted (cross-link to 4000-exchange)"
+    groups: [mitre, t1098_002, mail_permission]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Add-MailboxPermission.*FullAccess"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098.002"}]
+    alert: {title: "T1098.002: mailbox FullAccess grant"}
+    enabled: true
+
+  - id: 18602
+    level: 13
+    description: "T1098.004 — authorized_keys modified (SSH key persistence)"
+    groups: [mitre, t1098_004, ssh_key]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=PATH.*name=.*authorized_keys"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098.004"}]
+    alert: {title: "T1098.004: authorized_keys modified"}
+    enabled: true
+
+  - id: 18603
+    level: 13
+    description: "T1136.001 — local user created (net user / useradd)"
+    groups: [mitre, t1136_001, local_account]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4720}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1136.001"}
+    alert: {title: "T1136.001: Local user created"}
+    enabled: true
+
+  - id: 18604
+    level: 13
+    description: "T1136.002 — domain account created (4720 on DC)"
+    groups: [mitre, t1136_002, domain_account]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4720}
+        SubjectUserName: {regex: "(?i)^(?!.*\\$).*$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1136.002"}]
+    alert: {title: "T1136.002: Domain account created"}
+    enabled: true
+
+  - id: 18605
+    level: 13
+    description: "T1136.003 — cloud account / guest invited (Azure / Workspace)"
+    groups: [mitre, t1136_003, cloud_account]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"(Add user|Invite external user)\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1136.003"}]
+    alert: {title: "T1136.003: Cloud account / guest invite"}
+    enabled: true
+
+  - id: 18606
+    level: 14
+    description: "T1505.003 — web shell file written under web root"
+    groups: [mitre, t1505_003, webshell, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\(inetpub|wwwroot|var/www)\\\\.*\\.(aspx|asp|jsp|jspx|php|war)$"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1505.003"}
+    alert: {title: "T1505.003: webshell file written"}
+    enabled: true
+
+  - id: 18607
+    level: 13
+    description: "T1505.005 — IIS / Apache module loaded (server-software-component persistence)"
+    groups: [mitre, t1505_005, server_module]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)(appcmd\\s+install\\s+module|a2enmod\\s)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505.005"}]
+    alert: {title: "T1505.005: web-server module installed"}
+    enabled: true
+
+  - id: 18608
+    level: 13
+    description: "T1525 — container image pushed with backdoor (image tag stale + new SHA)"
+    groups: [mitre, t1525, image_implant]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+push\\s+\\S+:[a-z0-9_\\-\\.]+"}
+    correlation:
+      window: "10m"
+      threshold: 5
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1525"}
+    alert: {title: "T1525: container image push burst"}
+    enabled: true
+
+  - id: 18609
+    level: 14
+    description: "T1542.003 — bootkit suspect: write to boot sector / EFI partition"
+    groups: [mitre, t1542_003, bootkit, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\(EFI\\\\Microsoft\\\\Boot|System Volume Information|bootmgr|bootmgfw\\.efi)"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1542.003"}
+    alert: {title: "T1542.003: EFI / boot file write"}
+    enabled: true
+
+  - id: 18610
+    level: 13
+    description: "T1542.005 — TFTP boot configuration changed (network device firmware swap)"
+    groups: [mitre, t1542_005, network_firmware]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)boot\\s+system\\s+(tftp|http|usb)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1542.005"}]
+    alert: {title: "T1542.005: network device boot path changed"}
+    enabled: true
+
+  - id: 18611
+    level: 13
+    description: "T1543.001 — launchd plist created under /Library/LaunchAgents (macOS)"
+    groups: [mitre, t1543_001, launchd_macos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/Library/Launch(Agents|Daemons)/.+\\.plist"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543.001"}]
+    alert: {title: "T1543.001: LaunchAgent/Daemon plist created"}
+    enabled: true
+
+  - id: 18612
+    level: 13
+    description: "T1543.002 — systemd .service unit created"
+    groups: [mitre, t1543_002, systemd]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=PATH.*name=\"/(etc|usr/lib|run)/systemd/system/.+\\.service\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543.002"}]
+    alert: {title: "T1543.002: systemd unit created"}
+    enabled: true
+
+  - id: 18613
+    level: 13
+    description: "T1543.003 — Windows service created via sc.exe / New-Service"
+    groups: [mitre, t1543_003, windows_service]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 7045}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543.003"}]
+    alert: {title: "T1543.003: New Windows service installed"}
+    enabled: true
+
+  - id: 18614
+    level: 13
+    description: "T1543.004 — Linux init script created (legacy init.d persistence)"
+    groups: [mitre, t1543_004, init_legacy]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=PATH.*name=\"/etc/init\\.d/"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543.004"}]
+    alert: {title: "T1543.004: /etc/init.d script created"}
+    enabled: true
+
+  - id: 18615
+    level: 13
+    description: "T1546.001 — file association changed (HKCR\\<ext>\\command default value modified)"
+    groups: [mitre, t1546_001, file_assoc]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)HKCR\\\\\\.\\w+\\\\command$|\\\\shell\\\\open\\\\command$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.001"}]
+    alert: {title: "T1546.001: file-association command modified"}
+    enabled: true
+
+  - id: 18616
+    level: 13
+    description: "T1546.002 — screensaver path modified"
+    groups: [mitre, t1546_002, screensaver]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Control Panel\\\\Desktop\\\\SCRNSAVE\\.EXE$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.002"}]
+    alert: {title: "T1546.002: screensaver path changed"}
+    enabled: true
+
+  - id: 18617
+    level: 14
+    description: "T1546.003 — WMI permanent event subscription registered"
+    groups: [mitre, t1546_003, wmi_subscription, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {regex: "^(19|20|21|5861)$"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1546.003"}
+    alert: {title: "T1546.003: WMI event subscription"}
+    enabled: true
+
+  - id: 18618
+    level: 13
+    description: "T1546.004 — .bashrc / .bash_profile / .zshrc modified (Unix shell rc persistence)"
+    groups: [mitre, t1546_004, shell_rc]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=PATH.*name=.*/(\\.bashrc|\\.bash_profile|\\.profile|\\.zshrc|\\.bash_logout)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.004"}]
+    alert: {title: "T1546.004: shell rc file modified"}
+    enabled: true
+
+  - id: 18619
+    level: 13
+    description: "T1546.007 — Netsh helper DLL registered"
+    groups: [mitre, t1546_007, netsh_helper]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\netsh\\.exe$"}
+        CommandLine: {regex: "(?i)\\s(add|set)\\s+helper\\s"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.007"}]
+    alert: {title: "T1546.007: Netsh helper DLL"}
+    enabled: true
+
+  - id: 18620
+    level: 14
+    description: "T1546.008 — Accessibility (sticky keys, sethc.exe) backdoor"
+    groups: [mitre, t1546_008, accessibility_backdoor, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\System32\\\\(sethc|osk|utilman|magnify|narrator|displayswitch)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1546.008"}
+    alert: {title: "T1546.008: Accessibility binary replaced"}
+    enabled: true
+
+  - id: 18621
+    level: 14
+    description: "T1546.010 — AppInit_DLLs registry value set (DLL load on every GUI process)"
+    groups: [mitre, t1546_010, appinit_dlls, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Windows\\\\AppInit_DLLs$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.010"}]
+    alert: {title: "T1546.010: AppInit_DLLs set"}
+    enabled: true
+
+  - id: 18622
+    level: 14
+    description: "T1546.011 — Application Shim installed via sdbinst"
+    groups: [mitre, t1546_011, app_shim, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\sdbinst\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1546.011"}
+    alert: {title: "T1546.011: sdbinst (App Shim)"}
+    enabled: true
+
+  - id: 18623
+    level: 13
+    description: "T1546.012 — IFEO Debugger value set"
+    groups: [mitre, t1546_012, ifeo, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Image File Execution Options\\\\.*\\\\Debugger$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.012"}]
+    alert: {title: "T1546.012: IFEO Debugger persistence"}
+    enabled: true
+
+  - id: 18624
+    level: 13
+    description: "T1546.013 — PowerShell profile.ps1 written"
+    groups: [mitre, t1546_013, ps_profile]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)Microsoft\\.PowerShell_profile\\.ps1|profile\\.ps1"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.013"}]
+    alert: {title: "T1546.013: PowerShell profile.ps1 written"}
+    enabled: true
+
+  - id: 18625
+    level: 13
+    description: "T1546.015 — COM object hijack (CLSID InProcServer32 modified)"
+    groups: [mitre, t1546_015, com_hijack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\CLSID\\\\\\{[0-9A-F\\-]+\\}\\\\InprocServer32"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.015"}]
+    alert: {title: "T1546.015: COM CLSID InprocServer32 hijack"}
+    enabled: true
+
+  - id: 18626
+    level: 13
+    description: "T1547.001 — Run / RunOnce registry key value set"
+    groups: [mitre, t1547_001, run_key]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\CurrentVersion\\\\Run(Once|OnceEx)?\\\\"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1547.001"}]
+    alert: {title: "T1547.001: Run-key persistence"}
+    enabled: true
+
+  - id: 18627
+    level: 14
+    description: "T1547.002 — LSA Authentication Packages modified"
+    groups: [mitre, t1547_002, lsa, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Lsa\\\\Authentication Packages$"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1547.002"}
+    alert: {title: "T1547.002: LSA Authentication Packages"}
+    enabled: true
+
+  - id: 18628
+    level: 13
+    description: "T1547.004 — Winlogon Shell / Userinit modified"
+    groups: [mitre, t1547_004, winlogon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Winlogon\\\\(Shell|Userinit|Notify|TaskMan)$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1547.004"}]
+    alert: {title: "T1547.004: Winlogon persistence"}
+    enabled: true
+
+  - id: 18629
+    level: 14
+    description: "T1547.005 — Security Support Provider added"
+    groups: [mitre, t1547_005, ssp, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Lsa\\\\Security Packages$"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1547.005"}
+    alert: {title: "T1547.005: SSP added"}
+    enabled: true
+
+  - id: 18630
+    level: 13
+    description: "T1547.006 — kernel module loaded (insmod/modprobe via system_call)"
+    groups: [mitre, t1547_006, kernel_module]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=SYSCALL.*syscall=(init_module|finit_module)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1547.006"}]
+    alert: {title: "T1547.006: kernel module load"}
+    enabled: true
+
+  - id: 18631
+    level: 13
+    description: "T1547.009 — shortcut (.lnk) created in Startup folder"
+    groups: [mitre, t1547_009, startup_lnk]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\Start Menu\\\\Programs\\\\Startup\\\\.*\\.lnk$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1547.009"}]
+    alert: {title: "T1547.009: Startup-folder .lnk"}
+    enabled: true
+
+  - id: 18632
+    level: 13
+    description: "T1547.010 — Port monitor DLL registered (printer print processor)"
+    groups: [mitre, t1547_010, port_monitor]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Control\\\\Print\\\\Monitors\\\\.*\\\\Driver$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1547.010"}]
+    alert: {title: "T1547.010: Port monitor DLL"}
+    enabled: true
+
+  - id: 18633
+    level: 13
+    description: "T1547.012 — Print Processor / Print Provider registered"
+    groups: [mitre, t1547_012, print_provider]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Print\\\\Environments\\\\.*\\\\Print Processors\\\\"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1547.012"}]
+    alert: {title: "T1547.012: Print Processor registered"}
+    enabled: true
+
+  - id: 18634
+    level: 14
+    description: "T1554 — compromised client software binary (System32 .exe modified)"
+    groups: [mitre, t1554, binary_tamper, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\System32\\\\\\S+\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1554"}
+    alert: {title: "T1554: System32 binary modified"}
+    enabled: true
+
+  - id: 18635
+    level: 14
+    description: "T1556.001 — domain controller authentication patched (Skeleton Key DLL)"
+    groups: [mitre, t1556_001, skeleton_key, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 7}
+        Image: {regex: "(?i)\\\\lsass\\.exe$"}
+        ImageLoaded: {regex: "(?i)\\\\(mimilib|skeleton)\\.dll$"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1556.001"}
+    alert: {title: "T1556.001: Skeleton Key DLL into LSASS"}
+    enabled: true
+
+  - id: 18636
+    level: 14
+    description: "T1556.002 — Notification Packages (password filter) modified"
+    groups: [mitre, t1556_002, password_filter, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Lsa\\\\Notification Packages$"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1556.002"}
+    alert: {title: "T1556.002: Notification Packages modified"}
+    enabled: true
+
+  - id: 18637
+    level: 13
+    description: "T1556.004 — PAM module modified on Linux"
+    groups: [mitre, t1556_004, pam, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=PATH.*name=\"/(etc/pam\\.d/|lib/security/pam_)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1556.004"}]
+    alert: {title: "T1556.004: PAM module / config modified"}
+    enabled: true
+
+  - id: 18638
+    level: 13
+    description: "T1098.007 — additional local Administrators added to group (4732 to S-1-5-32-544)"
+    groups: [mitre, t1098_007, group_membership]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4732}
+        TargetSid: {equals: "S-1-5-32-544"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098.007"}]
+    alert: {title: "T1098.007: User added to local Administrators"}
+    enabled: true
+
+  - id: 18639
+    level: 13
+    description: "T1546.014 — Emond rules added on macOS (EventMonitor persistence)"
+    groups: [mitre, t1546_014, emond, macos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/etc/emond\\.d/rules/"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.014"}]
+    alert: {title: "T1546.014: macOS Emond rule added"}
+    enabled: true
