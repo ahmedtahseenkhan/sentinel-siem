@@ -1,0 +1,530 @@
+# Russian-nexus APT TTPs (APT28/Fancy Bear, APT29/Cozy Bear, Sandworm, Turla, Gamaredon)
+# IDs 19390-19429 (40 rules)
+
+- id: 19390
+  level: 12
+  description: "APT29: SUNBURST-style DLL sideloading via SolarWinds binary"
+  groups: [apt, apt29, cozy_bear, supply_chain]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)\\\\(solarwinds\\.businesslayerhost|netsetupsvc)\\.exe"}
+      cmd: {regex: "(?i)(invoke|backdoor|appsync)"}
+  mitre:
+    - {tactic_id: "TA0001", technique_id: "T1195.002", technique_name: "Compromise Software Supply Chain"}
+  alert: {title: "APT29: SUNBURST sideloading pattern"}
+  enabled: true
+
+- id: 19391
+  level: 12
+  description: "APT29: WellMess/WellMail beacon HTTP user-agent"
+  groups: [apt, apt29, c2]
+  match:
+    type: "log.file"
+    fields:
+      user_agent: {regex: "(?i)(mozilla/5\\.0.*wellmess|wellmail|cobaltstrike)"}
+  mitre:
+    - {tactic_id: "TA0011", technique_id: "T1071.001", technique_name: "Web Protocols"}
+  alert: {title: "APT29: WellMess/WellMail beacon UA"}
+  enabled: true
+
+- id: 19392
+  level: 11
+  description: "APT29: MagicWeb golden SAML token forgery via AD FS"
+  groups: [apt, apt29, identity]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 510}
+      source: {regex: "(?i)adfs"}
+      detail: {regex: "(?i)(claim.*forged|unsigned issuer)"}
+  mitre:
+    - {tactic_id: "TA0006", technique_id: "T1606.002", technique_name: "SAML Tokens"}
+  alert: {title: "APT29: MagicWeb golden SAML indicator"}
+  enabled: true
+
+- id: 19393
+  level: 11
+  description: "APT29: GoldMax / SUNSHUTTLE Go backdoor process name"
+  groups: [apt, apt29, malware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)\\\\(goldmax|sunshuttle|appservice)\\.exe"}
+  alert: {title: "APT29: GoldMax/SUNSHUTTLE process"}
+  enabled: true
+
+- id: 19394
+  level: 11
+  description: "APT29: Office 365 token theft - new app consent followed by mailbox export"
+  groups: [apt, apt29, cloud]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "o365"}
+      operation: {regex: "(?i)(consent to application|new-mailboxexportrequest)"}
+  correlation: {window: "30m", threshold: 2, group_by: ["user"]}
+  mitre:
+    - {tactic_id: "TA0006", technique_id: "T1528", technique_name: "Steal Application Access Token"}
+  alert: {title: "APT29: OAuth consent + mailbox export sequence"}
+  enabled: true
+
+- id: 19395
+  level: 10
+  description: "APT29: PowerShell with EncodedCommand calling Invoke-Expression"
+  groups: [apt, apt29, powershell]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4104}
+      script_block: {regex: "(?i)(iex.*frombase64string|invoke-expression.*decompress)"}
+  mitre:
+    - {tactic_id: "TA0002", technique_id: "T1059.001", technique_name: "PowerShell"}
+  alert: {title: "APT29-style PowerShell loader"}
+  enabled: true
+
+- id: 19396
+  level: 11
+  description: "APT28: X-Agent / XAgentOSX dropper file path"
+  groups: [apt, apt28, fancy_bear, malware]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      path: {regex: "(?i)\\\\(xagent|x-agent|igfxtray)\\.exe"}
+  alert: {title: "APT28: X-Agent dropper observed"}
+  enabled: true
+
+- id: 19397
+  level: 11
+  description: "APT28: Zebrocy backdoor Delphi/Go indicator"
+  groups: [apt, apt28, malware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)\\\\(zebrocy|svchost_helper|wsus_helper)\\.exe"}
+  alert: {title: "APT28: Zebrocy indicator"}
+  enabled: true
+
+- id: 19398
+  level: 12
+  description: "APT28: VPNFilter router exploitation indicator"
+  groups: [apt, apt28, iot]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_type: {equals: "router"}
+      event: {regex: "(?i)(vpnfilter|ssler|tor module)"}
+  mitre:
+    - {tactic_id: "TA0001", technique_id: "T1190", technique_name: "Exploit Public-Facing App"}
+  alert: {title: "APT28: VPNFilter pattern"}
+  enabled: true
+
+- id: 19399
+  level: 11
+  description: "APT28: Outlook rule abuse for code execution"
+  groups: [apt, apt28, persistence]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "o365"}
+      operation: {equals: "New-InboxRule"}
+      action: {regex: "(?i)(forward|delete|run script)"}
+  mitre:
+    - {tactic_id: "TA0003", technique_id: "T1137.005", technique_name: "Outlook Rules"}
+  alert: {title: "APT28: Outlook rule persistence"}
+  enabled: true
+
+- id: 19400
+  level: 11
+  description: "APT28: LoJax UEFI rootkit indicator (firmware write)"
+  groups: [apt, apt28, firmware]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {equals: "smbios"}
+      event: {regex: "(?i)(uefi.*write|spi flash.*unlocked)"}
+  alert: {title: "APT28: LoJax UEFI indicator"}
+  enabled: true
+
+- id: 19401
+  level: 12
+  description: "Sandworm: BlackEnergy ICS payload (KillDisk)"
+  groups: [apt, sandworm, ics, ransomware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)\\\\(killdisk|blackenergy)\\.exe"}
+  mitre:
+    - {tactic_id: "TA0040", technique_id: "T1561.002", technique_name: "Disk Structure Wipe"}
+  alert: {title: "Sandworm: BlackEnergy/KillDisk"}
+  enabled: true
+
+- id: 19402
+  level: 12
+  description: "Sandworm: NotPetya MBR overwrite indicator"
+  groups: [apt, sandworm, wiper]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      path: {regex: "\\\\PhysicalDrive0"}
+      action: {equals: "write"}
+  mitre:
+    - {tactic_id: "TA0040", technique_id: "T1561.001", technique_name: "Disk Content Wipe"}
+  alert: {title: "Sandworm: MBR overwrite (NotPetya-style)"}
+  enabled: true
+
+- id: 19403
+  level: 12
+  description: "Sandworm: Industroyer2 IEC-104 abuse"
+  groups: [apt, sandworm, ics, ot]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {regex: "iec.?104"}
+      command: {regex: "(?i)(c_sc_na_1|c_dc_na_1)"}
+  alert: {title: "Sandworm: Industroyer2 ICS command"}
+  enabled: true
+
+- id: 19404
+  level: 12
+  description: "Sandworm: HermeticWiper, CaddyWiper, IsaacWiper indicators"
+  groups: [apt, sandworm, wiper]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)\\\\(hermetic|caddy|isaac).?wiper\\.exe"}
+  alert: {title: "Sandworm: wiper family detected"}
+  enabled: true
+
+- id: 19405
+  level: 11
+  description: "Sandworm: PowerShell calling Shadow Copy deletion before wipe"
+  groups: [apt, sandworm]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4104}
+      script_block: {regex: "(?i)(vssadmin.*delete|wmic.*shadowcopy.*delete|bcdedit.*recoveryenabled no)"}
+  mitre:
+    - {tactic_id: "TA0040", technique_id: "T1490", technique_name: "Inhibit System Recovery"}
+  alert: {title: "Sandworm: recovery inhibition before wipe"}
+  enabled: true
+
+- id: 19406
+  level: 11
+  description: "Turla: Snake / Uroburos rootkit signature in network traffic"
+  groups: [apt, turla, c2]
+  match:
+    type: "log.file"
+    fields:
+      payload: {regex: "(?i)(uroburos|snake_marker|0x[0-9a-f]{2}.*0xfa.*0xce)"}
+  alert: {title: "Turla: Snake/Uroburos signature"}
+  enabled: true
+
+- id: 19407
+  level: 11
+  description: "Turla: Carbon backdoor named pipe"
+  groups: [apt, turla, c2]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 17}
+      pipe_name: {regex: "(?i)\\\\\\\\.\\\\pipe\\\\(turla|carbon|sender|browser)"}
+  mitre:
+    - {tactic_id: "TA0011", technique_id: "T1071", technique_name: "Application Layer Protocol"}
+  alert: {title: "Turla: named pipe IoC"}
+  enabled: true
+
+- id: 19408
+  level: 10
+  description: "Turla: Satellite C2 - reply traffic from satellite IP block"
+  groups: [apt, turla, c2]
+  match:
+    type: "logs.syslog"
+    fields:
+      src_ip: {regex: "^(85\\.94\\.|82\\.146\\.|217\\.20\\.)"}
+      dst_port: {regex: "^(80|443)$"}
+  alert: {title: "Turla: possible satellite C2 reply IP"}
+  enabled: true
+
+- id: 19409
+  level: 11
+  description: "Turla: PowerShell ASEP via WMI consumer (ActiveScriptEventConsumer)"
+  groups: [apt, turla, wmi, persistence]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {regex: "^(5860|5861)$"}
+      consumer_type: {regex: "(?i)activescript|commandlineevent"}
+  mitre:
+    - {tactic_id: "TA0003", technique_id: "T1546.003", technique_name: "WMI Event Subscription"}
+  alert: {title: "Turla: WMI event subscription persistence"}
+  enabled: true
+
+- id: 19410
+  level: 11
+  description: "Gamaredon: Pterodo / Pterolnk LNK template injection"
+  groups: [apt, gamaredon, malware]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      path: {regex: "(?i)\\.(lnk|hta|sfx)$"}
+      author: {regex: "(?i)(armageddon|primitive bear|gamaredon)"}
+  alert: {title: "Gamaredon: Pterodo template artifact"}
+  enabled: true
+
+- id: 19411
+  level: 10
+  description: "Gamaredon: scheduled task with random GUID name pulling .sfx"
+  groups: [apt, gamaredon, persistence]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4698}
+      task_command: {regex: "(?i)(certutil|mshta|powershell).*\\.sfx"}
+  mitre:
+    - {tactic_id: "TA0002", technique_id: "T1053.005", technique_name: "Scheduled Task"}
+  alert: {title: "Gamaredon: scheduled task downloader"}
+  enabled: true
+
+- id: 19412
+  level: 11
+  description: "Gamaredon: DNS C2 to .ru / .pp.ua dynamic domains"
+  groups: [apt, gamaredon, c2]
+  match:
+    type: "log.file"
+    fields:
+      query: {regex: "(?i)[a-z0-9]{12,}\\.(ru|pp\\.ua|ddns\\.net)$"}
+      query_type: {equals: "TXT"}
+  alert: {title: "Gamaredon: DNS TXT C2 pattern"}
+  enabled: true
+
+- id: 19413
+  level: 11
+  description: "APT29: AzureAD app federation credential added (Solorigate post-exploit)"
+  groups: [apt, apt29, identity, cloud]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "azure_audit"}
+      operation: {regex: "(?i)Add federated domain|Set domain authentication"}
+  mitre:
+    - {tactic_id: "TA0003", technique_id: "T1098.005", technique_name: "Device Registration"}
+  alert: {title: "APT29: AzureAD federation tampering"}
+  enabled: true
+
+- id: 19414
+  level: 12
+  description: "Sandworm: AcidRain modem wiper indicator"
+  groups: [apt, sandworm, wiper, iot]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_type: {regex: "(?i)(viasat|modem|router)"}
+      event: {regex: "(?i)(firmware.*wiped|mtd erase|nand erase)"}
+  alert: {title: "Sandworm: AcidRain-style modem wipe"}
+  enabled: true
+
+- id: 19415
+  level: 11
+  description: "APT28: GooseEgg / CVE-2022-38028 print spooler exploitation"
+  groups: [apt, apt28, exploit]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {regex: "^(316|808)$"}
+      source: {equals: "PrintService"}
+      detail: {regex: "(?i)javascript constraint|spool dir.*system32"}
+  mitre:
+    - {tactic_id: "TA0004", technique_id: "T1068", technique_name: "Exploit for Priv Esc"}
+  alert: {title: "APT28: GooseEgg spooler exploit"}
+  enabled: true
+
+- id: 19416
+  level: 10
+  description: "APT29: Mailbox folder permission added to attacker account"
+  groups: [apt, apt29, cloud, persistence]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "o365"}
+      operation: {equals: "Add-MailboxFolderPermission"}
+  alert: {title: "APT29: mailbox folder permission grant"}
+  enabled: true
+
+- id: 19417
+  level: 11
+  description: "APT29: Mimikatz LSASS dump via comsvcs.dll MiniDump"
+  groups: [apt, apt29, credential_access]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)rundll32.*comsvcs\\.dll.*minidump"}
+  mitre:
+    - {tactic_id: "TA0006", technique_id: "T1003.001", technique_name: "LSASS Memory"}
+  alert: {title: "APT29-style LSASS dump via comsvcs"}
+  enabled: true
+
+- id: 19418
+  level: 11
+  description: "APT29: ADFS service account abused to sign tokens off-host"
+  groups: [apt, apt29, identity]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      target_user: {regex: "(?i)svc_?adfs"}
+      logon_type: {equals: "3"}
+      workstation_name: {regex: "(?i)(?!adfs).+"}
+  alert: {title: "APT29: ADFS service account off-host login"}
+  enabled: true
+
+- id: 19419
+  level: 11
+  description: "Sandworm: Exim CVE-2019-10149 exploitation"
+  groups: [apt, sandworm, exploit]
+  match:
+    type: "logs.syslog"
+    fields:
+      program: {equals: "exim"}
+      detail: {regex: "(?i)(\\${run|\\${readfile|\\${lookup)"}
+  mitre:
+    - {tactic_id: "TA0001", technique_id: "T1190", technique_name: "Exploit Public-Facing App"}
+  alert: {title: "Sandworm: Exim RCE attempt"}
+  enabled: true
+
+- id: 19420
+  level: 11
+  description: "Turla: HyperStack Named Pipe IPC for lateral movement"
+  groups: [apt, turla, lateral]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 17}
+      pipe_name: {regex: "(?i)hyperstack|spoolsvc_"}
+  alert: {title: "Turla: HyperStack pipe IPC"}
+  enabled: true
+
+- id: 19421
+  level: 10
+  description: "APT28: Drovorub Linux rootkit modules"
+  groups: [apt, apt28, linux, rootkit]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {equals: "kernel"}
+      module: {regex: "(?i)(drovorub|netfilter_queue_helper)"}
+  alert: {title: "APT28: Drovorub kernel module"}
+  enabled: true
+
+- id: 19422
+  level: 11
+  description: "APT29: Mailitem access via service principal w/ Mail.ReadWrite scope"
+  groups: [apt, apt29, cloud, exfil]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "o365"}
+      operation: {equals: "MailItemsAccessed"}
+      actor_type: {equals: "ServicePrincipal"}
+  mitre:
+    - {tactic_id: "TA0009", technique_id: "T1114.002", technique_name: "Remote Email Collection"}
+  alert: {title: "APT29: app-principal mass mail access"}
+  enabled: true
+
+- id: 19423
+  level: 11
+  description: "Sandworm: Wiper masquerading as ransomware (HermeticRansom)"
+  groups: [apt, sandworm, ransomware]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      ext_to: {regex: "\\.encryptedjb$"}
+  alert: {title: "Sandworm: HermeticRansom file extension"}
+  enabled: true
+
+- id: 19424
+  level: 11
+  description: "APT29: TEARDROP loader DLL hashing pattern"
+  groups: [apt, apt29, loader]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 7}
+      image_loaded: {regex: "(?i)\\\\(teardrop|raindrop)\\.dll"}
+  alert: {title: "APT29: TEARDROP/RAINDROP loader"}
+  enabled: true
+
+- id: 19425
+  level: 10
+  description: "Gamaredon: Word/Excel macro spawning mshta with sip:// URL"
+  groups: [apt, gamaredon, macro]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      parent: {regex: "(?i)(winword|excel)\\.exe"}
+      cmd: {regex: "(?i)mshta.*\\bsip:|file:"}
+  alert: {title: "Gamaredon: macro->mshta"}
+  enabled: true
+
+- id: 19426
+  level: 11
+  description: "APT28: ROADSWEEP / NEARMISS Iran-Albania style wiper (attributed pattern)"
+  groups: [apt, apt28, wiper]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)\\\\(roadsweep|nearmiss|zeroclear)\\.exe"}
+  alert: {title: "APT-style wiper executable"}
+  enabled: true
+
+- id: 19427
+  level: 11
+  description: "APT29: kerberoasting against AD FS service account"
+  groups: [apt, apt29, credential_access]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4769}
+      service_name: {regex: "(?i)adfs|host/.*adfs"}
+      encryption_type: {equals: "0x17"}
+  mitre:
+    - {tactic_id: "TA0006", technique_id: "T1558.003", technique_name: "Kerberoasting"}
+  alert: {title: "APT29: kerberoasting on ADFS SPN"}
+  enabled: true
+
+- id: 19428
+  level: 12
+  description: "Sandworm: VPNFilter stage 3 SSLer SSL strip module"
+  groups: [apt, sandworm, iot]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_type: {equals: "router"}
+      event: {regex: "(?i)ssler|sslstrip|mips_packer"}
+  alert: {title: "Sandworm: VPNFilter SSLer module"}
+  enabled: true
+
+- id: 19429
+  level: 11
+  description: "Turla: Kazuar .NET backdoor named pipe"
+  groups: [apt, turla, c2]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 17}
+      pipe_name: {regex: "(?i)kazuar|wkssvc_[0-9a-f]+"}
+  alert: {title: "Turla: Kazuar backdoor pipe"}
+  enabled: true

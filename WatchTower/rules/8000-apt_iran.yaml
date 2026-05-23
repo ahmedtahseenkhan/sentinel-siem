@@ -1,0 +1,374 @@
+# Iran-nexus APT TTPs (APT33/Elfin, APT34/OilRig, APT35/Charming Kitten, MuddyWater, Pioneer Kitten, Agrius)
+# IDs 19500-19529 (30 rules)
+
+- id: 19500
+  level: 12
+  description: "APT33: Shamoon disk wiper deployment"
+  groups: [apt, apt33, iran, wiper]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)\\\\(shamoon|distrack|filerasedrv|elrawdisk)\\.(exe|sys)$"}
+  mitre:
+    - {tactic_id: "TA0040", technique_id: "T1561.001", technique_name: "Disk Content Wipe"}
+  alert: {title: "APT33: Shamoon wiper"}
+  enabled: true
+
+- id: 19501
+  level: 12
+  description: "APT34: BONDUPDATER PowerShell trojan with DNS C2"
+  groups: [apt, apt34, oilrig, c2]
+  match:
+    type: "log.file"
+    fields:
+      query: {regex: "(?i)^[a-z0-9]{4,8}\\.bond[a-z]{4,8}\\."}
+      query_type: {equals: "TXT"}
+  alert: {title: "APT34: BONDUPDATER DNS TXT C2"}
+  enabled: true
+
+- id: 19502
+  level: 12
+  description: "APT34: ISMDoor backdoor pipe and DNS combo"
+  groups: [apt, apt34, malware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 17}
+      pipe_name: {regex: "(?i)\\\\\\\\.\\\\pipe\\\\ismdoor|oilrig"}
+  alert: {title: "APT34: ISMDoor pipe"}
+  enabled: true
+
+- id: 19503
+  level: 11
+  description: "APT34: Karkoff modular .NET backdoor"
+  groups: [apt, apt34, malware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)\\\\(karkoff|dnspionage)\\.exe"}
+  alert: {title: "APT34: Karkoff backdoor"}
+  enabled: true
+
+- id: 19504
+  level: 11
+  description: "APT35: Charming Kitten OAuth phishing - device-code abuse"
+  groups: [apt, apt35, charming_kitten, phishing]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "azure_signin"}
+      auth_protocol: {equals: "device_code"}
+      app_display_name: {regex: "(?i)(microsoft graph|outlook|exchange)"}
+  mitre:
+    - {tactic_id: "TA0001", technique_id: "T1078.004", technique_name: "Cloud Accounts"}
+  alert: {title: "APT35: device code phishing pattern"}
+  enabled: true
+
+- id: 19505
+  level: 11
+  description: "APT35: 'PupyRAT' Python implant python3 user-agent"
+  groups: [apt, apt35, c2]
+  match:
+    type: "log.file"
+    fields:
+      user_agent: {regex: "(?i)^python-requests/2\\.|pupy"}
+      dst_port: {regex: "^(80|443|8443)$"}
+  alert: {title: "APT35: PupyRAT UA"}
+  enabled: true
+
+- id: 19506
+  level: 12
+  description: "MuddyWater: POWERSTATS PowerShell stager from Office macro"
+  groups: [apt, muddywater, iran, malware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4104}
+      script_block: {regex: "(?i)(powerstats|muddyc2go|smallflag)"}
+  alert: {title: "MuddyWater: POWERSTATS"}
+  enabled: true
+
+- id: 19507
+  level: 11
+  description: "MuddyWater: PhonyC2 framework HTTP beacon URL pattern"
+  groups: [apt, muddywater, c2]
+  match:
+    type: "log.file"
+    fields:
+      uri: {regex: "(?i)/(api|update|gateway)/[a-f0-9]{32}/(beat|cmd|out)$"}
+  alert: {title: "MuddyWater: PhonyC2 URI pattern"}
+  enabled: true
+
+- id: 19508
+  level: 11
+  description: "MuddyWater: Atera/RMM tool installed by non-IT user"
+  groups: [apt, muddywater, lotl]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)setup_atera|atera_agent|screenconnect_setup"}
+      installer_user: {regex: "(?i)(?!.*\\\\it[_-]|sysadmin).+"}
+  alert: {title: "MuddyWater: RMM install by non-IT"}
+  enabled: true
+
+- id: 19509
+  level: 12
+  description: "Agrius: Apostle/IPsec Helper wiper-as-ransomware"
+  groups: [apt, agrius, iran, wiper]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)\\\\(apostle|ipsechelper|deadwood)\\.exe"}
+  alert: {title: "Agrius: wiper detected"}
+  enabled: true
+
+- id: 19510
+  level: 12
+  description: "Pioneer Kitten: Pulse Secure / Fortinet VPN exploitation indicator"
+  groups: [apt, pioneer_kitten, exploit]
+  match:
+    type: "log.file"
+    fields:
+      app: {regex: "(?i)(pulse_secure|fortigate)"}
+      uri: {regex: "(?i)(\\.\\./\\.\\./|/etc/passwd|/data/etc/sslvpnd_state|cgi-bin)"}
+  alert: {title: "Pioneer Kitten: VPN exploit attempt"}
+  enabled: true
+
+- id: 19511
+  level: 11
+  description: "APT34: SeaSharpee web shell on IIS"
+  groups: [apt, apt34, webshell]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      path: {regex: "(?i)\\\\inetpub\\\\.*\\\\(seasharpee|tonedeaf|valuevault)\\.(aspx|ashx)$"}
+  alert: {title: "APT34: SeaSharpee web shell"}
+  enabled: true
+
+- id: 19512
+  level: 11
+  description: "APT35: ProxyShell (CVE-2021-34473) Exchange exploitation"
+  groups: [apt, apt35, exploit]
+  match:
+    type: "log.file"
+    fields:
+      app: {equals: "exchange"}
+      uri: {regex: "(?i)/autodiscover/autodiscover\\.json.*PowerShell"}
+  alert: {title: "APT35: ProxyShell pattern"}
+  enabled: true
+
+- id: 19513
+  level: 12
+  description: "MuddyWater: SimpleHelp / RMM persistence with reverse SSH tunnel"
+  groups: [apt, muddywater, persistence]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)simplehelp.*--connect|ssh.*-R\\s+\\d+:localhost"}
+  alert: {title: "MuddyWater: reverse tunnel"}
+  enabled: true
+
+- id: 19514
+  level: 11
+  description: "APT35: Brokered authentication token theft via fake login portal"
+  groups: [apt, apt35, phishing]
+  match:
+    type: "log.file"
+    fields:
+      url: {regex: "(?i)(google|microsoft)-(verify|secure|sso)-?[a-z0-9]{0,8}\\.(com|net|org)"}
+  alert: {title: "APT35: lookalike login domain"}
+  enabled: true
+
+- id: 19515
+  level: 11
+  description: "APT33: NanoCore RAT C2 beacon"
+  groups: [apt, apt33, c2]
+  match:
+    type: "log.file"
+    fields:
+      dst_port: {equals: "1604"}
+      protocol: {equals: "tcp"}
+  alert: {title: "APT33: NanoCore default port"}
+  enabled: true
+
+- id: 19516
+  level: 11
+  description: "Agrius: DEADWOOD wiper deletes shadow copies first"
+  groups: [apt, agrius]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)vssadmin.*delete shadows.*all.*quiet"}
+  alert: {title: "Agrius: shadow delete pre-wipe"}
+  enabled: true
+
+- id: 19517
+  level: 11
+  description: "Pioneer Kitten: ngrok / chisel tunnels for SOHO pivot"
+  groups: [apt, pioneer_kitten, pivot]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)\\\\(ngrok|chisel|fast_reverse_proxy|frpc)\\.exe$"}
+  alert: {title: "Pioneer Kitten: tunneling tool"}
+  enabled: true
+
+- id: 19518
+  level: 11
+  description: "APT34: Hyperscrape mail collection tool against Gmail/Yahoo"
+  groups: [apt, apt34, exfil]
+  match:
+    type: "log.file"
+    fields:
+      app: {regex: "(?i)(gmail|yahoo|outlook)"}
+      user_agent: {regex: "(?i)hyperscrape|charming"}
+  alert: {title: "APT34: Hyperscrape mail collection"}
+  enabled: true
+
+- id: 19519
+  level: 11
+  description: "APT33: targeted aviation/defense KW domain spearphish lure"
+  groups: [apt, apt33, phishing]
+  match:
+    type: "log.file"
+    fields:
+      sender_domain: {regex: "(?i)(boeing|raytheon|northrop)-(careers|hr)\\."}
+      attachment_ext: {regex: "(?i)\\.(hta|lnk|iso)$"}
+  alert: {title: "APT33: aviation/defense lure"}
+  enabled: true
+
+- id: 19520
+  level: 11
+  description: "MuddyWater: Living Off The Land using BITSAdmin to download"
+  groups: [apt, muddywater, lotl]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)bitsadmin.*\\b(/transfer|/addfile).*http"}
+  mitre:
+    - {tactic_id: "TA0011", technique_id: "T1197", technique_name: "BITS Jobs"}
+  alert: {title: "MuddyWater: BITS download"}
+  enabled: true
+
+- id: 19521
+  level: 11
+  description: "APT34: DnsExfiltrator Python beacon to .pw / .top TLDs"
+  groups: [apt, apt34, exfil]
+  match:
+    type: "log.file"
+    fields:
+      query: {regex: "(?i)\\.[a-z0-9]{4,}\\.(pw|top|xyz|cf)$"}
+      query_type: {regex: "(AAAA|NULL|TXT)"}
+  alert: {title: "APT34: suspicious TLD DNS exfil"}
+  enabled: true
+
+- id: 19522
+  level: 12
+  description: "Agrius: 'BabyWiper' MBR sector zeroing"
+  groups: [apt, agrius, wiper]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      path: {regex: "\\\\PhysicalDrive[0-9]+"}
+      action: {equals: "write_zero"}
+  alert: {title: "Agrius: MBR zeroed"}
+  enabled: true
+
+- id: 19523
+  level: 11
+  description: "APT35: Educational/think-tank target spearphish from gmail to corp"
+  groups: [apt, apt35, phishing]
+  match:
+    type: "log.file"
+    fields:
+      sender_address: {regex: "(?i)@gmail\\.com$"}
+      subject: {regex: "(?i)(interview|panel|webinar|conference).*(iran|middle east|sanctions)"}
+  alert: {title: "APT35: think-tank spearphish lure"}
+  enabled: true
+
+- id: 19524
+  level: 11
+  description: "MuddyWater: PsExec deployed POWERSTATS to multiple hosts"
+  groups: [apt, muddywater, lateral]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)psexec(svc)?\\.exe"}
+  correlation: {window: "30m", threshold: 5, group_by: ["src_user"]}
+  alert: {title: "MuddyWater: PsExec spray"}
+  enabled: true
+
+- id: 19525
+  level: 12
+  description: "APT33: targeting Saudi/UAE petrochemical with Sysmon disabled"
+  groups: [apt, apt33, evasion]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4799}
+      detail: {regex: "(?i)microsoft-windows-sysmon"}
+      action: {equals: "uninstall"}
+  alert: {title: "APT33: Sysmon uninstall"}
+  enabled: true
+
+- id: 19526
+  level: 11
+  description: "Pioneer Kitten: targeting Israeli targets - Hebrew filename lure"
+  groups: [apt, pioneer_kitten, phishing]
+  match:
+    type: "log.file"
+    fields:
+      attachment_filename: {regex: "[\\u05D0-\\u05EA]+.*\\.(docx|pdf|xls)$"}
+      sender_domain_external: {equals: "true"}
+  alert: {title: "Pioneer Kitten: Hebrew lure file"}
+  enabled: true
+
+- id: 19527
+  level: 11
+  description: "APT34: outbound to known OilRig C2 IP set"
+  groups: [apt, apt34, c2, threat_intel]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "threat_intel"}
+      actor_tag: {regex: "(?i)apt34|oilrig"}
+      match: {equals: "true"}
+  alert: {title: "APT34: TI feed match"}
+  enabled: true
+
+- id: 19528
+  level: 11
+  description: "Charming Kitten: HYPERSCRAPE Telegram cookies stealer"
+  groups: [apt, apt35, credential_access]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 10}
+      target: {regex: "(?i)\\\\Telegram Desktop\\\\tdata"}
+  alert: {title: "APT35: Telegram tdata access"}
+  enabled: true
+
+- id: 19529
+  level: 12
+  description: "Agrius: 'DEADWOOD' deploy via Group Policy"
+  groups: [apt, agrius, lateral]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 5145}
+      share: {equals: "SYSVOL"}
+      action: {regex: "(?i)write|create"}
+      object: {regex: "(?i)scripts\\\\(startup|logon).*\\.exe"}
+  alert: {title: "Agrius: GPO startup script tamper"}
+  enabled: true

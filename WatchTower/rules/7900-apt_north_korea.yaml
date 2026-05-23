@@ -1,0 +1,377 @@
+# DPRK (Lazarus, APT38, Kimsuky, Andariel, BlueNoroff) TTPs
+# IDs 19470-19499 (30 rules)
+
+- id: 19470
+  level: 12
+  description: "Lazarus: AppleJeus fake crypto-trading app installer"
+  groups: [apt, lazarus, dprk, crypto]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      path: {regex: "(?i)\\\\(celasTrader|jmttrading|kupayswap|unionCryptoTrader)"}
+  alert: {title: "Lazarus: AppleJeus installer"}
+  enabled: true
+
+- id: 19471
+  level: 12
+  description: "Lazarus: BADCALL / FALLCHILL backdoor TLS fingerprint pattern"
+  groups: [apt, lazarus, c2]
+  match:
+    type: "log.file"
+    fields:
+      tls_ja3: {regex: "^(72a589da586844d7f0818ce684948eea|6734f37431670b3ab4292b8f60f29984)$"}
+  alert: {title: "Lazarus: BADCALL/FALLCHILL JA3"}
+  enabled: true
+
+- id: 19472
+  level: 12
+  description: "Lazarus: Hidden Cobra DTrack RAT named pipe"
+  groups: [apt, lazarus, c2]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 17}
+      pipe_name: {regex: "(?i)\\\\\\\\.\\\\pipe\\\\(dtrack|hidden_cobra)"}
+  alert: {title: "Lazarus: DTrack pipe"}
+  enabled: true
+
+- id: 19473
+  level: 12
+  description: "APT38: SWIFT message tampering (SWIFT MT103 manipulation)"
+  groups: [apt, apt38, dprk, financial]
+  match:
+    type: "log.file"
+    fields:
+      app: {equals: "swift_alliance"}
+      action: {regex: "(?i)(modify|delete) MT103"}
+  alert: {title: "APT38: SWIFT MT103 tampering"}
+  enabled: true
+
+- id: 19474
+  level: 12
+  description: "APT38: PowerRatankba PowerShell stage 1"
+  groups: [apt, apt38, malware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4104}
+      script_block: {regex: "(?i)ratankba|powerratankba|cnc_addr"}
+  alert: {title: "APT38: PowerRatankba"}
+  enabled: true
+
+- id: 19475
+  level: 11
+  description: "BlueNoroff: 'Snatch Crypto' macOS bundle download"
+  groups: [apt, bluenoroff, dprk, macos]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {equals: "macos_es"}
+      event: {regex: "(?i)(snatch_crypto|dapp|defixed|dotopay)"}
+  alert: {title: "BlueNoroff: macOS crypto bundle"}
+  enabled: true
+
+- id: 19476
+  level: 11
+  description: "Kimsuky: BabyShark VBScript stage in %APPDATA%"
+  groups: [apt, kimsuky, dprk]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      path: {regex: "(?i)\\\\AppData\\\\(Roaming|Local)\\\\.*\\\\(babyshark|smartman)\\.vbs"}
+  alert: {title: "Kimsuky: BabyShark VBS"}
+  enabled: true
+
+- id: 19477
+  level: 11
+  description: "Kimsuky: HWP exploit (Hangul Word Processor) document"
+  groups: [apt, kimsuky, exploit]
+  match:
+    type: "log.file"
+    fields:
+      file_ext: {equals: "hwp"}
+      contains_shellcode: {equals: "true"}
+  mitre:
+    - {tactic_id: "TA0001", technique_id: "T1566.001", technique_name: "Spearphishing Attachment"}
+  alert: {title: "Kimsuky: weaponized HWP"}
+  enabled: true
+
+- id: 19478
+  level: 11
+  description: "Kimsuky: PowerShell downloading from .duckdns / .myftp dynamic DNS"
+  groups: [apt, kimsuky, c2]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4104}
+      script_block: {regex: "(?i)(duckdns|myftp|hopto|sytes)\\.(org|net|com)"}
+  alert: {title: "Kimsuky: dyndns C2 from PowerShell"}
+  enabled: true
+
+- id: 19479
+  level: 12
+  description: "Lazarus: WannaCry / EternalBlue MS17-010 SMBv1 exploit"
+  groups: [apt, lazarus, exploit, ransomware]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "smb"}
+      version: {equals: "1"}
+      event: {regex: "(?i)(eternalblue|doublepulsar|ms17-010)"}
+  mitre:
+    - {tactic_id: "TA0008", technique_id: "T1210", technique_name: "Exploit Remote Service"}
+  alert: {title: "Lazarus: EternalBlue exploitation"}
+  enabled: true
+
+- id: 19480
+  level: 12
+  description: "Lazarus: 3CX supply chain - libffmpeg.dll trojanized side-load"
+  groups: [apt, lazarus, supply_chain]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 7}
+      image: {regex: "(?i)3cxdesktopapp\\.exe"}
+      image_loaded: {regex: "(?i)libffmpeg\\.dll"}
+      loaded_sha256_hint: {regex: "^(7986bbaee8940da11ce089383521ab420c443ab7b15ed42aed91fd31ce833896)"}
+  alert: {title: "Lazarus: 3CX trojanized libffmpeg"}
+  enabled: true
+
+- id: 19481
+  level: 11
+  description: "Andariel: TigerRAT executed via mshta"
+  groups: [apt, andariel, dprk, malware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)mshta.*(tigerrat|tigerdownloader)"}
+  alert: {title: "Andariel: TigerRAT via mshta"}
+  enabled: true
+
+- id: 19482
+  level: 11
+  description: "Lazarus: ARCANEDOOR-style backdoor in firewall config"
+  groups: [apt, lazarus, network]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_type: {equals: "firewall"}
+      event: {regex: "(?i)(unsigned image|tampered) firmware"}
+  alert: {title: "Lazarus: firewall firmware tamper"}
+  enabled: true
+
+- id: 19483
+  level: 12
+  description: "Lazarus: PSEXEC + WMIC mass deployment of cryptominer in financial network"
+  groups: [apt, lazarus, financial]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)(psexec|wmic).*\\b(xmrig|minexmr|cryptonight)"}
+  alert: {title: "Lazarus: cryptominer deploy"}
+  enabled: true
+
+- id: 19484
+  level: 11
+  description: "BlueNoroff: spearphish with macro auto-open downloading from OneDrive"
+  groups: [apt, bluenoroff, phishing]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      parent: {regex: "(?i)(winword|excel)\\.exe"}
+      cmd: {regex: "(?i)(powershell|curl|certutil).*1drv\\.ms"}
+  alert: {title: "BlueNoroff: macro -> OneDrive fetch"}
+  enabled: true
+
+- id: 19485
+  level: 11
+  description: "Lazarus: Operation In(ter)ception fake LinkedIn job lure ISO"
+  groups: [apt, lazarus, phishing]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      path: {regex: "(?i)(boeing|amazon|coinbase).*(job|recruit|salary)\\.(iso|img|lnk)$"}
+  alert: {title: "Lazarus: Operation Interception lure"}
+  enabled: true
+
+- id: 19486
+  level: 11
+  description: "Kimsuky: stealing browser saved credentials via custom binary"
+  groups: [apt, kimsuky, credential_access]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 10}
+      target: {regex: "(?i)\\\\Login Data$"}
+      access: {regex: "0x10|0x1410|0x143A"}
+  mitre:
+    - {tactic_id: "TA0006", technique_id: "T1555.003", technique_name: "Credentials from Web Browsers"}
+  alert: {title: "Kimsuky: browser credential access"}
+  enabled: true
+
+- id: 19487
+  level: 11
+  description: "APT38: targeted DDoS staged from compromised ATM switch network"
+  groups: [apt, apt38, financial]
+  match:
+    type: "logs.syslog"
+    fields:
+      src_zone: {equals: "atm_network"}
+      action: {regex: "(?i)(syn flood|udp flood)"}
+  alert: {title: "APT38: ATM switch DDoS"}
+  enabled: true
+
+- id: 19488
+  level: 11
+  description: "Lazarus: COPPERHEDGE/TAINTEDSCRIBE/PEBBLEDASH artifacts"
+  groups: [apt, lazarus, malware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)\\\\(copperhedge|taintedscribe|pebbledash)\\.exe"}
+  alert: {title: "Lazarus: HIDDEN COBRA family"}
+  enabled: true
+
+- id: 19489
+  level: 11
+  description: "Kimsuky: AppleSeed backdoor scheduled task XML"
+  groups: [apt, kimsuky, persistence]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4698}
+      task_command: {regex: "(?i)(appleseed|kimsuky|ksbinder)"}
+  alert: {title: "Kimsuky: AppleSeed scheduled task"}
+  enabled: true
+
+- id: 19490
+  level: 12
+  description: "Lazarus: Atomic Wallet drainer process accessing wallet.dat"
+  groups: [apt, lazarus, crypto, exfil]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 11}
+      target_filename: {regex: "(?i)\\\\(atomicWallet|exodus|electrum|wallet\\.dat)"}
+      image: {regex: "(?i)\\\\AppData\\\\Local\\\\Temp"}
+  alert: {title: "Lazarus: wallet file access from temp"}
+  enabled: true
+
+- id: 19491
+  level: 11
+  description: "BlueNoroff: macOS LaunchAgent persistence with reverse-domain plist"
+  groups: [apt, bluenoroff, macos, persistence]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {equals: "macos_es"}
+      path: {regex: "(?i)Library/LaunchAgents/com\\.apple\\.[a-z]{4,8}\\.plist"}
+      signed_by: {regex: "(?i)(unsigned|adhoc)"}
+  alert: {title: "BlueNoroff: macOS LaunchAgent"}
+  enabled: true
+
+- id: 19492
+  level: 11
+  description: "Kimsuky: GoldDragon JS dropper signature"
+  groups: [apt, kimsuky, malware]
+  match:
+    type: "log.file"
+    fields:
+      content: {regex: "(?i)goldDragon|brave_prince|ghost419"}
+  alert: {title: "Kimsuky: GoldDragon JS"}
+  enabled: true
+
+- id: 19493
+  level: 12
+  description: "APT38: bank Network access from Trickbot/Lazarus pivot host"
+  groups: [apt, apt38, financial, lateral]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      logon_type: {equals: "3"}
+      src_ip_geo: {regex: "(?i)(kp|cn|ru)"}
+      dst_zone: {equals: "banking_core"}
+  alert: {title: "APT38: banking core access from high-risk geo"}
+  enabled: true
+
+- id: 19494
+  level: 11
+  description: "Lazarus: VHD ransomware unique extension"
+  groups: [apt, lazarus, ransomware]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      ext_to: {regex: "\\.(vhd|vhdx_encrypted)$"}
+  alert: {title: "Lazarus: VHD ransomware extension"}
+  enabled: true
+
+- id: 19495
+  level: 11
+  description: "BlueNoroff: RustBucket macOS payload signed with revoked Apple cert"
+  groups: [apt, bluenoroff, macos]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {equals: "macos_es"}
+      event: {regex: "(?i)signature.*(revoked|adhoc)"}
+      bundle_id: {regex: "(?i)rust|baker|pdfviewer"}
+  alert: {title: "BlueNoroff: RustBucket signing anomaly"}
+  enabled: true
+
+- id: 19496
+  level: 11
+  description: "Lazarus: VyperZ.NET in-memory loader via Get-WmiObject"
+  groups: [apt, lazarus, loader]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4104}
+      script_block: {regex: "(?i)get-wmiobject.*win32_systemdriver|vyperz|loadwithpartialname"}
+  alert: {title: "Lazarus: .NET in-memory loader"}
+  enabled: true
+
+- id: 19497
+  level: 12
+  description: "APT38: outbound to known Lazarus C2 IPs (FBI flash list)"
+  groups: [apt, apt38, c2, threat_intel]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "threat_intel"}
+      actor_tag: {regex: "(?i)lazarus|apt38"}
+      match: {equals: "true"}
+  alert: {title: "APT38: TI feed match"}
+  enabled: true
+
+- id: 19498
+  level: 11
+  description: "Kimsuky: anti-VM check executed before payload (cpuid, sandbox artifacts)"
+  groups: [apt, kimsuky, evasion]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4104}
+      script_block: {regex: "(?i)(vbox|vmware|qemu).*if.*exit|get-wmiobject.*win32_computersystem.*model"}
+  alert: {title: "Kimsuky: sandbox evasion script"}
+  enabled: true
+
+- id: 19499
+  level: 12
+  description: "Lazarus: theft of cryptocurrency exchange hot-wallet private key"
+  groups: [apt, lazarus, crypto, exfil]
+  match:
+    type: "log.file"
+    fields:
+      data_class: {equals: "crypto_private_key"}
+      action: {equals: "export"}
+  alert: {title: "Lazarus: private key export"}
+  enabled: true

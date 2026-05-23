@@ -1,0 +1,517 @@
+# China-nexus APT TTPs (APT1/Comment Crew, APT10/Stone Panda, APT41, Mustang Panda, Volt Typhoon, Salt Typhoon)
+# IDs 19430-19469 (40 rules)
+
+- id: 19430
+  level: 12
+  description: "Volt Typhoon: Living-off-the-land - ntdsutil snapshot of NTDS.dit"
+  groups: [apt, volt_typhoon, china, lotl]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)ntdsutil.*ifm|snapshot.*ntds"}
+  mitre:
+    - {tactic_id: "TA0006", technique_id: "T1003.003", technique_name: "NTDS"}
+  alert: {title: "Volt Typhoon: NTDS extraction via ntdsutil"}
+  enabled: true
+
+- id: 19431
+  level: 12
+  description: "Volt Typhoon: WMIC remote execution against critical infrastructure host"
+  groups: [apt, volt_typhoon, lateral]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)wmic.*/node:.*process.*call create"}
+  mitre:
+    - {tactic_id: "TA0008", technique_id: "T1047", technique_name: "WMI"}
+  alert: {title: "Volt Typhoon: WMIC lateral execution"}
+  enabled: true
+
+- id: 19432
+  level: 11
+  description: "Volt Typhoon: netsh portproxy add v4tov4 (router pivot)"
+  groups: [apt, volt_typhoon, pivot]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)netsh\\s+interface\\s+portproxy\\s+add"}
+  alert: {title: "Volt Typhoon: portproxy pivot installed"}
+  enabled: true
+
+- id: 19433
+  level: 11
+  description: "Volt Typhoon: PowerShell encoded Get-WinEvent harvest"
+  groups: [apt, volt_typhoon, recon]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4104}
+      script_block: {regex: "(?i)get-winevent.*(security|sysmon).*-maxevents \\d{4,}"}
+  alert: {title: "Volt Typhoon: bulk event harvest"}
+  enabled: true
+
+- id: 19434
+  level: 12
+  description: "Volt Typhoon: SOHO router (Cisco, ASUS) implant communicating outbound"
+  groups: [apt, volt_typhoon, c2, iot]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_type: {equals: "soho_router"}
+      dst_port: {regex: "^(443|8443|8080)$"}
+      session_duration_s: {regex: "^([1-9][0-9]{3,})$"}
+  alert: {title: "Volt Typhoon: long-duration SOHO router beacon"}
+  enabled: true
+
+- id: 19435
+  level: 11
+  description: "Salt Typhoon: telecom backdoor user account creation on edge router"
+  groups: [apt, salt_typhoon, telecom]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_type: {equals: "network"}
+      event: {regex: "(?i)user (created|added)"}
+      username: {regex: "(?i)^(maintenance|debug|cisco_support|backup_admin)$"}
+  alert: {title: "Salt Typhoon: suspicious router user added"}
+  enabled: true
+
+- id: 19436
+  level: 11
+  description: "Salt Typhoon: SNMP/syslog config exfil via TFTP off-net"
+  groups: [apt, salt_typhoon, telecom, exfil]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "tftp"}
+      direction: {equals: "outbound"}
+      dst_ip_external: {equals: "true"}
+  alert: {title: "Salt Typhoon: TFTP config exfil"}
+  enabled: true
+
+- id: 19437
+  level: 11
+  description: "APT41: Cobalt Strike Beacon DNS A-record TXID pattern"
+  groups: [apt, apt41, c2]
+  match:
+    type: "log.file"
+    fields:
+      query: {regex: "(?i)^[a-z0-9]{16,32}\\.(news|cdn|sync|update)\\."}
+      query_type: {equals: "A"}
+  alert: {title: "APT41: beacon DNS pattern"}
+  enabled: true
+
+- id: 19438
+  level: 11
+  description: "APT41: PlugX side-loading via legit signed binary"
+  groups: [apt, apt41, malware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 7}
+      image: {regex: "(?i)\\\\(nvsmartmax|mcoemcpy|symerr|hpqtra08)\\.exe"}
+      image_loaded: {regex: "(?i)\\.dll$"}
+      loaded_signed: {equals: "false"}
+  mitre:
+    - {tactic_id: "TA0005", technique_id: "T1574.002", technique_name: "DLL Side-Loading"}
+  alert: {title: "APT41: PlugX-style sideloading"}
+  enabled: true
+
+- id: 19439
+  level: 11
+  description: "APT41: ShadowPad encrypted config blob in registry"
+  groups: [apt, apt41, persistence]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 13}
+      target_object: {regex: "(?i)\\\\Software\\\\(Microsoft|Wow6432Node)\\\\.*\\\\Settings"}
+      detail_size_bytes: {regex: "^([5-9][0-9]{3,})$"}
+  alert: {title: "APT41: ShadowPad registry blob"}
+  enabled: true
+
+- id: 19440
+  level: 11
+  description: "APT41: Speculoos / Crosswalk macOS dropper"
+  groups: [apt, apt41, macos]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {equals: "macos_es"}
+      event: {regex: "(?i)(speculoos|crosswalk|sysstat\\.plist)"}
+  alert: {title: "APT41: macOS dropper indicator"}
+  enabled: true
+
+- id: 19441
+  level: 11
+  description: "APT41: SQL injection of MOVEit-style file transfer service"
+  groups: [apt, apt41, exploit]
+  match:
+    type: "log.file"
+    fields:
+      app: {regex: "(?i)(moveit|wssec|web file transfer)"}
+      uri: {regex: "(?i)(union\\s+select|or\\s+1=1|--\\s)"}
+  mitre:
+    - {tactic_id: "TA0001", technique_id: "T1190", technique_name: "Exploit Public-Facing App"}
+  alert: {title: "APT41: file-transfer SQLi"}
+  enabled: true
+
+- id: 19442
+  level: 10
+  description: "APT41: Citrix NetScaler CVE-2019-19781 directory traversal"
+  groups: [apt, apt41, exploit]
+  match:
+    type: "log.file"
+    fields:
+      uri: {regex: "/vpns/portal/scripts/newbm\\.pl|/vpns/cfg/smb\\.conf"}
+  alert: {title: "APT41: NetScaler CVE-2019-19781 exploit"}
+  enabled: true
+
+- id: 19443
+  level: 11
+  description: "Mustang Panda: PlugX delivered via SCP CHM (compiled help)"
+  groups: [apt, mustang_panda, malware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)hh\\.exe$"}
+      cmd: {regex: "(?i)\\.chm.*://"}
+  alert: {title: "Mustang Panda: CHM execution"}
+  enabled: true
+
+- id: 19444
+  level: 11
+  description: "Mustang Panda: Korplug variant disguised as .iso / .zip with .exe inside"
+  groups: [apt, mustang_panda, phishing]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      path: {regex: "(?i)\\\\(invoice|report|nato|asean).*\\.(iso|img|zip)$"}
+  alert: {title: "Mustang Panda: iso/img lure file"}
+  enabled: true
+
+- id: 19445
+  level: 10
+  description: "Mustang Panda: HTML smuggling via embedded JS blob"
+  groups: [apt, mustang_panda, phishing]
+  match:
+    type: "log.file"
+    fields:
+      content_type: {equals: "text/html"}
+      body: {regex: "(?i)new blob\\(\\[atob"}
+  mitre:
+    - {tactic_id: "TA0001", technique_id: "T1566.001", technique_name: "Spearphishing Attachment"}
+  alert: {title: "Mustang Panda: HTML smuggling"}
+  enabled: true
+
+- id: 19446
+  level: 11
+  description: "APT10: Cloud Hopper - MSP outbound to dynamic DNS over HTTPS"
+  groups: [apt, apt10, msp]
+  match:
+    type: "log.file"
+    fields:
+      proxy_category: {equals: "dynamic_dns"}
+      hostname: {regex: "(?i)\\.(ddns|hopto|no-ip|changeip)\\.(net|org|com)$"}
+      dst_port: {equals: "443"}
+  alert: {title: "APT10: MSP dynamic-DNS beacon"}
+  enabled: true
+
+- id: 19447
+  level: 11
+  description: "APT10: ChChes / RedLeaves with persistence via Image File Execution Options"
+  groups: [apt, apt10, persistence]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 13}
+      target_object: {regex: "(?i)\\\\Image File Execution Options\\\\.*\\\\Debugger"}
+  mitre:
+    - {tactic_id: "TA0003", technique_id: "T1546.012", technique_name: "IFEO Injection"}
+  alert: {title: "APT10: IFEO debugger persistence"}
+  enabled: true
+
+- id: 19448
+  level: 11
+  description: "APT10: Quasar RAT named mutex"
+  groups: [apt, apt10, malware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      detail: {regex: "(?i)mutant.*(qsr_mutex|quasar)"}
+  alert: {title: "APT10: Quasar mutex observed"}
+  enabled: true
+
+- id: 19449
+  level: 11
+  description: "APT1: GhOst RAT magic bytes ('Gh0st') in TCP payload"
+  groups: [apt, apt1, c2]
+  match:
+    type: "log.file"
+    fields:
+      payload_hex_prefix: {regex: "(?i)^4768307374"}
+  alert: {title: "APT1: GhOst RAT magic bytes"}
+  enabled: true
+
+- id: 19450
+  level: 10
+  description: "APT1: WEBC2 — encoded comments in legit-looking webpages"
+  groups: [apt, apt1, c2]
+  match:
+    type: "log.file"
+    fields:
+      response_body: {regex: "<!--cmd:[A-Za-z0-9+/=]{20,}-->"}
+  alert: {title: "APT1: WEBC2 comment-based C2"}
+  enabled: true
+
+- id: 19451
+  level: 12
+  description: "APT41: PrivExchange (CVE-2018-8581) NTLM relay"
+  groups: [apt, apt41, exploit, identity]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      logon_type: {equals: "3"}
+      target_user: {regex: "(?i)exchange\\$"}
+      auth_pkg: {equals: "NTLM"}
+  alert: {title: "APT41: PrivExchange NTLM relay"}
+  enabled: true
+
+- id: 19452
+  level: 11
+  description: "Volt Typhoon: scheduled task masquerade (legit-looking name) running PowerShell"
+  groups: [apt, volt_typhoon, persistence]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4698}
+      task_name: {regex: "(?i)\\\\Microsoft\\\\Windows\\\\(Defender|UpdateOrchestrator|WindowsBackup)"}
+      task_command: {regex: "(?i)powershell|wscript|mshta"}
+  alert: {title: "Volt Typhoon: task masquerade"}
+  enabled: true
+
+- id: 19453
+  level: 11
+  description: "APT41: outbound to GitHub/Pastebin raw URL fetching script"
+  groups: [apt, apt41, lotl]
+  match:
+    type: "log.file"
+    fields:
+      url: {regex: "(?i)(raw\\.githubusercontent\\.com|pastebin\\.com/raw).*\\.(ps1|sh|py)$"}
+  alert: {title: "APT41: raw script fetch from public host"}
+  enabled: true
+
+- id: 19454
+  level: 11
+  description: "Mustang Panda: Toneshell backdoor with self-deletion via cmd /c del"
+  groups: [apt, mustang_panda, malware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)cmd /c del.*\\\\toneshell|toneins\\.exe"}
+  alert: {title: "Mustang Panda: Toneshell artifact"}
+  enabled: true
+
+- id: 19455
+  level: 11
+  description: "APT41: SQL Server xp_cmdshell enabled and used"
+  groups: [apt, apt41, exploit]
+  match:
+    type: "log.file"
+    fields:
+      service: {equals: "mssql"}
+      query: {regex: "(?i)(sp_configure.*xp_cmdshell|xp_cmdshell\\s*\\bexec)"}
+  alert: {title: "APT41: xp_cmdshell exec"}
+  enabled: true
+
+- id: 19456
+  level: 10
+  description: "APT10: Burst of LDAP SearchRequest from MSP account"
+  groups: [apt, apt10, recon]
+  match:
+    type: "log.file"
+    fields:
+      service: {equals: "ldap"}
+      operation: {equals: "search"}
+  correlation: {window: "5m", threshold: 100, group_by: ["bind_dn"]}
+  alert: {title: "APT10: LDAP recon spike"}
+  enabled: true
+
+- id: 19457
+  level: 11
+  description: "Volt Typhoon: PowerShell via wsmprovhost.exe (WinRM evasion)"
+  groups: [apt, volt_typhoon, lotl]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      parent: {regex: "(?i)wsmprovhost\\.exe"}
+      image: {regex: "(?i)\\\\powershell\\.exe"}
+  alert: {title: "Volt Typhoon: WinRM PowerShell child"}
+  enabled: true
+
+- id: 19458
+  level: 11
+  description: "Salt Typhoon: lawful-intercept (LI) port scraped from telecom"
+  groups: [apt, salt_typhoon, telecom]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {regex: "(?i)(li_audit|wiretap)"}
+      action: {regex: "(?i)(unauthorized read|export)"}
+  alert: {title: "Salt Typhoon: lawful-intercept access anomaly"}
+  enabled: true
+
+- id: 19459
+  level: 11
+  description: "APT41: Speculoos targeting Citrix ADC management interface"
+  groups: [apt, apt41, citrix]
+  match:
+    type: "log.file"
+    fields:
+      app: {equals: "citrix_adc"}
+      uri: {regex: "/nsconfig/"}
+      method: {equals: "POST"}
+  alert: {title: "APT41: Citrix ADC config POST"}
+  enabled: true
+
+- id: 19460
+  level: 11
+  description: "APT41: Web shell named common ASPX file in IIS scripts directory"
+  groups: [apt, apt41, webshell]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      path: {regex: "(?i)\\\\(inetpub|wwwroot)\\\\(scripts|wwwroot)\\\\(error|test|asp)\\.(aspx|cshtml)$"}
+  mitre:
+    - {tactic_id: "TA0003", technique_id: "T1505.003", technique_name: "Web Shell"}
+  alert: {title: "APT41: ASPX webshell drop"}
+  enabled: true
+
+- id: 19461
+  level: 12
+  description: "Mustang Panda: PlugX persistence via DLL hijack of Adobe Acrobat"
+  groups: [apt, mustang_panda, persistence]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 7}
+      image: {regex: "(?i)\\\\acrord32\\.exe"}
+      image_loaded: {regex: "(?i)\\\\(adobeplugin|acrobatres|acrord32)\\.dll"}
+      loaded_signed: {equals: "false"}
+  alert: {title: "Mustang Panda: Acrobat DLL hijack"}
+  enabled: true
+
+- id: 19462
+  level: 11
+  description: "APT41: BPFDoor Linux backdoor BPF filter signature"
+  groups: [apt, apt41, linux, c2]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {regex: "(?i)(audit|sysdig)"}
+      syscall: {equals: "setsockopt"}
+      arg: {regex: "(?i)SO_ATTACH_FILTER"}
+      process: {regex: "(?i)(/dev/shm|/tmp)/[a-z0-9]{6,}"}
+  alert: {title: "APT41: BPFDoor BPF filter set"}
+  enabled: true
+
+- id: 19463
+  level: 11
+  description: "Volt Typhoon: Mailbox export to PST followed by archive delete"
+  groups: [apt, volt_typhoon, exfil]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "o365"}
+      operation: {regex: "(?i)(New-MailboxExportRequest|Remove-MailboxExportRequest)"}
+  correlation: {window: "1h", threshold: 2, group_by: ["user"]}
+  alert: {title: "Volt Typhoon: mailbox export + cleanup"}
+  enabled: true
+
+- id: 19464
+  level: 11
+  description: "APT41: Outlook Home Page WebView abuse for persistence"
+  groups: [apt, apt41, persistence]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 13}
+      target_object: {regex: "(?i)\\\\Office\\\\.*\\\\Outlook\\\\WebView\\\\.*\\\\URL"}
+  mitre:
+    - {tactic_id: "TA0003", technique_id: "T1137.004", technique_name: "Outlook Home Page"}
+  alert: {title: "APT41: Outlook home page persistence"}
+  enabled: true
+
+- id: 19465
+  level: 11
+  description: "APT41: Spam relay via compromised Exchange (Squirrelwaffle pattern)"
+  groups: [apt, apt41, exchange]
+  match:
+    type: "log.file"
+    fields:
+      service: {equals: "exchange_transport"}
+      direction: {equals: "outbound"}
+  correlation: {window: "10m", threshold: 500, group_by: ["sender"]}
+  alert: {title: "APT41: spam relay surge"}
+  enabled: true
+
+- id: 19466
+  level: 11
+  description: "APT10: Use of csvde / dsquery to enumerate AD"
+  groups: [apt, apt10, recon]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)\\\\(csvde|ldifde|dsquery|adfind)\\.exe"}
+  mitre:
+    - {tactic_id: "TA0007", technique_id: "T1087.002", technique_name: "Domain Account Discovery"}
+  alert: {title: "APT10: AD enumeration tool"}
+  enabled: true
+
+- id: 19467
+  level: 11
+  description: "Volt Typhoon: vssadmin used to copy SYSTEM/SAM hives"
+  groups: [apt, volt_typhoon, credential_access]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)(vssadmin|wmic).*shadowcopy.*create"}
+  mitre:
+    - {tactic_id: "TA0006", technique_id: "T1003.002", technique_name: "Security Account Manager"}
+  alert: {title: "Volt Typhoon: shadow copy for SAM/SYSTEM"}
+  enabled: true
+
+- id: 19468
+  level: 10
+  description: "APT41: anomalous schtasks creation pulling from %ProgramData%"
+  groups: [apt, apt41, persistence]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4698}
+      task_command: {regex: "(?i)%programdata%|c:\\\\programdata\\\\"}
+  alert: {title: "APT41: ProgramData scheduled task"}
+  enabled: true
+
+- id: 19469
+  level: 12
+  description: "Volt Typhoon: deletion of Windows event logs to cover tracks"
+  groups: [apt, volt_typhoon, defense_evasion]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1102}
+  alert: {title: "Volt Typhoon: event log cleared"}
+  enabled: true

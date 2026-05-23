@@ -1,0 +1,520 @@
+# eCrime ransomware-as-a-service families
+# IDs 19530-19569 (40 rules) — Conti, LockBit, BlackCat/ALPHV, BlackBasta, Royal, Play, Akira, Cl0p, Hive, REvil, Ryuk
+# plus broad ransomware TTPs
+
+- id: 19530
+  level: 12
+  description: "Conti: WinRM lateral movement + Cobalt Strike beacon spread"
+  groups: [ecrime, conti, ransomware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      logon_type: {equals: "3"}
+      auth_pkg: {equals: "NTLM"}
+      target_user: {regex: "(?i)admin"}
+  correlation: {window: "10m", threshold: 5, group_by: ["src_ip"]}
+  alert: {title: "Conti-style lateral admin sweep"}
+  enabled: true
+
+- id: 19531
+  level: 12
+  description: "LockBit 3.0: .lockbit3 / random-suffix file encryption"
+  groups: [ecrime, lockbit, ransomware]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      ext_to: {regex: "(?i)\\.(lockbit3?|[a-z0-9]{9})$"}
+  correlation: {window: "5m", threshold: 30, group_by: ["host"]}
+  alert: {title: "LockBit: mass encryption"}
+  enabled: true
+
+- id: 19532
+  level: 11
+  description: "LockBit: ransom note dropped to every directory"
+  groups: [ecrime, lockbit, ransomware]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      path: {regex: "(?i)\\\\(restore-my-files|readme|how_to_decrypt)\\.txt$"}
+  correlation: {window: "5m", threshold: 10, group_by: ["host"]}
+  alert: {title: "LockBit: ransom note drop"}
+  enabled: true
+
+- id: 19533
+  level: 12
+  description: "BlackCat/ALPHV: Rust binary with --access-token argument"
+  groups: [ecrime, blackcat, alphv, ransomware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)--access-token=[a-f0-9]{32,}"}
+  alert: {title: "BlackCat: Rust binary token arg"}
+  enabled: true
+
+- id: 19534
+  level: 12
+  description: "BlackCat: deletion of Veeam backup repository"
+  groups: [ecrime, blackcat, ransomware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4663}
+      object_name: {regex: "(?i)veeam.*\\.(vbk|vbm|vib)$"}
+      access_mask: {regex: "0x10000|0xC0000"}
+  mitre:
+    - {tactic_id: "TA0040", technique_id: "T1490", technique_name: "Inhibit System Recovery"}
+  alert: {title: "BlackCat: Veeam backup destruction"}
+  enabled: true
+
+- id: 19535
+  level: 12
+  description: "BlackBasta: PowerShell with -enc base64 dropping BlackBasta payload"
+  groups: [ecrime, blackbasta, ransomware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4104}
+      script_block: {regex: "(?i)(blackbasta|basta|fkdpzzpu)"}
+  alert: {title: "BlackBasta: PS payload"}
+  enabled: true
+
+- id: 19536
+  level: 12
+  description: "Royal ransomware: rclone exfil to Mega.nz before encryption"
+  groups: [ecrime, royal, ransomware, exfil]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)rclone.*(mega:|remote:|--transfers)"}
+  mitre:
+    - {tactic_id: "TA0010", technique_id: "T1567.002", technique_name: "Exfil to Cloud Storage"}
+  alert: {title: "Royal: rclone exfil pre-encryption"}
+  enabled: true
+
+- id: 19537
+  level: 12
+  description: "Play ransomware: PsExec spreading .play extension"
+  groups: [ecrime, play, ransomware]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      ext_to: {regex: "\\.play$"}
+  correlation: {window: "5m", threshold: 20, group_by: ["host"]}
+  alert: {title: "Play: .play encryption burst"}
+  enabled: true
+
+- id: 19538
+  level: 12
+  description: "Akira ransomware: .akira encryption + esxcli VM kill"
+  groups: [ecrime, akira, ransomware, esxi]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {equals: "vmware_esxi"}
+      command: {regex: "(?i)esxcli vm process kill|vim-cmd vmsvc/power\\.off"}
+  correlation: {window: "10m", threshold: 5}
+  alert: {title: "Akira: ESXi VM mass kill"}
+  enabled: true
+
+- id: 19539
+  level: 11
+  description: "Cl0p: GoAnywhere MFT CVE-2023-0669 / MOVEit CVE-2023-34362 exploit"
+  groups: [ecrime, clop, exploit]
+  match:
+    type: "log.file"
+    fields:
+      app: {regex: "(?i)(goanywhere|moveit)"}
+      uri: {regex: "(?i)(/api/v1/goanywhere|moveitisapi|guestaccess\\.aspx)"}
+      response_code: {equals: "200"}
+  alert: {title: "Cl0p: MFT exploit hit"}
+  enabled: true
+
+- id: 19540
+  level: 12
+  description: "Hive ransomware: .hive extension + 'HOW_TO_DECRYPT' note"
+  groups: [ecrime, hive, ransomware]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      ext_to: {regex: "\\.hive$"}
+  alert: {title: "Hive: .hive encryption"}
+  enabled: true
+
+- id: 19541
+  level: 12
+  description: "REvil/Sodinokibi: vssadmin + bcdedit + wbadmin combo"
+  groups: [ecrime, revil, ransomware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)(vssadmin delete shadows|bcdedit.*recoveryenabled no|wbadmin delete catalog)"}
+  correlation: {window: "2m", threshold: 2, group_by: ["host"]}
+  mitre:
+    - {tactic_id: "TA0040", technique_id: "T1490", technique_name: "Inhibit System Recovery"}
+  alert: {title: "REvil-style recovery destruction combo"}
+  enabled: true
+
+- id: 19542
+  level: 12
+  description: "Ryuk: PsExec service install with random 8-char name"
+  groups: [ecrime, ryuk, ransomware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 7045}
+      service_name: {regex: "^[a-zA-Z0-9]{8}$"}
+      service_file: {regex: "(?i)(temp|programdata).*\\.exe"}
+  alert: {title: "Ryuk: PsExec-style service install"}
+  enabled: true
+
+- id: 19543
+  level: 11
+  description: "LockBit: Brute Ratel / Cobalt Strike combined SMB beacon"
+  groups: [ecrime, lockbit, c2]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 17}
+      pipe_name: {regex: "(?i)\\\\\\\\.\\\\pipe\\\\(msagent_[a-f0-9]{2,}|status_[0-9]{2}|postex_)"}
+  alert: {title: "LockBit/CS named pipe"}
+  enabled: true
+
+- id: 19544
+  level: 11
+  description: "Conti/Trickbot: Cobalt Strike PowerShell via DownloadString"
+  groups: [ecrime, conti, c2]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4104}
+      script_block: {regex: "(?i)IEX\\s*\\(.*DownloadString.*\\.(ps1|cs)"}
+  alert: {title: "Conti: CS PS loader"}
+  enabled: true
+
+- id: 19545
+  level: 12
+  description: "Ransomware: shadow copy mass delete via vssadmin"
+  groups: [ecrime, ransomware, defense_evasion]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)vssadmin\\s+delete\\s+shadows\\s+/all"}
+  mitre:
+    - {tactic_id: "TA0040", technique_id: "T1490", technique_name: "Inhibit System Recovery"}
+  alert: {title: "Ransomware: vssadmin shadow delete"}
+  enabled: true
+
+- id: 19546
+  level: 11
+  description: "Ransomware: bcdedit disabling recovery"
+  groups: [ecrime, ransomware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)bcdedit.*(recoveryenabled\\s+no|bootstatuspolicy\\s+ignoreallfailures)"}
+  alert: {title: "Ransomware: bcdedit disabling recovery"}
+  enabled: true
+
+- id: 19547
+  level: 11
+  description: "Ransomware: WMI deletion of shadow copies"
+  groups: [ecrime, ransomware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)wmic\\s+shadowcopy\\s+delete"}
+  alert: {title: "Ransomware: WMI shadow delete"}
+  enabled: true
+
+- id: 19548
+  level: 11
+  description: "Ransomware: stopping critical services (SQL, Exchange, backup)"
+  groups: [ecrime, ransomware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)net\\s+stop\\s+(sql|veeam|backup|msexchange|sophos|defender)"}
+  correlation: {window: "5m", threshold: 3, group_by: ["host"]}
+  alert: {title: "Ransomware: pre-encryption service stop"}
+  enabled: true
+
+- id: 19549
+  level: 11
+  description: "Ransomware: print spooler abuse for ransom note printing"
+  groups: [ecrime, ransomware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 307}
+      doc_name: {regex: "(?i)(ransom|readme|how_to)"}
+  alert: {title: "Ransomware: ransom note printed"}
+  enabled: true
+
+- id: 19550
+  level: 12
+  description: "BlackCat: ESXi binary executing 'esxcli vsan datastore set'"
+  groups: [ecrime, blackcat, esxi]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {equals: "vmware_esxi"}
+      command: {regex: "(?i)esxcli.*vsan.*datastore"}
+  alert: {title: "BlackCat: vSAN tamper"}
+  enabled: true
+
+- id: 19551
+  level: 12
+  description: "Ransomware: ESXi datastore mass file rename"
+  groups: [ecrime, ransomware, esxi]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {equals: "vmware_esxi"}
+      action: {equals: "rename"}
+      ext_to: {regex: "(?i)\\.(crypt|lck|enc|args)$"}
+  correlation: {window: "2m", threshold: 20}
+  alert: {title: "Ransomware: ESXi datastore encryption"}
+  enabled: true
+
+- id: 19552
+  level: 11
+  description: "BlackBasta: 'Qakbot' loader as parent of cmd/PowerShell"
+  groups: [ecrime, blackbasta, qakbot]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      parent: {regex: "(?i)\\\\(qbot|qakbot|notepad|regsvr32)\\.exe"}
+      image: {regex: "(?i)(powershell|cmd)\\.exe"}
+  alert: {title: "BlackBasta: Qakbot -> shell"}
+  enabled: true
+
+- id: 19553
+  level: 11
+  description: "LockBit: ETW disabled before encryption"
+  groups: [ecrime, lockbit, evasion]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 13}
+      target_object: {regex: "(?i)\\\\Microsoft\\\\Windows\\\\.NET Framework.*\\\\ETWEnabled"}
+      detail: {equals: "0"}
+  alert: {title: "LockBit: ETW disabled"}
+  enabled: true
+
+- id: 19554
+  level: 11
+  description: "Conti: Anchor DNS C2 backdoor"
+  groups: [ecrime, conti, c2]
+  match:
+    type: "log.file"
+    fields:
+      query: {regex: "(?i)^[a-z0-9]{6,16}\\.(top|live|cyou|click)$"}
+      query_type: {equals: "TXT"}
+  alert: {title: "Conti: Anchor DNS C2"}
+  enabled: true
+
+- id: 19555
+  level: 12
+  description: "Ransomware: NetWalker .mailto / Egregor file marker"
+  groups: [ecrime, netwalker, egregor, ransomware]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      ext_to: {regex: "(?i)\\.(mailto|egregor|[A-Z0-9]{6})$"}
+  correlation: {window: "5m", threshold: 30, group_by: ["host"]}
+  alert: {title: "NetWalker/Egregor encryption"}
+  enabled: true
+
+- id: 19556
+  level: 11
+  description: "Ransomware: AdFind / SoftPerfect Network Scanner recon"
+  groups: [ecrime, ransomware, recon]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)\\\\(adfind|netscan|advanced_ip_scanner)\\.exe$"}
+  alert: {title: "Ransomware: recon tool"}
+  enabled: true
+
+- id: 19557
+  level: 12
+  description: "Ransomware: 'Group Policy push' of binary via SYSVOL"
+  groups: [ecrime, ransomware, lateral]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 5145}
+      share: {equals: "SYSVOL"}
+      object: {regex: "(?i)scripts\\\\(startup|logon|shutdown).*\\.(exe|bat|ps1)$"}
+      access: {regex: "(?i)write|create"}
+  alert: {title: "Ransomware: SYSVOL script tamper"}
+  enabled: true
+
+- id: 19558
+  level: 11
+  description: "Cobalt Strike: default HTTP POST submit.php"
+  groups: [ecrime, cobalt_strike, c2]
+  match:
+    type: "log.file"
+    fields:
+      uri: {regex: "/submit\\.php$"}
+      method: {equals: "POST"}
+      user_agent: {regex: "(?i)mozilla/4\\.0\\s\\(compatible;\\sMSIE\\s7\\.0;"}
+  alert: {title: "Cobalt Strike: default profile pattern"}
+  enabled: true
+
+- id: 19559
+  level: 11
+  description: "Brute Ratel: badger named pipe pattern"
+  groups: [ecrime, brute_ratel, c2]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 17}
+      pipe_name: {regex: "(?i)\\\\\\\\.\\\\pipe\\\\(brute_|badger_|mojo_[0-9]{2,})"}
+  alert: {title: "Brute Ratel: badger pipe"}
+  enabled: true
+
+- id: 19560
+  level: 12
+  description: "Ransomware: backup admin account login from non-backup host"
+  groups: [ecrime, ransomware, identity]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      target_user: {regex: "(?i)(veeam|backup|cohesity|rubrik)_admin"}
+      workstation_name: {regex: "(?i)(?!.*(backup|veeam|rubrik|cohesity)).+"}
+  alert: {title: "Ransomware: backup admin off-host login"}
+  enabled: true
+
+- id: 19561
+  level: 11
+  description: "Ransomware: AnyDesk / TeamViewer unattended access install"
+  groups: [ecrime, ransomware, rmm]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)(anydesk\\.exe.*--install|teamviewer.*passwd)"}
+  alert: {title: "Ransomware: unattended RMM install"}
+  enabled: true
+
+- id: 19562
+  level: 11
+  description: "Ransomware: NLA disabled to allow RDP without MFA"
+  groups: [ecrime, ransomware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 13}
+      target_object: {regex: "(?i)\\\\TerminalServer\\\\WinStations\\\\RDP-Tcp\\\\UserAuthentication"}
+      detail: {equals: "0"}
+  alert: {title: "Ransomware: RDP NLA disabled"}
+  enabled: true
+
+- id: 19563
+  level: 11
+  description: "Cl0p: TrueBot loader DNS C2 pattern"
+  groups: [ecrime, clop, truebot, c2]
+  match:
+    type: "log.file"
+    fields:
+      query: {regex: "(?i)^[a-z0-9]{5,12}\\.(net|com|biz)$"}
+      query_type: {equals: "AAAA"}
+      ttl: {regex: "^[0-9]$"}
+  alert: {title: "Cl0p: TrueBot DNS pattern"}
+  enabled: true
+
+- id: 19564
+  level: 12
+  description: "Ransomware: 'kill switch' file scan (avoid CIS/Russia keyboard)"
+  groups: [ecrime, ransomware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)(GetKeyboardLayoutList|get-uiculture).*ru-RU|0x419"}
+  alert: {title: "Ransomware: keyboard kill-switch check"}
+  enabled: true
+
+- id: 19565
+  level: 11
+  description: "BlackCat: rclone config with attacker mega.nz credentials"
+  groups: [ecrime, blackcat, exfil]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      path: {regex: "(?i)\\\\rclone\\.conf$"}
+      content: {regex: "(?i)\\[mega\\]\\s*type\\s*=\\s*mega"}
+  alert: {title: "BlackCat: rclone mega config"}
+  enabled: true
+
+- id: 19566
+  level: 11
+  description: "Ransomware affiliate: ScreenConnect / ConnectWise live tunneling"
+  groups: [ecrime, ransomware, rmm]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)\\\\ScreenConnect\\.ClientService\\.exe$"}
+      cmd: {regex: "(?i)\\?h=.+\\?t=.+"}
+  alert: {title: "Ransomware: ScreenConnect tunnel"}
+  enabled: true
+
+- id: 19567
+  level: 11
+  description: "Ransomware: 7zip / WinRAR compressing large data set"
+  groups: [ecrime, ransomware, exfil]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)(7z|rar|winrar)\\.exe.*a\\s+.*-p"}
+  correlation: {window: "30m", threshold: 1, group_by: ["host"]}
+  alert: {title: "Ransomware: pre-exfil archive"}
+  enabled: true
+
+- id: 19568
+  level: 12
+  description: "Ransomware: domain controller LDAP enumeration via SharpHound"
+  groups: [ecrime, ransomware, recon]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)\\\\(sharphound|bloodhound)\\.exe"}
+  mitre:
+    - {tactic_id: "TA0007", technique_id: "T1087.002", technique_name: "Domain Account Discovery"}
+  alert: {title: "Ransomware: SharpHound recon"}
+  enabled: true
+
+- id: 19569
+  level: 12
+  description: "Ransomware: domain admin added by non-IT account"
+  groups: [ecrime, ransomware, persistence]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4728}
+      group_name: {regex: "(?i)domain admins|enterprise admins"}
+      subject_user: {regex: "(?i)(?!.*(it_|admin_)).+"}
+  alert: {title: "Ransomware: DA added by non-IT user"}
+  enabled: true

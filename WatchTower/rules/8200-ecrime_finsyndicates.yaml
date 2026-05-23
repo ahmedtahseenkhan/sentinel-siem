@@ -1,0 +1,371 @@
+# Financial eCrime syndicates (FIN7/Carbon Spider, FIN8, FIN11, EvilCorp/Indrik Spider, ScatteredSpider/UNC3944, TA505)
+# IDs 19570-19599 (30 rules)
+
+- id: 19570
+  level: 12
+  description: "FIN7: CARBANAK backdoor named pipe"
+  groups: [ecrime, fin7, carbanak, c2]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 17}
+      pipe_name: {regex: "(?i)\\\\\\\\.\\\\pipe\\\\(carbanak|anunak|combanak)"}
+  alert: {title: "FIN7: CARBANAK pipe"}
+  enabled: true
+
+- id: 19571
+  level: 12
+  description: "FIN7: BadUSB campaign 'LilyGO' / Arduino-based HID device"
+  groups: [ecrime, fin7, hid]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 6416}
+      device_class: {equals: "HID"}
+      device_desc: {regex: "(?i)(arduino|leonardo|lilygo|teensy)"}
+  alert: {title: "FIN7: BadUSB HID"}
+  enabled: true
+
+- id: 19572
+  level: 11
+  description: "FIN7: GRIFFON JS implant in %APPDATA%"
+  groups: [ecrime, fin7, malware]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      path: {regex: "(?i)\\\\AppData\\\\Roaming\\\\.*griffon.*\\.js$"}
+  alert: {title: "FIN7: GRIFFON JS"}
+  enabled: true
+
+- id: 19573
+  level: 11
+  description: "FIN7: POWERTRASH PowerShell loader"
+  groups: [ecrime, fin7, loader]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4104}
+      script_block: {regex: "(?i)powertrash|reflectivepe"}
+  alert: {title: "FIN7: POWERTRASH loader"}
+  enabled: true
+
+- id: 19574
+  level: 12
+  description: "FIN8: BADHATCH backdoor C2 traffic"
+  groups: [ecrime, fin8, c2]
+  match:
+    type: "log.file"
+    fields:
+      user_agent: {regex: "(?i)badhatch|sardonic"}
+  alert: {title: "FIN8: BADHATCH/Sardonic UA"}
+  enabled: true
+
+- id: 19575
+  level: 11
+  description: "FIN8: PUNCHTRACK POS RAM scraper"
+  groups: [ecrime, fin8, pos]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 10}
+      target_image: {regex: "(?i)\\\\(pos|payment).*\\.exe"}
+      granted_access: {regex: "0x10|0x1410"}
+  alert: {title: "FIN8: POS RAM scraper access"}
+  enabled: true
+
+- id: 19576
+  level: 11
+  description: "FIN11: Cl0p ransomware actor identity (Cl0p shares TTPs)"
+  groups: [ecrime, fin11, clop]
+  match:
+    type: "log.file"
+    fields:
+      ext_to: {regex: "\\.cl0p$"}
+  correlation: {window: "5m", threshold: 20, group_by: ["host"]}
+  alert: {title: "FIN11/Cl0p: encryption burst"}
+  enabled: true
+
+- id: 19577
+  level: 11
+  description: "FIN11: 'FlawedAmmyy' RAT TCP beacon"
+  groups: [ecrime, fin11, c2]
+  match:
+    type: "log.file"
+    fields:
+      dst_port: {regex: "^(443|4434|8181)$"}
+      tls_ja3: {equals: "1f1c3a37acec842c47e9d0aa7d5c9f3a"}
+  alert: {title: "FIN11: FlawedAmmyy JA3"}
+  enabled: true
+
+- id: 19578
+  level: 12
+  description: "EvilCorp: Dridex banking trojan named scheduled task"
+  groups: [ecrime, evilcorp, dridex]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4698}
+      task_command: {regex: "(?i)dridex|bitpaymer|wastedlocker"}
+  alert: {title: "EvilCorp: Dridex task"}
+  enabled: true
+
+- id: 19579
+  level: 12
+  description: "EvilCorp: WastedLocker / Hades / Macaw ransomware file mark"
+  groups: [ecrime, evilcorp, ransomware]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      ext_to: {regex: "(?i)\\.(wasted|hades|macaw|phoenixcryptlocker)$"}
+  alert: {title: "EvilCorp ransomware variant"}
+  enabled: true
+
+- id: 19580
+  level: 12
+  description: "Scattered Spider/UNC3944: helpdesk social engineering MFA reset"
+  groups: [ecrime, scattered_spider, social_eng]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "idp_audit"}
+      operation: {regex: "(?i)mfa_reset|password_reset"}
+      reset_channel: {equals: "helpdesk"}
+  correlation: {window: "1h", threshold: 3, group_by: ["agent"]}
+  alert: {title: "Scattered Spider: helpdesk-driven MFA reset spike"}
+  enabled: true
+
+- id: 19581
+  level: 11
+  description: "Scattered Spider: SIM swap notification followed by Okta login"
+  groups: [ecrime, scattered_spider, identity]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "carrier_alert"}
+      event: {equals: "sim_swap"}
+  correlation: {window: "30m", threshold: 1}
+  alert: {title: "Scattered Spider: SIM swap"}
+  enabled: true
+
+- id: 19582
+  level: 11
+  description: "Scattered Spider: vSphere admin role added to compromised user"
+  groups: [ecrime, scattered_spider, vmware]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {equals: "vcenter"}
+      operation: {regex: "(?i)AuthorizationManager\\.AddPermission"}
+      role: {regex: "(?i)admin"}
+  alert: {title: "Scattered Spider: vSphere admin role grant"}
+  enabled: true
+
+- id: 19583
+  level: 12
+  description: "Scattered Spider: BlackCat deployed via ESXi after Okta breach"
+  groups: [ecrime, scattered_spider, blackcat, esxi]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {equals: "vmware_esxi"}
+      command: {regex: "(?i)chmod \\+x|rm -rf /vmfs/volumes"}
+  alert: {title: "Scattered Spider: ESXi tamper"}
+  enabled: true
+
+- id: 19584
+  level: 11
+  description: "TA505: GET2 PowerShell loader"
+  groups: [ecrime, ta505, malware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4104}
+      script_block: {regex: "(?i)(servhelper|flawedammyy|getandgo)"}
+  alert: {title: "TA505: GET2/ServHelper"}
+  enabled: true
+
+- id: 19585
+  level: 11
+  description: "TA505: Email lures from spoofed PDF invoices with .html attachment"
+  groups: [ecrime, ta505, phishing]
+  match:
+    type: "log.file"
+    fields:
+      subject: {regex: "(?i)(invoice|remittance|payment).*[0-9]{6,}"}
+      attachment_ext: {equals: "html"}
+  alert: {title: "TA505: invoice HTML lure"}
+  enabled: true
+
+- id: 19586
+  level: 11
+  description: "FIN6: Anchor C2 (shared with Conti/Trickbot)"
+  groups: [ecrime, fin6, c2]
+  match:
+    type: "log.file"
+    fields:
+      query: {regex: "(?i)anchor[._-][a-z0-9]{4,}\\."}
+  alert: {title: "FIN6: Anchor DNS"}
+  enabled: true
+
+- id: 19587
+  level: 11
+  description: "FIN6: scraping POS terminals with TrickBot module 'pwgrab'"
+  groups: [ecrime, fin6, pos]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4104}
+      script_block: {regex: "(?i)pwgrab|pwgrab32|tinymet"}
+  alert: {title: "FIN6: pwgrab module"}
+  enabled: true
+
+- id: 19588
+  level: 11
+  description: "FIN7: Lizar/Tirion modular framework"
+  groups: [ecrime, fin7, malware]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      image: {regex: "(?i)\\\\(lizar|tirion|loaderdll)\\.exe$"}
+  alert: {title: "FIN7: Lizar/Tirion"}
+  enabled: true
+
+- id: 19589
+  level: 11
+  description: "FIN7: registry persistence with random GUID"
+  groups: [ecrime, fin7, persistence]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 13}
+      target_object: {regex: "(?i)\\\\Run\\\\\\{[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\}"}
+  alert: {title: "FIN7: GUID Run key"}
+  enabled: true
+
+- id: 19590
+  level: 11
+  description: "TA505: Pyramid Python C2 framework headers"
+  groups: [ecrime, ta505, c2]
+  match:
+    type: "log.file"
+    fields:
+      user_agent: {regex: "^python-urllib3/"}
+      http_method: {equals: "GET"}
+      uri: {regex: "/(stats|getfile|update)\\.py$"}
+  alert: {title: "TA505: Pyramid C2"}
+  enabled: true
+
+- id: 19591
+  level: 12
+  description: "Scattered Spider: domain creation lookalike of victim brand"
+  groups: [ecrime, scattered_spider, phishing]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "newly_registered_domains"}
+      lookalike_brand: {equals: "true"}
+  alert: {title: "Scattered Spider: lookalike domain registered"}
+  enabled: true
+
+- id: 19592
+  level: 11
+  description: "FIN8: WhiteCat-style WMI consumer for persistence"
+  groups: [ecrime, fin8, persistence]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {regex: "^(5860|5861)$"}
+      consumer_name: {regex: "(?i)(updater|sync|defender_update)"}
+  alert: {title: "FIN8: WMI consumer persistence"}
+  enabled: true
+
+- id: 19593
+  level: 11
+  description: "EvilCorp: BitPaymer ransomware MFT entry-name pattern"
+  groups: [ecrime, evilcorp, ransomware]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      ext_to: {regex: "(?i)\\.(locked|bitpaymer|cryptbtc)$"}
+  alert: {title: "EvilCorp: BitPaymer extension"}
+  enabled: true
+
+- id: 19594
+  level: 11
+  description: "Scattered Spider: PowerShell with -nop -w hidden installing RMM"
+  groups: [ecrime, scattered_spider, rmm]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4688}
+      cmd: {regex: "(?i)powershell.*-nop\\s+-w\\s+hidden.*(splashtop|teamviewer|atera|anydesk)"}
+  alert: {title: "Scattered Spider: silent RMM install"}
+  enabled: true
+
+- id: 19595
+  level: 11
+  description: "TA505: SDBbot installer drops to %APPDATA%\\\\rss\\\\."
+  groups: [ecrime, ta505, malware]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      path: {regex: "(?i)\\\\AppData\\\\Roaming\\\\rss\\\\.+\\.(exe|dll)$"}
+  alert: {title: "TA505: SDBbot drop path"}
+  enabled: true
+
+- id: 19596
+  level: 12
+  description: "FIN7: AuKill EDR-killer abusing process explorer driver"
+  groups: [ecrime, fin7, evasion]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 6}
+      image_loaded: {regex: "(?i)procexp(64)?\\.sys"}
+      loaded_signed: {equals: "false"}
+  alert: {title: "FIN7: AuKill EDR-killer driver"}
+  enabled: true
+
+- id: 19597
+  level: 11
+  description: "EvilCorp: bypassing OFAC sanction via rebrand (DopplePaymer->Grief)"
+  groups: [ecrime, evilcorp, ransomware]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "fim"}
+      ext_to: {regex: "(?i)\\.(grief|payorgrief)$"}
+  alert: {title: "EvilCorp/Grief encryption"}
+  enabled: true
+
+- id: 19598
+  level: 11
+  description: "Scattered Spider: AWS console role assumption from non-corp IP"
+  groups: [ecrime, scattered_spider, aws]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "cloudtrail"}
+      event_name: {equals: "AssumeRole"}
+      source_ip_corp: {equals: "false"}
+      role: {regex: "(?i)admin|power"}
+  alert: {title: "Scattered Spider: AWS AssumeRole off-corp"}
+  enabled: true
+
+- id: 19599
+  level: 12
+  description: "Scattered Spider: helpdesk reset of CISO account password"
+  groups: [ecrime, scattered_spider, identity]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "idp_audit"}
+      operation: {equals: "password_reset"}
+      target_role: {regex: "(?i)(ciso|cio|cto|cfo|ceo|exec)"}
+  alert: {title: "Scattered Spider: executive password reset"}
+  enabled: true

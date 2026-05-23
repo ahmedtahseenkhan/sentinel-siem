@@ -1,0 +1,396 @@
+# Cross-actor TTPs frequently shared across APT/eCrime
+# IDs 19600-19629 (30 rules)
+
+- id: 19600
+  level: 11
+  description: "Generic APT: living-off-the-land - certutil downloading binary"
+  groups: [apt, lotl]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)certutil.*-urlcache.*-f\\s+http"}
+  mitre:
+    - {tactic_id: "TA0011", technique_id: "T1105", technique_name: "Ingress Tool Transfer"}
+  alert: {title: "APT LOLBin: certutil download"}
+  enabled: true
+
+- id: 19601
+  level: 11
+  description: "Generic APT: regsvr32 sct/scrobj.dll squiblydoo"
+  groups: [apt, lotl, evasion]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)regsvr32.*\\b(/u|/s|/i:http|scrobj\\.dll)"}
+  mitre:
+    - {tactic_id: "TA0005", technique_id: "T1218.010", technique_name: "Regsvr32"}
+  alert: {title: "Squiblydoo regsvr32 pattern"}
+  enabled: true
+
+- id: 19602
+  level: 11
+  description: "Generic APT: rundll32 with javascript: URL"
+  groups: [apt, lotl, evasion]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)rundll32\\s+javascript:"}
+  alert: {title: "rundll32 javascript: payload"}
+  enabled: true
+
+- id: 19603
+  level: 11
+  description: "Generic APT: msbuild executing C# stager from XML"
+  groups: [apt, lotl, evasion]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)msbuild\\.exe\\s+.+\\.(csproj|xml)"}
+      parent: {regex: "(?i)(powershell|cmd|wmiprvse)\\.exe"}
+  alert: {title: "MSBuild C# stager"}
+  enabled: true
+
+- id: 19604
+  level: 11
+  description: "Generic APT: installutil bypass executing .NET assembly"
+  groups: [apt, lotl, evasion]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)installutil\\.exe\\s+/logfile=\\s*/u"}
+  alert: {title: "InstallUtil bypass"}
+  enabled: true
+
+- id: 19605
+  level: 11
+  description: "Generic APT: GPO scheduled task pushed enterprise-wide"
+  groups: [apt, persistence]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 5145}
+      share: {equals: "SYSVOL"}
+      object: {regex: "(?i)ScheduledTasks\\.xml$"}
+      access: {regex: "(?i)write|create"}
+  alert: {title: "APT: GPO scheduled task tamper"}
+  enabled: true
+
+- id: 19606
+  level: 11
+  description: "Generic APT: DCSync replication request from non-DC host"
+  groups: [apt, credential_access]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4662}
+      properties: {regex: "(?i)1131f6a[ad]-9c07-11d1-f79f-00c04fc2dcd2"}
+      access_mask: {regex: "0x100"}
+      src_workstation: {regex: "(?i)(?!.*dc[0-9]+).+"}
+  mitre:
+    - {tactic_id: "TA0006", technique_id: "T1003.006", technique_name: "DCSync"}
+  alert: {title: "APT: DCSync from non-DC"}
+  enabled: true
+
+- id: 19607
+  level: 12
+  description: "Generic APT: golden ticket - TGT lifetime >10h, no PAC validation"
+  groups: [apt, credential_access]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4769}
+      ticket_options: {regex: "0x40810000|0x40800000"}
+      ticket_encryption: {equals: "0x12"}
+  alert: {title: "APT: golden ticket indicator"}
+  enabled: true
+
+- id: 19608
+  level: 12
+  description: "Generic APT: silver ticket - service ticket without TGS-REP"
+  groups: [apt, credential_access]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      logon_type: {equals: "3"}
+      auth_pkg: {equals: "Kerberos"}
+      target_user: {regex: "(?i)^[a-z0-9]+\\$$"}
+      no_4768_correlated: {equals: "true"}
+  alert: {title: "APT: silver ticket suspect"}
+  enabled: true
+
+- id: 19609
+  level: 11
+  description: "Generic APT: Pass-the-Hash - NTLM logon from unusual workstation"
+  groups: [apt, credential_access, lateral]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4624}
+      logon_type: {equals: "3"}
+      auth_pkg: {equals: "NTLM"}
+      workstation_unusual: {equals: "true"}
+  alert: {title: "APT: pass-the-hash candidate"}
+  enabled: true
+
+- id: 19610
+  level: 11
+  description: "Generic APT: Pass-the-Ticket - krbtgt ticket replay across multiple hosts"
+  groups: [apt, credential_access, lateral]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4769}
+      service_name: {regex: "(?i)host/"}
+  correlation: {window: "5m", threshold: 10, group_by: ["target_user"]}
+  alert: {title: "APT: TGS spray"}
+  enabled: true
+
+- id: 19611
+  level: 11
+  description: "Generic APT: GPO logon script tamper to drop binary"
+  groups: [apt, persistence]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 5145}
+      share: {equals: "NETLOGON"}
+      object: {regex: "(?i)\\.(bat|cmd|ps1|vbs)$"}
+      access: {regex: "(?i)write|create"}
+  alert: {title: "APT: NETLOGON script tamper"}
+  enabled: true
+
+- id: 19612
+  level: 11
+  description: "Generic APT: WDigest enabled to capture cleartext creds"
+  groups: [apt, credential_access]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 13}
+      target_object: {regex: "(?i)\\\\SecurityProviders\\\\WDigest\\\\UseLogonCredential"}
+      detail: {equals: "1"}
+  alert: {title: "APT: WDigest enabled"}
+  enabled: true
+
+- id: 19613
+  level: 11
+  description: "Generic APT: LSA Protection disabled to allow LSASS dumping"
+  groups: [apt, credential_access]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 13}
+      target_object: {regex: "(?i)\\\\Lsa\\\\RunAsPPL"}
+      detail: {equals: "0"}
+  alert: {title: "APT: LSA RunAsPPL disabled"}
+  enabled: true
+
+- id: 19614
+  level: 11
+  description: "Generic APT: AMSI provider DLL deleted/zeroed"
+  groups: [apt, evasion]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 13}
+      target_object: {regex: "(?i)\\\\AMSIProviders\\\\"}
+      action: {regex: "(?i)delete"}
+  alert: {title: "APT: AMSI provider tampered"}
+  enabled: true
+
+- id: 19615
+  level: 11
+  description: "Generic APT: AppLocker policy cleared"
+  groups: [apt, evasion]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 8000}
+      detail: {regex: "(?i)policy was set to .*disabled|policy cleared"}
+  alert: {title: "APT: AppLocker policy cleared"}
+  enabled: true
+
+- id: 19616
+  level: 12
+  description: "Generic APT: Windows Defender exclusion path added"
+  groups: [apt, evasion]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 5007}
+      detail: {regex: "(?i)exclusion path"}
+  alert: {title: "APT: Defender exclusion added"}
+  enabled: true
+
+- id: 19617
+  level: 11
+  description: "Generic APT: SCM-Bypass via OpenSCManager + CreateServiceW from remote"
+  groups: [apt, lateral]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 7045}
+      service_file: {regex: "(?i)\\\\\\\\.+\\\\admin\\$|c:\\\\windows\\\\temp"}
+  alert: {title: "APT: remote service install"}
+  enabled: true
+
+- id: 19618
+  level: 12
+  description: "Generic APT: ADCS template misuse for cert-based persistence (ESC1/8)"
+  groups: [apt, persistence, identity]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4886}
+      template: {regex: "(?i)(user|machine|web|enrollmentagent)"}
+      requester: {regex: "(?i)(?!.*svc_adfs).+"}
+  alert: {title: "APT: ADCS suspect enrollment"}
+  enabled: true
+
+- id: 19619
+  level: 11
+  description: "Generic APT: Kerberos pre-auth disabled for account (AS-REP roasting)"
+  groups: [apt, credential_access]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {regex: "^(4738|5136)$"}
+      uac_change: {regex: "(?i)DONT_REQ_PREAUTH"}
+  mitre:
+    - {tactic_id: "TA0006", technique_id: "T1558.004", technique_name: "AS-REP Roasting"}
+  alert: {title: "APT: AS-REP roasting enabled"}
+  enabled: true
+
+- id: 19620
+  level: 12
+  description: "Generic APT: ntds.dit copied from DC to remote host"
+  groups: [apt, credential_access, exfil]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 5145}
+      object: {regex: "(?i)\\\\ntds\\\\ntds\\.dit$"}
+      access: {regex: "(?i)read"}
+  alert: {title: "APT: ntds.dit remote read"}
+  enabled: true
+
+- id: 19621
+  level: 11
+  description: "Generic APT: SMB anonymous null session enumeration"
+  groups: [apt, recon]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "smb"}
+      auth_user: {equals: ""}
+      auth_result: {equals: "success"}
+  alert: {title: "APT: SMB null session"}
+  enabled: true
+
+- id: 19622
+  level: 11
+  description: "Generic APT: Kerberos pre-auth fail spike (password spray)"
+  groups: [apt, credential_access]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4771}
+      failure_code: {equals: "0x18"}
+  correlation: {window: "10m", threshold: 30, group_by: ["src_ip"]}
+  alert: {title: "APT: Kerberos password spray"}
+  enabled: true
+
+- id: 19623
+  level: 11
+  description: "Generic APT: NTLM logon failure from a single src to many users"
+  groups: [apt, credential_access]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 4625}
+      auth_pkg: {equals: "NTLM"}
+  correlation: {window: "10m", threshold: 20, group_by: ["src_ip"]}
+  alert: {title: "APT: NTLM spray"}
+  enabled: true
+
+- id: 19624
+  level: 11
+  description: "Generic APT: print spooler abuse (CVE-2021-1675 PrintNightmare)"
+  groups: [apt, privilege_escalation]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {regex: "^(316|808|4673)$"}
+      source: {equals: "PrintService"}
+      detail: {regex: "(?i)(addprinterdriverex|spoolfile)"}
+  alert: {title: "APT: PrintNightmare"}
+  enabled: true
+
+- id: 19625
+  level: 12
+  description: "Generic APT: ZeroLogon CVE-2020-1472 netlogon RPC"
+  groups: [apt, exploit, identity]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {regex: "^(4742|4624)$"}
+      target_user: {regex: "(?i)^DC[0-9]+\\$$"}
+      detail: {regex: "(?i)password changed.*netlogon|computer account.*reset"}
+  alert: {title: "APT: ZeroLogon DC reset"}
+  enabled: true
+
+- id: 19626
+  level: 11
+  description: "Generic APT: outbound Tor exit node connection"
+  groups: [apt, c2]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "threat_intel"}
+      indicator_type: {equals: "tor_exit"}
+      match: {equals: "true"}
+  alert: {title: "APT: Tor exit node connection"}
+  enabled: true
+
+- id: 19627
+  level: 11
+  description: "Generic APT: ICMP tunneling indicators (large/unusual payload)"
+  groups: [apt, c2]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "icmp"}
+      payload_size: {regex: "^(1[0-9]{3}|[2-9][0-9]{3})$"}
+  correlation: {window: "5m", threshold: 20, group_by: ["src_ip"]}
+  alert: {title: "APT: ICMP tunnel suspect"}
+  enabled: true
+
+- id: 19628
+  level: 11
+  description: "Generic APT: DoH (DNS-over-HTTPS) to non-corporate resolver"
+  groups: [apt, c2, evasion]
+  match:
+    type: "log.file"
+    fields:
+      dst_port: {equals: "443"}
+      hostname: {regex: "(?i)(dns\\.google|cloudflare-dns\\.com|mozilla\\.cloudflare-dns\\.com|dnscrypt|nextdns)"}
+  alert: {title: "APT: DoH to public resolver"}
+  enabled: true
+
+- id: 19629
+  level: 11
+  description: "Generic APT: scheduled task with /create /sc onlogon /ru SYSTEM"
+  groups: [apt, persistence]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 1}
+      cmd: {regex: "(?i)schtasks.*/create.*/sc\\s+onlogon.*/ru\\s+system"}
+  alert: {title: "APT: persistent schtask /sc onlogon /ru SYSTEM"}
+  enabled: true
