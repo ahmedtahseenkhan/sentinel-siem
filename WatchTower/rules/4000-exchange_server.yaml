@@ -1,0 +1,677 @@
+# WatchTower — Microsoft Exchange Server Detection
+# Rule IDs: 16000-16049
+#
+# Sources expected:
+#   - Windows Application eventlog with Provider matching MSExchange*
+#   - Exchange transport / message-tracking logs:
+#       C:\Program Files\Microsoft\Exchange Server\V15\TransportRoles\Logs\
+#   - IIS logs from the Exchange virtual directories (/ews, /owa, /ecp,
+#     /autodiscover, /powershell) — see also 4100-iis_specific.yaml
+#
+# All rules MITRE-tagged. Field names match what WatchNode emits via the
+# eventlog and file collectors.
+
+rules:
+  # ── ProxyLogon / ProxyShell / ProxyNotShell (CVE-2021-26855 etc.) ─────
+  - id: 16000
+    level: 14
+    description: "Exchange — ProxyLogon SSRF (Autodiscover X-AnonResource-Backend)"
+    groups: [exchange, proxylogon, cve, ssrf, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)POST\\s+/autodiscover/autodiscover\\.json.*@.*X-AnonResource"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "Exchange: ProxyLogon SSRF pattern (CVE-2021-26855)"}
+    enabled: true
+
+  - id: 16001
+    level: 14
+    description: "Exchange — ProxyShell autodiscover + powershell pattern (CVE-2021-34473)"
+    groups: [exchange, proxyshell, cve, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)autodiscover/autodiscover\\.json.*powershell\\?X-Rps-CAT"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Exchange: ProxyShell exploit pattern (CVE-2021-34473)"}
+    enabled: true
+
+  - id: 16002
+    level: 14
+    description: "Exchange — ProxyNotShell (CVE-2022-41040 / CVE-2022-41082)"
+    groups: [exchange, proxynotshell, cve, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)autodiscover/autodiscover\\.json.*@.*PowerShell"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Exchange: ProxyNotShell pattern (CVE-2022-41040)"}
+    enabled: true
+
+  - id: 16003
+    level: 14
+    description: "Exchange — OWA web shell access (China Chopper / pages.aspx)"
+    groups: [exchange, owa, web_shell, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/owa/auth/\\S+\\.(aspx|js)\\s.*GET|/aspnet_client/system_web/.*\\.aspx"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1505.003"}
+    alert: {title: "Exchange: OWA-path web shell access"}
+    enabled: true
+
+  - id: 16004
+    level: 14
+    description: "Exchange — Hafnium-style web shell drop in inetpub"
+    groups: [exchange, web_shell, hafnium, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)C:\\\\inetpub\\\\wwwroot\\\\aspnet_client\\\\.*\\.aspx"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505.003"}]
+    alert: {title: "Exchange: Hafnium aspnet_client web shell"}
+    enabled: true
+
+  # ── PowerShell Remoting (Exchange Management Shell) ───────────────────
+  - id: 16005
+    level: 13
+    description: "Exchange — Exchange Management Shell connection from unusual host"
+    groups: [exchange, powershell, remote_management]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/powershell\\?X-Rps-CAT|wsman/.*Microsoft\\.Exchange"}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1021.006"}
+    alert: {title: "Exchange: PowerShell remoting to Exchange"}
+    enabled: true
+
+  - id: 16006
+    level: 13
+    description: "Exchange — New-MailboxExportRequest (data export)"
+    groups: [exchange, exfiltration, mailbox_export, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {contains: "New-MailboxExportRequest"}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1114.002"}
+    alert: {title: "Exchange: Mailbox export request (data exfil)"}
+    enabled: true
+
+  - id: 16007
+    level: 13
+    description: "Exchange — Get-Mailbox / Get-MailboxFolderStatistics enum (recon)"
+    groups: [exchange, recon, discovery]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Get-Mailbox(\\s|FolderStatistics|Statistics|DatabaseCopyStatus)"}
+    correlation:
+      window: "10m"
+      threshold: 30
+    mitre: [{tactic_id: "TA0007", technique_id: "T1087.002"}]
+    alert: {title: "Exchange: Mailbox enumeration burst"}
+    enabled: true
+
+  - id: 16008
+    level: 14
+    description: "Exchange — Add-MailboxPermission FullAccess (mailbox takeover)"
+    groups: [exchange, mailbox_permission, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Add-MailboxPermission.*FullAccess"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1098.002"}]
+    alert: {title: "Exchange: FullAccess permission granted on mailbox"}
+    enabled: true
+
+  - id: 16009
+    level: 14
+    description: "Exchange — Add-RecipientPermission SendAs (impersonation persistence)"
+    groups: [exchange, recipient_permission, impersonation, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Add-RecipientPermission.*SendAs"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1098.002"}]
+    alert: {title: "Exchange: SendAs permission granted"}
+    enabled: true
+
+  - id: 16010
+    level: 13
+    description: "Exchange — ApplicationImpersonation role assigned"
+    groups: [exchange, impersonation, privilege_escalation]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)New-ManagementRoleAssignment.*ApplicationImpersonation"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "Exchange: ApplicationImpersonation role assigned"}
+    enabled: true
+
+  - id: 16011
+    level: 12
+    description: "Exchange — RBAC role group membership changed"
+    groups: [exchange, rbac, privilege_escalation]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)(Add-RoleGroupMember|Remove-RoleGroupMember|New-RoleGroup)"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "Exchange: RBAC role group membership changed"}
+    enabled: true
+
+  # ── Transport Rule Abuse (T1564.008) ──────────────────────────────────
+  - id: 16012
+    level: 14
+    description: "Exchange — New transport rule (BEC redirect / hide indicator)"
+    groups: [exchange, transport_rule, persistence, bec, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)New-TransportRule"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1564.008"}
+    alert: {title: "Exchange: New transport rule (review for BEC)"}
+    enabled: true
+
+  - id: 16013
+    level: 13
+    description: "Exchange — Transport rule modified"
+    groups: [exchange, transport_rule, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Set-TransportRule"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1564.008"}]
+    alert: {title: "Exchange: Transport rule modified"}
+    enabled: true
+
+  - id: 16014
+    level: 13
+    description: "Exchange — Transport rule deleted"
+    groups: [exchange, transport_rule, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Remove-TransportRule"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070"}]
+    alert: {title: "Exchange: Transport rule deleted"}
+    enabled: true
+
+  - id: 16015
+    level: 13
+    description: "Exchange — Journal rule created/modified (covert copying)"
+    groups: [exchange, journal_rule, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)(New|Set)-JournalRule"}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1114.002"}]
+    alert: {title: "Exchange: Journal rule created/modified"}
+    enabled: true
+
+  # ── Inbox / Mail Forwarding (T1114.003) ───────────────────────────────
+  - id: 16016
+    level: 14
+    description: "Exchange — Mailbox forwarding rule set to external address"
+    groups: [exchange, mail_forwarding, exfiltration, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Set-Mailbox.*(ForwardingAddress|ForwardingSmtpAddress).*@(?!yourdomain\\.com)"}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1114.003"}
+    alert: {title: "Exchange: External mailbox forwarding configured"}
+    enabled: true
+
+  - id: 16017
+    level: 13
+    description: "Exchange — New inbox rule with redirect / forward action"
+    groups: [exchange, inbox_rule, exfiltration]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)New-InboxRule.*(Forward|Redirect)To"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1114.003"}]
+    alert: {title: "Exchange: New inbox rule forwards / redirects"}
+    enabled: true
+
+  - id: 16018
+    level: 13
+    description: "Exchange — Inbox rule that deletes / moves messages (hide-the-evidence)"
+    groups: [exchange, inbox_rule, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)New-InboxRule.*(DeleteMessage|MoveToFolder)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1564.008"}]
+    alert: {title: "Exchange: Inbox rule moves/deletes messages"}
+    enabled: true
+
+  - id: 16019
+    level: 13
+    description: "Exchange — Mailbox forwarding enabled by Outlook Web (user-initiated)"
+    groups: [exchange, mail_forwarding, owa, exfiltration]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Set-Mailbox.*DeliverToMailboxAndForward.*True"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1114.003"}]
+    alert: {title: "Exchange: DeliverToMailboxAndForward enabled"}
+    enabled: true
+
+  # ── Antispam / Malware Filter Bypass ──────────────────────────────────
+  - id: 16020
+    level: 13
+    description: "Exchange — antispam / antimalware engine disabled"
+    groups: [exchange, defense_evasion, antimalware]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)(Disable-AntimalwareScanning|Set-MalwareFilterPolicy.*Action.*Allow|Set-HostedContentFilterPolicy.*EnableEndUserSpamNotifications.*False)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "Exchange: Antimalware/spam filter weakened"}
+    enabled: true
+
+  - id: 16021
+    level: 12
+    description: "Exchange — bypass safe-attachments / safe-links policy"
+    groups: [exchange, atp, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)(Set-SafeAttachmentPolicy.*Disable|Set-SafeLinksPolicy.*DoNotRewriteUrls)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Exchange: SafeAttachments/SafeLinks weakened"}
+    enabled: true
+
+  # ── Connector / SMTP Relay Persistence ────────────────────────────────
+  - id: 16022
+    level: 13
+    description: "Exchange — new send connector (outbound mail route)"
+    groups: [exchange, connector, exfiltration, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)New-SendConnector"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071.003"}]
+    alert: {title: "Exchange: New SendConnector"}
+    enabled: true
+
+  - id: 16023
+    level: 13
+    description: "Exchange — new receive connector with anonymous permission"
+    groups: [exchange, connector, open_relay]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)(New|Set)-ReceiveConnector.*PermissionGroups.*Anonymous"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505"}]
+    alert: {title: "Exchange: ReceiveConnector anonymous allowed"}
+    enabled: true
+
+  # ── EWS / OAuth / Service Accounts ────────────────────────────────────
+  - id: 16024
+    level: 12
+    description: "Exchange — EWS Impersonation header used"
+    groups: [exchange, ews, impersonation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/EWS/Exchange\\.asmx.*X-AnchorMailbox|X-ImpersonationHeader"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1098.002"}]
+    alert: {title: "Exchange: EWS impersonation header observed"}
+    enabled: true
+
+  - id: 16025
+    level: 13
+    description: "Exchange — service account EWS access burst (mass mailbox read)"
+    groups: [exchange, ews, exfiltration, mass_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/EWS/Exchange\\.asmx"}
+    correlation:
+      window: "5m"
+      threshold: 200
+    mitre:
+      - {tactic_id: "TA0009", technique_id: "T1114.002"}
+    alert: {title: "Exchange: EWS access burst (possible scrape)"}
+    enabled: true
+
+  # ── ECP / Admin Center ────────────────────────────────────────────────
+  - id: 16026
+    level: 12
+    description: "Exchange — ECP admin login outside business hours"
+    groups: [exchange, ecp, admin_access, anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/ecp/.*200\\s"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "Exchange: ECP access (review timing)"}
+    enabled: true
+
+  # ── OWA Brute Force / Credential Spray ────────────────────────────────
+  - id: 16027
+    level: 12
+    description: "Exchange — OWA login brute force"
+    groups: [exchange, owa, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/owa/auth\\.owa\\s+POST.*\\s(401|440)\\s"}
+    correlation:
+      window: "5m"
+      threshold: 15
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "Exchange: OWA brute force"}
+    enabled: true
+
+  - id: 16028
+    level: 13
+    description: "Exchange — OWA password spray (many users, low rate)"
+    groups: [exchange, owa, password_spray]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/owa/auth\\.owa.*\\s(401|440)\\s"}
+    correlation:
+      window: "30m"
+      threshold: 50
+      distinct: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.003"}]
+    alert: {title: "Exchange: OWA password spray"}
+    enabled: true
+
+  - id: 16029
+    level: 13
+    description: "Exchange — Autodiscover XML probe burst (mailbox enumeration)"
+    groups: [exchange, autodiscover, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/autodiscover/autodiscover\\.xml.*POST"}
+    correlation:
+      window: "10m"
+      threshold: 50
+    mitre: [{tactic_id: "TA0007", technique_id: "T1087.002"}]
+    alert: {title: "Exchange: Autodiscover enumeration burst"}
+    enabled: true
+
+  # ── ActiveSync Anomalies ──────────────────────────────────────────────
+  - id: 16030
+    level: 12
+    description: "Exchange — ActiveSync from new device ID"
+    groups: [exchange, activesync, new_device]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Microsoft-Server-ActiveSync.*DeviceId="}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "Exchange: ActiveSync from new device"}
+    enabled: true
+
+  - id: 16031
+    level: 13
+    description: "Exchange — ActiveSync mass message download from one device"
+    groups: [exchange, activesync, exfiltration]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Microsoft-Server-ActiveSync.*Sync.*ItemCount=\\d{4,}"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1114.002"}]
+    alert: {title: "Exchange: ActiveSync bulk message sync"}
+    enabled: true
+
+  # ── DLP / Data Protection ─────────────────────────────────────────────
+  - id: 16032
+    level: 13
+    description: "Exchange — DLP policy match (PII/credit card / PHI in transit)"
+    groups: [exchange, dlp, pii, compliance]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)DLP.*(PolicyMatch|RuleHit).*\\b(PII|Credit Card|SSN|PHI|HIPAA)"}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1567"}
+    alert: {title: "Exchange: DLP policy match"}
+    enabled: true
+
+  - id: 16033
+    level: 13
+    description: "Exchange — DLP policy disabled / weakened"
+    groups: [exchange, dlp, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)(Set-DlpPolicy.*Mode.*Disable|Remove-DlpPolicy)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Exchange: DLP policy disabled"}
+    enabled: true
+
+  # ── Audit / Mailbox Audit ─────────────────────────────────────────────
+  - id: 16034
+    level: 14
+    description: "Exchange — mailbox audit logging disabled"
+    groups: [exchange, audit_tampering, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Set-Mailbox.*AuditEnabled\\s*\\$?false"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.002"}
+    alert: {title: "Exchange: Mailbox audit logging disabled"}
+    enabled: true
+
+  - id: 16035
+    level: 14
+    description: "Exchange — organization-wide audit logging disabled"
+    groups: [exchange, audit_tampering, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Set-AdminAuditLogConfig.*AdminAuditLogEnabled\\s*\\$?false|Set-OrganizationConfig.*AuditDisabled\\s*\\$?true"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.002"}]
+    alert: {title: "Exchange: Org-wide audit logging disabled"}
+    enabled: true
+
+  - id: 16036
+    level: 13
+    description: "Exchange — Search-Mailbox executed (admin mailbox search — recon/exfil)"
+    groups: [exchange, recon, exfiltration]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)(Search-Mailbox|New-ComplianceSearch|New-MailboxSearch)"}
+    mitre:
+      - {tactic_id: "TA0009", technique_id: "T1114.002"}
+    alert: {title: "Exchange: Mailbox search executed"}
+    enabled: true
+
+  # ── Suspicious Mailflow / Backscatter ─────────────────────────────────
+  - id: 16037
+    level: 12
+    description: "Exchange — high outbound message rate from single sender"
+    groups: [exchange, outbound_spam, abuse, compromise]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)source=SMTP.*event=SEND"}
+    correlation:
+      window: "5m"
+      threshold: 200
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071.003"}]
+    alert: {title: "Exchange: Outbound spam burst (compromised account?)"}
+    enabled: true
+
+  - id: 16038
+    level: 11
+    description: "Exchange — message-tracking log: BADMAIL spike"
+    groups: [exchange, badmail, abuse]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)event=BADMAIL"}
+    correlation:
+      window: "10m"
+      threshold: 30
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "Exchange: BADMAIL spike"}
+    enabled: true
+
+  # ── Service / Process Anomalies on Exchange Box ───────────────────────
+  - id: 16039
+    level: 14
+    description: "Exchange — w3wp.exe spawned cmd/powershell child (post-exploit)"
+    groups: [exchange, web_shell, process_anomaly, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\w3wp\\.exe$"}
+        Image: {regex: "(?i)\\\\(cmd|powershell|powershell_ise|cscript|wscript|certutil|bitsadmin|mshta|rundll32|regsvr32)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1059"}
+    alert: {title: "Exchange: w3wp.exe spawned shell/script (post-exploit suspect)"}
+    enabled: true
+
+  - id: 16040
+    level: 14
+    description: "Exchange — UMWorkerProcess.exe / UMService.exe child shell (CVE-2021-26857)"
+    groups: [exchange, um_service, cve, rce, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\(UMWorkerProcess|UMService)\\.exe$"}
+        Image: {regex: "(?i)\\\\(cmd|powershell)\\.exe$"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Exchange: UMWorker spawned shell (CVE-2021-26857)"}
+    enabled: true
+
+  - id: 16041
+    level: 13
+    description: "Exchange — Microsoft.Exchange.RPCProxy.dll loaded into anomalous process"
+    groups: [exchange, dll_load, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 7}
+        ImageLoaded: {regex: "(?i)Microsoft\\.Exchange\\.RPCProxy\\.dll"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1574.002"}]
+    alert: {title: "Exchange: RPCProxy DLL loaded outside expected host"}
+    enabled: true
+
+  # ── Public Folder / Calendar Permissions ──────────────────────────────
+  - id: 16042
+    level: 12
+    description: "Exchange — Add-PublicFolderClientPermission with Owner/Editor role"
+    groups: [exchange, public_folder, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Add-PublicFolderClientPermission.*(Owner|Editor)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "Exchange: Public folder Owner/Editor grant"}
+    enabled: true
+
+  - id: 16043
+    level: 11
+    description: "Exchange — Add-MailboxFolderPermission Calendar — Reviewer/Editor"
+    groups: [exchange, calendar_access, recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Add-MailboxFolderPermission.*Calendar.*(Reviewer|Editor)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1087"}]
+    alert: {title: "Exchange: Calendar permission granted"}
+    enabled: true
+
+  # ── Hybrid / OAuth Federation ─────────────────────────────────────────
+  - id: 16044
+    level: 14
+    description: "Exchange — federation trust configuration changed (hybrid attack)"
+    groups: [exchange, federation, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)(Set-FederationTrust|New-FederationTrust|Remove-FederationTrust)"}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1484.002"}
+    alert: {title: "Exchange: Federation trust changed"}
+    enabled: true
+
+  - id: 16045
+    level: 14
+    description: "Exchange — hybrid auth certificate replaced (potential trust abuse)"
+    groups: [exchange, hybrid, oauth, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)(New-AuthServer|Set-AuthServer|Set-OauthAuthenticationProvider)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1556"}]
+    alert: {title: "Exchange: OAuth/AuthServer config changed"}
+    enabled: true
+
+  # ── Transport Agent Persistence ───────────────────────────────────────
+  - id: 16046
+    level: 14
+    description: "Exchange — transport agent installed (rare, high-risk)"
+    groups: [exchange, transport_agent, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)(Install-TransportAgent|Enable-TransportAgent)"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1505"}
+    alert: {title: "Exchange: Transport agent installed"}
+    enabled: true
+
+  # ── Database Operations ───────────────────────────────────────────────
+  - id: 16047
+    level: 13
+    description: "Exchange — mailbox database dismounted (disruption)"
+    groups: [exchange, database, impact]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Dismount-Database"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1489"}]
+    alert: {title: "Exchange: Mailbox database dismounted"}
+    enabled: true
+
+  - id: 16048
+    level: 12
+    description: "Exchange — IIS Reset on Exchange server (service restart used by attacker)"
+    groups: [exchange, iis, restart]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\iisreset\\.exe$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Exchange: IISReset executed"}
+    enabled: true
+
+  - id: 16049
+    level: 14
+    description: "Exchange — outbound connection from w3wp to suspicious external IP (C2)"
+    groups: [exchange, c2_suspect, post_exploit, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 3}
+        Image: {regex: "(?i)\\\\w3wp\\.exe$"}
+        DestinationIp: {regex: "^(?!10\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.|127\\.|169\\.254\\.)"}
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1071.001"}
+    alert: {title: "Exchange: w3wp outbound external connection (C2 suspect)"}
+    enabled: true

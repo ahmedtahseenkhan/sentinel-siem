@@ -1,0 +1,561 @@
+# WatchTower — IIS-specific Server Detection
+# Rule IDs: 16100-16139
+#
+# Sources expected:
+#   - IIS W3C access logs: C:\inetpub\logs\LogFiles\W3SVC*\*.log
+#   - HTTPERR logs: C:\Windows\System32\LogFiles\HTTPERR\*.log
+#   - Application eventlog (Provider IIS-W3SVC-WP / W3SVC / IIS-Configuration)
+#
+# Complements 3100-web_application_advanced.yaml: those rules fire on the
+# attack payload regardless of server; these focus on IIS-specific signals
+# (handler mappings, app pools, HTTPERR, web.config tampering, ASP.NET).
+
+rules:
+  # ── Web Shell on IIS ──────────────────────────────────────────────────
+  - id: 16100
+    level: 14
+    description: "IIS — ASPX web shell at /aspnet_client/ (Hafnium pattern)"
+    groups: [iis, web_shell, persistence, hafnium, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/aspnet_client/system_web/\\S*\\.aspx\\s.*POST"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1505.003"}
+    alert: {title: "IIS: aspnet_client web shell access"}
+    enabled: true
+
+  - id: 16101
+    level: 13
+    description: "IIS — direct POST to .ashx / .asmx handler (unusual)"
+    groups: [iis, web_shell, suspicious]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)POST\\s+\\S+\\.(ashx|asmx)\\s"}
+    correlation:
+      window: "10m"
+      threshold: 5
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505.003"}]
+    alert: {title: "IIS: POST to ASHX/ASMX handler burst"}
+    enabled: true
+
+  - id: 16102
+    level: 14
+    description: "IIS — w3wp.exe spawned child shell (post-exploit)"
+    groups: [iis, post_exploit, process_anomaly, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\w3wp\\.exe$"}
+        Image: {regex: "(?i)\\\\(cmd|powershell|cscript|wscript|certutil|bitsadmin|mshta)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1059"}
+    alert: {title: "IIS: w3wp.exe spawned shell/script"}
+    enabled: true
+
+  - id: 16103
+    level: 13
+    description: "IIS — anomalous DLL loaded into w3wp.exe (post-exploit module)"
+    groups: [iis, dll_load, post_exploit]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 7}
+        Image: {regex: "(?i)\\\\w3wp\\.exe$"}
+        ImageLoaded: {regex: "(?i)\\\\(temp|appdata|users\\\\public)\\\\.*\\.dll"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1055.001"}]
+    alert: {title: "IIS: w3wp loaded DLL from temp/user path"}
+    enabled: true
+
+  # ── Web.config / Handler Mapping Persistence ──────────────────────────
+  - id: 16104
+    level: 14
+    description: "IIS — web.config modified (handler mapping persistence)"
+    groups: [iis, web_config, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\(inetpub|wwwroot)\\\\.*web\\.config$"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1505"}
+    alert: {title: "IIS: web.config file modified"}
+    enabled: true
+
+  - id: 16105
+    level: 14
+    description: "IIS — handler mapping added for non-standard extension (.config / .log / .txt as script)"
+    groups: [iis, handler_mapping, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)<add\\s+name=.*path=\"\\*\\.(config|log|txt|jpg|gif|png)\".*verb=.*handler="}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505"}]
+    alert: {title: "IIS: Handler mapping for unusual extension"}
+    enabled: true
+
+  - id: 16106
+    level: 13
+    description: "IIS — applicationHost.config modified"
+    groups: [iis, app_host, persistence, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\system32\\\\inetsrv\\\\config\\\\applicationHost\\.config$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543"}]
+    alert: {title: "IIS: applicationHost.config modified"}
+    enabled: true
+
+  - id: 16107
+    level: 13
+    description: "IIS — module installed (gacutil / appcmd install module)"
+    groups: [iis, iis_module, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\appcmd\\.exe$"}
+        CommandLine: {regex: "(?i)install module"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505"}]
+    alert: {title: "IIS: appcmd install module (persistence)"}
+    enabled: true
+
+  # ── App Pool Manipulation ─────────────────────────────────────────────
+  - id: 16108
+    level: 12
+    description: "IIS — application pool identity changed (privilege escalation vector)"
+    groups: [iis, app_pool, privilege_escalation]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\appcmd\\.exe$"}
+        CommandLine: {regex: "(?i)set\\s+config.*processModel.*identityType|set\\s+apppool.*\\.processModel\\.userName"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1078"}]
+    alert: {title: "IIS: AppPool identity changed via appcmd"}
+    enabled: true
+
+  - id: 16109
+    level: 12
+    description: "IIS — new application pool created via appcmd / PowerShell"
+    groups: [iis, app_pool, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)(appcmd\\s+add\\s+apppool|New-WebAppPool)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543"}]
+    alert: {title: "IIS: New application pool created"}
+    enabled: true
+
+  - id: 16110
+    level: 12
+    description: "IIS — virtual directory added pointing to non-default path"
+    groups: [iis, virtual_directory, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)(appcmd\\s+add\\s+vdir|New-WebVirtualDirectory).*physicalPath"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505"}]
+    alert: {title: "IIS: Virtual directory created"}
+    enabled: true
+
+  - id: 16111
+    level: 13
+    description: "IIS — IIS-Configuration eventlog: configuration changed by non-admin"
+    groups: [iis, config_change]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Microsoft-IIS-Configuration.*configuration changed"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "IIS: IIS-Configuration changed"}
+    enabled: true
+
+  # ── HTTPERR Patterns ──────────────────────────────────────────────────
+  - id: 16112
+    level: 11
+    description: "IIS HTTPERR — Request_Cancelled spike (slowloris / abuse)"
+    groups: [iis, http_err, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "Request_Cancelled|Connection_Dropped_List_Full"}
+    correlation:
+      window: "5m"
+      threshold: 50
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499.002"}]
+    alert: {title: "IIS HTTPERR: Cancelled connection burst"}
+    enabled: true
+
+  - id: 16113
+    level: 12
+    description: "IIS HTTPERR — Timer_ConnectionIdle from many clients (slow attack)"
+    groups: [iis, http_err, slowloris, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "Timer_ConnectionIdle"}
+    correlation:
+      window: "10m"
+      threshold: 30
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499.001"}]
+    alert: {title: "IIS HTTPERR: Slow connection burst"}
+    enabled: true
+
+  - id: 16114
+    level: 11
+    description: "IIS HTTPERR — Forbidden_By_Url_Filter (probing)"
+    groups: [iis, http_err, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "Forbidden_By_Url_Filter|URL_Doesnt_Match_Site"}
+    correlation:
+      window: "10m"
+      threshold: 30
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "IIS HTTPERR: URL filter rejections"}
+    enabled: true
+
+  # ── ASP.NET / ViewState / Errors ──────────────────────────────────────
+  - id: 16115
+    level: 14
+    description: "IIS — __VIEWSTATE deserialization exploit pattern (validateRequest bypass)"
+    groups: [iis, asp_net, deserialization, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(__VIEWSTATE=.{500,}|__VIEWSTATEGENERATOR=.*__EVENTVALIDATION=.{500,})"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "IIS: ViewState deserialization payload"}
+    enabled: true
+
+  - id: 16116
+    level: 13
+    description: "IIS — ASP.NET YSoSerial / ToString gadget pattern"
+    groups: [iis, asp_net, deserialization, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(System\\.Activities|TypeConfuseDelegate|ObjectDataProvider|MulticastDelegate).*(MethodName|StartInfo)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "IIS: .NET deserialization gadget pattern"}
+    enabled: true
+
+  - id: 16117
+    level: 11
+    description: "IIS — ASP.NET unhandled exception (.aspx 500 burst)"
+    groups: [iis, asp_net, errors]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\\.aspx\\s+\\S+\\s+500\\s"}
+    correlation:
+      window: "5m"
+      threshold: 30
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "IIS: ASP.NET 500 burst"}
+    enabled: true
+
+  # ── Method Abuse / WebDAV ─────────────────────────────────────────────
+  - id: 16118
+    level: 11
+    description: "IIS — PUT / DELETE method observed (often disabled, may indicate WebDAV abuse)"
+    groups: [iis, webdav, file_write, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "^\\S+\\s\\S+\\s(PUT|DELETE|MOVE|COPY)\\s"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505"}]
+    alert: {title: "IIS: PUT/DELETE/MOVE/COPY method observed"}
+    enabled: true
+
+  - id: 16119
+    level: 13
+    description: "IIS — PROPFIND probe (WebDAV enumeration)"
+    groups: [iis, webdav, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "^\\S+\\s\\S+\\sPROPFIND\\s"}
+    correlation:
+      window: "10m"
+      threshold: 10
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "IIS: WebDAV PROPFIND probing"}
+    enabled: true
+
+  # ── Authentication ────────────────────────────────────────────────────
+  - id: 16120
+    level: 12
+    description: "IIS — 401 burst (brute force on Windows / Forms auth)"
+    groups: [iis, auth, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "\\s401\\s\\d+\\s"}
+    correlation:
+      window: "5m"
+      threshold: 25
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "IIS: 401 unauthorized burst"}
+    enabled: true
+
+  - id: 16121
+    level: 13
+    description: "IIS — anonymous auth enabled on /admin or /api path"
+    groups: [iis, anonymous_auth, misconfiguration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(/admin/|/api/).*\\s200\\s.*anonymous"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "IIS: Anonymous access to admin/api"}
+    enabled: true
+
+  - id: 16122
+    level: 12
+    description: "IIS — NTLM authentication observed (compatibility / risk indicator)"
+    groups: [iis, ntlm, auth, downgrade]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)WWW-Authenticate:\\s*NTLM|sc-substatus=2"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1187"}]
+    alert: {title: "IIS: NTLM auth in use"}
+    enabled: true
+
+  # ── Static File Disclosure ────────────────────────────────────────────
+  - id: 16123
+    level: 12
+    description: "IIS — request for backup config (.bak / .old / web.config~)"
+    groups: [iis, information_disclosure, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\\s(GET|HEAD)\\s\\S+(web\\.config[~.](bak|old)|\\.config\\.bak|\\.config\\.old)\\s"}
+    mitre:
+      - {tactic_id: "TA0009", technique_id: "T1213"}
+    alert: {title: "IIS: Backup config file accessed"}
+    enabled: true
+
+  - id: 16124
+    level: 11
+    description: "IIS — directory listing returned"
+    groups: [iis, information_disclosure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)<title>Directory Listing"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1083"}]
+    alert: {title: "IIS: Directory listing exposed"}
+    enabled: true
+
+  - id: 16125
+    level: 12
+    description: "IIS — request for .git / .svn / .DS_Store"
+    groups: [iis, recon, scm_exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\\s\\S+/(\\.git|\\.svn|\\.hg|\\.DS_Store|\\.idea|\\.vscode)/?\\s"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "IIS: SCM metadata access attempt"}
+    enabled: true
+
+  # ── SMB-Bridge / FrontPage Extension Probing ──────────────────────────
+  - id: 16126
+    level: 11
+    description: "IIS — FrontPage Server Extension probe (_vti_bin)"
+    groups: [iis, frontpage, recon, legacy]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/_vti_(bin|pvt|inf)/"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "IIS: FrontPage extension probe"}
+    enabled: true
+
+  # ── Unicode / Encoding Evasion ────────────────────────────────────────
+  - id: 16127
+    level: 13
+    description: "IIS — double-encoded traversal pattern (%252e%252e)"
+    groups: [iis, path_traversal, evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%252e%252e%252f|%c0%ae|%c1%9c"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1083"}]
+    alert: {title: "IIS: Double-encoded traversal"}
+    enabled: true
+
+  - id: 16128
+    level: 13
+    description: "IIS — Unicode bypass for /scripts/..%c0%af.. (Code Red era classic)"
+    groups: [iis, path_traversal, evasion, legacy]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/scripts/[^\\s]*%c[01]%[af]"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "IIS: Unicode path traversal (Code Red pattern)"}
+    enabled: true
+
+  # ── Vendor App / Known Bad URL Patterns ───────────────────────────────
+  - id: 16129
+    level: 12
+    description: "IIS — request for /CFIDE/administrator/enter.cfm (ColdFusion admin probe)"
+    groups: [iis, coldfusion, recon, vendor_app]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/CFIDE/(administrator|adminapi|componentutils)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "IIS: ColdFusion admin probe"}
+    enabled: true
+
+  - id: 16130
+    level: 12
+    description: "IIS — request for /telerik/upload.aspx (Telerik UI vuln probe)"
+    groups: [iis, telerik, cve, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/Telerik\\.Web\\.UI\\.SpellCheckHandler\\.axd|/Telerik\\.Web\\.UI\\.DialogHandler\\.aspx"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "IIS: Telerik UI vuln probe"}
+    enabled: true
+
+  - id: 16131
+    level: 13
+    description: "IIS — Sharepoint exploit pattern (CVE-2019-0604 / CVE-2023-29357)"
+    groups: [iis, sharepoint, cve, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/_layouts/15/Picker\\.aspx|/_api/web/siteusers|x-ms-trust-encoded"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "IIS: SharePoint CVE probe pattern"}
+    enabled: true
+
+  # ── Authentication via Kerberos / Cert ────────────────────────────────
+  - id: 16132
+    level: 12
+    description: "IIS — sc-substatus=502 (Kerberos auth failure)"
+    groups: [iis, kerberos, auth]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "\\s401\\s502\\s|\\s401\\s1\\s|\\s401\\s2\\s"}
+    correlation:
+      window: "10m"
+      threshold: 10
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110"}]
+    alert: {title: "IIS: Kerberos auth failure burst"}
+    enabled: true
+
+  # ── Failed Request Tracing ────────────────────────────────────────────
+  - id: 16133
+    level: 11
+    description: "IIS — Failed Request Tracing rule added"
+    groups: [iis, frt, config_change]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)appcmd\\s+add\\s+traceFailedRequests"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "IIS: Failed Request Tracing rule added"}
+    enabled: true
+
+  # ── Log Tampering ─────────────────────────────────────────────────────
+  - id: 16134
+    level: 14
+    description: "IIS — log file deleted via shell (forensic destruction)"
+    groups: [iis, log_tampering, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)(del|erase|Remove-Item).*inetpub\\\\logs|System32\\\\LogFiles"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1070.001"}
+    alert: {title: "IIS: log file deletion via shell"}
+    enabled: true
+
+  - id: 16135
+    level: 13
+    description: "IIS — logging disabled on site/app pool"
+    groups: [iis, log_tampering, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)appcmd\\s+set\\s+config.*system\\.webServer/httpLogging.*dontLog=true"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.002"}]
+    alert: {title: "IIS: httpLogging dontLog=true"}
+    enabled: true
+
+  # ── App Pool Crashes & Recycles ───────────────────────────────────────
+  - id: 16136
+    level: 11
+    description: "IIS — app pool crashed (rapid-fail protection triggered)"
+    groups: [iis, app_pool, crash, dos]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)application pool .* has been disabled.*rapid-fail|process serving application pool .* terminated"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "IIS: App pool crash / rapid-fail"}
+    enabled: true
+
+  - id: 16137
+    level: 9
+    description: "IIS — app pool recycled (informational baseline)"
+    groups: [iis, app_pool]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)WAS\\s+Worker process.*recycled"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "IIS: App pool recycled"}
+    enabled: true
+
+  # ── ARR / Reverse Proxy Abuse ─────────────────────────────────────────
+  - id: 16138
+    level: 13
+    description: "IIS — Application Request Routing reverse-proxy rule added to forward to external"
+    groups: [iis, arr, proxy_abuse, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)appcmd\\s+set\\s+config.*system\\.webServer/rewrite/globalRules.*rewrite/action.*url"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1090"}]
+    alert: {title: "IIS: ARR rewrite rule added (potential proxy)"}
+    enabled: true
+
+  # ── Suspicious User-Agent on IIS ──────────────────────────────────────
+  - id: 16139
+    level: 11
+    description: "IIS — anomalous empty / single-char User-Agent (bot)"
+    groups: [iis, scanner, bot]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\\sUser-Agent:\\s*(-|\\.)\\s"}
+    correlation:
+      window: "10m"
+      threshold: 30
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "IIS: Anomalous User-Agent burst"}
+    enabled: true

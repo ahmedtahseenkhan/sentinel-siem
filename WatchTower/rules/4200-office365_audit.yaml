@@ -1,0 +1,801 @@
+# WatchTower — Office 365 / Microsoft 365 Audit Log Detection
+# Rule IDs: 16200-16259
+#
+# Source: O365 unified audit log (via Microsoft Graph / Management Activity
+# API) ingested by a cloud connector. Each event carries fields:
+#   - Workload         (AzureActiveDirectory, Exchange, SharePoint, OneDrive,
+#                       Teams, MicrosoftTeams, SecurityComplianceCenter,
+#                       MicrosoftFlow, PowerBI, ThreatIntelligence, ...)
+#   - Operation        (e.g. "UserLoggedIn", "FileUploaded", "Add-MailboxPermission")
+#   - UserId, ClientIP, UserType, ResultStatus, ObjectId, Subject
+#
+# Note: these rules expect ingestion to map JSON keys directly. If you feed
+# them via raw JSON in `message`, the regex still matches.
+
+rules:
+  # ── Authentication / Identity (Azure AD / Entra) ──────────────────────
+  - id: 16200
+    level: 12
+    description: "O365 — risky sign-in flagged by Identity Protection"
+    groups: [o365, azure_ad, identity_protection, risky_signin]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"riskLevelDuringSignIn\":\\s*\"(medium|high)\""}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1078.004"}
+    alert: {title: "O365: Risky sign-in (medium/high)"}
+    enabled: true
+
+  - id: 16201
+    level: 13
+    description: "O365 — impossible-travel sign-in detected"
+    groups: [o365, azure_ad, impossible_travel, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"riskEventTypes\":.*\"unfamiliarFeatures|impossibleTravel\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1078.004"}]
+    alert: {title: "O365: Impossible travel sign-in"}
+    enabled: true
+
+  - id: 16202
+    level: 12
+    description: "O365 — sign-in from anonymous IP (Tor / VPN)"
+    groups: [o365, azure_ad, anonymizer]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"riskEventTypes\":.*\"anonymizedIPAddress\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1078.004"}]
+    alert: {title: "O365: Sign-in from anonymous IP"}
+    enabled: true
+
+  - id: 16203
+    level: 13
+    description: "O365 — sign-in failure burst (password spray)"
+    groups: [o365, azure_ad, password_spray, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"UserLoginFailed\""}
+    correlation:
+      window: "10m"
+      threshold: 30
+      distinct: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.003"}]
+    alert: {title: "O365: Password spray (failed logins many users)"}
+    enabled: true
+
+  - id: 16204
+    level: 12
+    description: "O365 — MFA fatigue (many MFA challenges, eventual success)"
+    groups: [o365, azure_ad, mfa, mfa_fatigue, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"UserLoggedIn\""}
+    correlation:
+      window: "10m"
+      threshold: 1
+      precondition_match:
+        regex: "\"Operation\":\\s*\"UserStrongAuthClientAuthNRequiredInterrupt|UserStrongAuthClientAuthNRequired"
+        precondition_count: 5
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1621"}
+    alert: {title: "O365: MFA fatigue success suspect"}
+    enabled: true
+
+  - id: 16205
+    level: 13
+    description: "O365 — legacy auth protocol used (POP/IMAP/SMTP basic auth)"
+    groups: [o365, azure_ad, legacy_auth, deprecated]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"ClientAppUsed\":\\s*\"(IMAP4|POP3|Authenticated SMTP|Other clients|Exchange Web Services)\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1078.004"}]
+    alert: {title: "O365: Legacy auth protocol sign-in"}
+    enabled: true
+
+  - id: 16206
+    level: 13
+    description: "O365 — admin role assigned (Global Admin / Privileged Role Admin / Exchange Admin)"
+    groups: [o365, azure_ad, role_assignment, privilege_escalation, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Add member to role\\.|AssignDirectoryRole|Add eligible member to role\""}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1098"}
+    alert: {title: "O365: Admin role assigned"}
+    enabled: true
+
+  - id: 16207
+    level: 14
+    description: "O365 — Global Administrator role granted"
+    groups: [o365, azure_ad, global_admin, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Add member to role.*\"Role.DisplayName\":\\s*\"Global Administrator\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "O365: Global Administrator role granted"}
+    enabled: true
+
+  - id: 16208
+    level: 13
+    description: "O365 — eligible-role activated (PIM elevation)"
+    groups: [o365, azure_ad, pim, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Activate eligible role\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "O365: PIM role activated"}
+    enabled: true
+
+  - id: 16209
+    level: 12
+    description: "O365 — new user created"
+    groups: [o365, azure_ad, account_creation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Add user\\.\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1136"}]
+    alert: {title: "O365: New user created"}
+    enabled: true
+
+  - id: 16210
+    level: 12
+    description: "O365 — user account deleted"
+    groups: [o365, azure_ad, account_deletion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Delete user\\.\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1531"}]
+    alert: {title: "O365: User deleted"}
+    enabled: true
+
+  - id: 16211
+    level: 13
+    description: "O365 — MFA disabled or method reset for user"
+    groups: [o365, azure_ad, mfa, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*(\"Disable Strong Authentication\\.\"|\"Reset user password\\.\"|\"User registered all required security info\")"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1556"}
+    alert: {title: "O365: MFA disabled / reset"}
+    enabled: true
+
+  - id: 16212
+    level: 14
+    description: "O365 — conditional access policy disabled / deleted"
+    groups: [o365, azure_ad, conditional_access, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*(\"Delete conditional access policy\"|\"Disable policy\")"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "O365: Conditional Access policy disabled/deleted"}
+    enabled: true
+
+  - id: 16213
+    level: 13
+    description: "O365 — conditional access policy modified"
+    groups: [o365, azure_ad, conditional_access, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Update conditional access policy\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "O365: Conditional Access policy modified"}
+    enabled: true
+
+  # ── Service Principal / App Registration Abuse ────────────────────────
+  - id: 16214
+    level: 13
+    description: "O365 — new app registration with high-privilege scope"
+    groups: [o365, azure_ad, app_registration, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Add application\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098.001"}]
+    alert: {title: "O365: New app registration"}
+    enabled: true
+
+  - id: 16215
+    level: 14
+    description: "O365 — application consent grant (illicit consent attack)"
+    groups: [o365, azure_ad, illicit_consent, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Consent to application\""}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1528"}
+    alert: {title: "O365: Application consent granted (review scopes)"}
+    enabled: true
+
+  - id: 16216
+    level: 13
+    description: "O365 — admin consent granted on app"
+    groups: [o365, azure_ad, admin_consent, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Add app role assignment grant to user\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098.001"}]
+    alert: {title: "O365: App role assignment (admin consent)"}
+    enabled: true
+
+  - id: 16217
+    level: 14
+    description: "O365 — service principal credentials added (backdoor)"
+    groups: [o365, azure_ad, service_principal, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Add service principal credentials\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098.001"}]
+    alert: {title: "O365: Service principal credentials added"}
+    enabled: true
+
+  - id: 16218
+    level: 13
+    description: "O365 — owner added to application (persistence)"
+    groups: [o365, azure_ad, app_owner, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Add owner to application\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "O365: Owner added to application"}
+    enabled: true
+
+  - id: 16219
+    level: 14
+    description: "O365 — federation/SAML token signing cert changed (Golden SAML)"
+    groups: [o365, azure_ad, saml, golden_saml, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Set federation settings on domain\""}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1606.002"}
+    alert: {title: "O365: Federation settings modified (Golden SAML)"}
+    enabled: true
+
+  - id: 16220
+    level: 14
+    description: "O365 — new domain federated to external IdP (trust abuse)"
+    groups: [o365, azure_ad, federation, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Set domain authentication\""}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1484.002"}]
+    alert: {title: "O365: Domain authentication setting changed"}
+    enabled: true
+
+  # ── Exchange Online Operations ────────────────────────────────────────
+  - id: 16221
+    level: 14
+    description: "O365 — Set-Mailbox forwarding to external address"
+    groups: [o365, exchange_online, mail_forwarding, exfiltration, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Set-Mailbox\".*ForwardingSmtpAddress"}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1114.003"}
+    alert: {title: "O365: Mailbox forwarding to external"}
+    enabled: true
+
+  - id: 16222
+    level: 13
+    description: "O365 — New-InboxRule forwarding/moving messages"
+    groups: [o365, exchange_online, inbox_rule, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"New-InboxRule\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1114.003"}]
+    alert: {title: "O365: New inbox rule"}
+    enabled: true
+
+  - id: 16223
+    level: 13
+    description: "O365 — Add-MailboxPermission granting FullAccess"
+    groups: [o365, exchange_online, mailbox_permission, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Add-MailboxPermission\".*FullAccess"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1098.002"}]
+    alert: {title: "O365: Mailbox FullAccess granted"}
+    enabled: true
+
+  - id: 16224
+    level: 13
+    description: "O365 — New-TransportRule"
+    groups: [o365, exchange_online, transport_rule, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"New-TransportRule\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1564.008"}]
+    alert: {title: "O365: New TransportRule"}
+    enabled: true
+
+  - id: 16225
+    level: 13
+    description: "O365 — eDiscovery / Search created (compliance recon)"
+    groups: [o365, ediscovery, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*(\"New-ComplianceSearch\"|\"Search-Mailbox\")"}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1114.002"}]
+    alert: {title: "O365: eDiscovery / mailbox search"}
+    enabled: true
+
+  - id: 16226
+    level: 13
+    description: "O365 — mailbox audit log bypass added"
+    groups: [o365, exchange_online, audit_tampering, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Set-MailboxAuditBypassAssociation\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.002"}]
+    alert: {title: "O365: Mailbox audit bypass added"}
+    enabled: true
+
+  - id: 16227
+    level: 13
+    description: "O365 — Set-AdminAuditLogConfig disabled"
+    groups: [o365, exchange_online, audit_tampering, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Set-AdminAuditLogConfig\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.002"}]
+    alert: {title: "O365: Admin audit log config changed"}
+    enabled: true
+
+  # ── SharePoint / OneDrive ─────────────────────────────────────────────
+  - id: 16228
+    level: 12
+    description: "O365 — anonymous link created on SharePoint/OneDrive file"
+    groups: [o365, sharepoint, onedrive, anonymous_share, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*(\"AnonymousLinkCreated\"|\"AnonymousLinkUsed\")"}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1567.002"}
+    alert: {title: "O365: Anonymous link created/used"}
+    enabled: true
+
+  - id: 16229
+    level: 13
+    description: "O365 — bulk file download from SharePoint/OneDrive (>50 files in 5m)"
+    groups: [o365, sharepoint, onedrive, bulk_download, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"FileDownloaded\""}
+    correlation:
+      window: "5m"
+      threshold: 50
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567.002"}]
+    alert: {title: "O365: Bulk SharePoint/OneDrive download"}
+    enabled: true
+
+  - id: 16230
+    level: 13
+    description: "O365 — bulk file deletion from SharePoint/OneDrive"
+    groups: [o365, sharepoint, onedrive, bulk_delete, impact]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"FileDeleted\""}
+    correlation:
+      window: "5m"
+      threshold: 50
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "O365: Bulk SharePoint/OneDrive deletion"}
+    enabled: true
+
+  - id: 16231
+    level: 12
+    description: "O365 — sharing policy changed to allow external"
+    groups: [o365, sharepoint, sharing_policy, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"SharingPolicyChanged\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "O365: Sharing policy changed"}
+    enabled: true
+
+  - id: 16232
+    level: 13
+    description: "O365 — sensitive file shared externally (DLP signal)"
+    groups: [o365, sharepoint, dlp, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"DLPRuleMatch\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567"}]
+    alert: {title: "O365: DLP rule match"}
+    enabled: true
+
+  - id: 16233
+    level: 12
+    description: "O365 — site collection ownership transfer (persistence)"
+    groups: [o365, sharepoint, ownership_transfer, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"SiteCollectionAdminAdded\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "O365: Site collection admin added"}
+    enabled: true
+
+  # ── Teams ─────────────────────────────────────────────────────────────
+  - id: 16234
+    level: 12
+    description: "O365 — Teams external federation enabled"
+    groups: [o365, teams, federation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"TeamsTenantSettingChanged\".*AllowFederatedUsers"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1199"}]
+    alert: {title: "O365: Teams external federation toggled"}
+    enabled: true
+
+  - id: 16235
+    level: 13
+    description: "O365 — external user added to Teams channel"
+    groups: [o365, teams, external_user, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"MemberAdded\".*\"UserType\":\\s*\"Guest\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1136.003"}]
+    alert: {title: "O365: Guest user added to Teams"}
+    enabled: true
+
+  - id: 16236
+    level: 13
+    description: "O365 — Teams bot installed across tenant"
+    groups: [o365, teams, app_install, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"AppInstalled\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505"}]
+    alert: {title: "O365: Teams app/bot installed"}
+    enabled: true
+
+  - id: 16237
+    level: 12
+    description: "O365 — chat message edited / deleted by admin (cover-up)"
+    groups: [o365, teams, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*(\"MessageHostedContentDeleted\"|\"MessageHostedContentUpdated\")"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070"}]
+    alert: {title: "O365: Teams message hosted content deleted/updated"}
+    enabled: true
+
+  # ── Microsoft Flow / Power Automate ───────────────────────────────────
+  - id: 16238
+    level: 13
+    description: "O365 — Power Automate flow created with HTTP/external action"
+    groups: [o365, power_automate, persistence, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"CreateFlow\""}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1567"}
+    alert: {title: "O365: Power Automate flow created"}
+    enabled: true
+
+  # ── Compliance / Discovery ────────────────────────────────────────────
+  - id: 16239
+    level: 14
+    description: "O365 — retention policy deleted (evidence destruction)"
+    groups: [o365, compliance, retention, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Remove-RetentionCompliancePolicy\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070"}]
+    alert: {title: "O365: Retention compliance policy removed"}
+    enabled: true
+
+  - id: 16240
+    level: 13
+    description: "O365 — sensitivity / classification label removed from file"
+    groups: [o365, compliance, sensitivity_label, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"SensitivityLabelRemoved\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "O365: Sensitivity label removed"}
+    enabled: true
+
+  # ── Mailbox / Item Access ─────────────────────────────────────────────
+  - id: 16241
+    level: 11
+    description: "O365 — mailbox accessed by another user (delegate access)"
+    groups: [o365, mailbox_access, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"MailItemsAccessed\""}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1114.002"}]
+    alert: {title: "O365: MailItemsAccessed (delegate)"}
+    enabled: true
+
+  - id: 16242
+    level: 13
+    description: "O365 — mass MailItemsAccessed from one identity (mailbox scrape)"
+    groups: [o365, mailbox_access, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"MailItemsAccessed\""}
+    correlation:
+      window: "10m"
+      threshold: 100
+    mitre: [{tactic_id: "TA0010", technique_id: "T1114.002"}]
+    alert: {title: "O365: Mass mailbox item access (scrape)"}
+    enabled: true
+
+  - id: 16243
+    level: 11
+    description: "O365 — Send / Reply by non-owner via delegate"
+    groups: [o365, mailbox_send_as, impersonation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"SendAs\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1098.002"}]
+    alert: {title: "O365: SendAs delegate use"}
+    enabled: true
+
+  - id: 16244
+    level: 11
+    description: "O365 — SendOnBehalf delegate use"
+    groups: [o365, mailbox_send_on_behalf, impersonation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"SendOnBehalf\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1098.002"}]
+    alert: {title: "O365: SendOnBehalf delegate use"}
+    enabled: true
+
+  # ── Suspicious sign-in geographies / IPs ──────────────────────────────
+  - id: 16245
+    level: 11
+    description: "O365 — sign-in from new country for user"
+    groups: [o365, geo_anomaly, signin]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"UserLoggedIn\".*\"Country\":"}
+    enrich:
+      baseline: "user.country"
+    mitre: [{tactic_id: "TA0006", technique_id: "T1078.004"}]
+    alert: {title: "O365: Sign-in from new country"}
+    enabled: true
+
+  - id: 16246
+    level: 12
+    description: "O365 — sign-in from hosting / VPN ASN"
+    groups: [o365, hosting_provider, asn]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"ClientIP\":\\s*\"\\d+\\.\\d+\\.\\d+\\.\\d+\""}
+      enrich:
+        asn_classification: "hosting|vpn"
+    mitre: [{tactic_id: "TA0011", technique_id: "T1090"}]
+    alert: {title: "O365: Sign-in from hosting/VPN ASN"}
+    enabled: true
+
+  - id: 16247
+    level: 13
+    description: "O365 — sign-in success then suspicious app consent within 10m (token theft)"
+    groups: [o365, illicit_consent, token_theft, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Consent to application\""}
+    correlation:
+      window: "10m"
+      threshold: 1
+      precondition_match:
+        regex: "\"Operation\":\\s*\"UserLoggedIn\""
+        precondition_count: 1
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1528"}
+    alert: {title: "O365: Consent shortly after sign-in"}
+    enabled: true
+
+  # ── App / Workload Misuse ─────────────────────────────────────────────
+  - id: 16248
+    level: 13
+    description: "O365 — Microsoft Graph PowerShell module used unusually (token scrape)"
+    groups: [o365, graph, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"ApplicationDisplayName\":\\s*\"Microsoft Graph PowerShell\""}
+    correlation:
+      window: "10m"
+      threshold: 50
+    mitre: [{tactic_id: "TA0007", technique_id: "T1087"}]
+    alert: {title: "O365: Graph PowerShell heavy usage"}
+    enabled: true
+
+  - id: 16249
+    level: 13
+    description: "O365 — Azure AD Connect sync account abused (DCSync-equivalent)"
+    groups: [o365, aad_connect, credential_dumping, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"UserId\":\\s*\"Sync_\\S+\""}
+    correlation:
+      window: "30m"
+      threshold: 5
+      distinct: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1003.006"}]
+    alert: {title: "O365: Sync_ account activity burst"}
+    enabled: true
+
+  # ── Defender / Identity Protection / Cloud App Security ───────────────
+  - id: 16250
+    level: 13
+    description: "O365 Defender — malware detected in OneDrive/SharePoint"
+    groups: [o365, defender, malware]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"FileMalwareDetected\""}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1204.002"}]
+    alert: {title: "O365: Malware detected in cloud file"}
+    enabled: true
+
+  - id: 16251
+    level: 12
+    description: "O365 Defender — suspicious mailbox forwarding flagged"
+    groups: [o365, defender, mail_forwarding]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"SuspiciousMailForwardingDetected\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1114.003"}]
+    alert: {title: "O365 Defender: Suspicious forwarding detected"}
+    enabled: true
+
+  - id: 16252
+    level: 14
+    description: "O365 — domain federation cert change paired with new admin role"
+    groups: [o365, golden_saml, attack, post_compromise]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Set federation settings on domain\""}
+    correlation:
+      window: "60m"
+      threshold: 1
+      precondition_match:
+        regex: "\"Operation\":\\s*\"Add member to role\\.\""
+        precondition_count: 1
+    mitre: [{tactic_id: "TA0006", technique_id: "T1606.002"}]
+    alert: {title: "O365: Federation + new admin role (Golden SAML)"}
+    enabled: true
+
+  # ── Token / Session Hijack Indicators ─────────────────────────────────
+  - id: 16253
+    level: 14
+    description: "O365 — primary refresh token (PRT) refresh from new device"
+    groups: [o365, prt, token_theft, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"AuthenticationProtocol\":\\s*\"primaryRefreshToken\""}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1528"}
+    alert: {title: "O365: PRT refresh from new device"}
+    enabled: true
+
+  - id: 16254
+    level: 13
+    description: "O365 — token issuance from PassThrough authentication agent (agent compromise)"
+    groups: [o365, aad_pta, compromise]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"AuthenticationDetails\":.*\"PassThrough\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1556"}]
+    alert: {title: "O365: PTA authentication observed"}
+    enabled: true
+
+  # ── Tenant-Level Misconfig ────────────────────────────────────────────
+  - id: 16255
+    level: 13
+    description: "O365 — security defaults disabled"
+    groups: [o365, security_defaults, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Disable Security Defaults\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "O365: Security Defaults disabled"}
+    enabled: true
+
+  - id: 16256
+    level: 13
+    description: "O365 — guest user invitation allowed for non-admins"
+    groups: [o365, tenant_settings, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Update authorization policy\".*AllowedToInviteExternalUsers"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1199"}]
+    alert: {title: "O365: Guest invite policy weakened"}
+    enabled: true
+
+  # ── Email Phishing / Quarantine ───────────────────────────────────────
+  - id: 16257
+    level: 13
+    description: "O365 — phishing email reported by user (Report Message add-in)"
+    groups: [o365, phishing, user_report]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"PhishConfirmed\""}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1566.002"}]
+    alert: {title: "O365: User reported phishing"}
+    enabled: true
+
+  - id: 16258
+    level: 13
+    description: "O365 — quarantined message released to inbox by admin"
+    groups: [o365, quarantine, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"ReleaseQuarantineMessage\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "O365: Quarantine release"}
+    enabled: true
+
+  - id: 16259
+    level: 12
+    description: "O365 — anti-phish policy modified"
+    groups: [o365, anti_phish, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Operation\":\\s*\"Set-AntiPhishPolicy\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "O365: AntiPhish policy modified"}
+    enabled: true

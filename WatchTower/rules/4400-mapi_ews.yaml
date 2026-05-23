@@ -1,0 +1,300 @@
+# WatchTower — MAPI / EWS / RPC over HTTP Detection
+# Rule IDs: 16400-16419
+#
+# Sources expected:
+#   - IIS logs for /EWS/, /OAB/, /Microsoft-Server-ActiveSync/, /RPC/, /MAPI/
+#   - Exchange RPCClientAccess and CmdletInfra eventlog channels
+
+rules:
+  # ── EWS specific ──────────────────────────────────────────────────────
+  - id: 16400
+    level: 12
+    description: "EWS — anomalous user agent (not Outlook, not standard client)"
+    groups: [ews, exchange, anomaly, user_agent]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/EWS/Exchange\\.asmx.*User-Agent:\\s*(?!(Microsoft Office|Outlook|MailApp|ExchangeServicesClient|MFCMAPI))"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1078"}
+    alert: {title: "EWS: Anomalous client User-Agent"}
+    enabled: true
+
+  - id: 16401
+    level: 13
+    description: "EWS — Python / curl / Postman User-Agent (scripted abuse)"
+    groups: [ews, exchange, scripted_abuse, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/EWS/.*User-Agent:\\s*(python|curl|wget|Go-http|requests|Postman|Java/)"}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1114.002"}]
+    alert: {title: "EWS: Scripted client User-Agent"}
+    enabled: true
+
+  - id: 16402
+    level: 13
+    description: "EWS — FindItem operation burst (mailbox content enumeration)"
+    groups: [ews, exchange, enumeration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)<m:FindItem|FindItem operation"}
+    correlation:
+      window: "5m"
+      threshold: 50
+      group_by: ["agent_name"]
+    mitre:
+      - {tactic_id: "TA0009", technique_id: "T1114.002"}
+    alert: {title: "EWS: FindItem enumeration burst"}
+    enabled: true
+
+  - id: 16403
+    level: 13
+    description: "EWS — Subscribe operation (mailbox notification subscription — used for live spying)"
+    groups: [ews, exchange, subscription, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)<m:Subscribe|PushSubscription|PullSubscription"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098.002"}]
+    alert: {title: "EWS: Subscribe operation"}
+    enabled: true
+
+  - id: 16404
+    level: 13
+    description: "EWS — GetUserConfiguration to read mailbox rules / Outlook config"
+    groups: [ews, exchange, config_recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)<m:GetUserConfiguration|<t:UserConfigurationName"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1087.002"}]
+    alert: {title: "EWS: GetUserConfiguration"}
+    enabled: true
+
+  - id: 16405
+    level: 14
+    description: "EWS — CreateItem of MeetingRequest with payload-like body (CVE-2023-23397 NTLM relay)"
+    groups: [ews, exchange, cve, ntlm_relay, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)PidLidReminderFileParameter.*\\\\\\\\|MeetingRequest.*ReminderSoundFile"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1187"}
+    alert: {title: "EWS: CVE-2023-23397 reminder UNC pattern"}
+    enabled: true
+
+  - id: 16406
+    level: 12
+    description: "EWS — SyncFolderItems repeated (mailbox mirror)"
+    groups: [ews, exchange, sync, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)<m:SyncFolderItems|SyncState"}
+    correlation:
+      window: "10m"
+      threshold: 30
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0010", technique_id: "T1114.002"}]
+    alert: {title: "EWS: SyncFolderItems burst"}
+    enabled: true
+
+  - id: 16407
+    level: 13
+    description: "EWS — Impersonation token used by service account against many mailboxes"
+    groups: [ews, exchange, impersonation, mass_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)X-AnchorMailbox|<t:ExchangeImpersonation>"}
+    correlation:
+      window: "10m"
+      threshold: 25
+      distinct: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1098.002"}]
+    alert: {title: "EWS: Impersonation across many mailboxes"}
+    enabled: true
+
+  # ── MAPI over HTTP ────────────────────────────────────────────────────
+  - id: 16408
+    level: 12
+    description: "MAPI/HTTP — connection from non-Outlook client"
+    groups: [mapi, exchange, anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/mapi/(emsmdb|nspi)/.*User-Agent:\\s*(?!Microsoft Office)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "MAPI: Non-Outlook client connected"}
+    enabled: true
+
+  - id: 16409
+    level: 12
+    description: "MAPI/HTTP — POST burst (mailbox scrape)"
+    groups: [mapi, exchange, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/mapi/emsmdb/.*\\sPOST\\s"}
+    correlation:
+      window: "5m"
+      threshold: 200
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0010", technique_id: "T1114.002"}]
+    alert: {title: "MAPI: POST burst (scrape)"}
+    enabled: true
+
+  # ── RPC over HTTP / Outlook Anywhere ──────────────────────────────────
+  - id: 16410
+    level: 11
+    description: "RPC/HTTP — Outlook Anywhere connection (legacy, audit)"
+    groups: [rpc, exchange, outlook_anywhere, legacy_protocol]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/rpc/rpcproxy\\.dll\\b"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "RPC/HTTP: Outlook Anywhere session"}
+    enabled: true
+
+  - id: 16411
+    level: 13
+    description: "RPC/HTTP — RPC tunnel from non-Outlook client (lateral movement)"
+    groups: [rpc, exchange, lateral_movement, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/rpc/rpcproxy\\.dll.*User-Agent:\\s*(?!(Microsoft Office|Outlook))"}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1021.001"}
+    alert: {title: "RPC/HTTP: Non-Outlook RPC tunnel"}
+    enabled: true
+
+  # ── Autodiscover Abuse ────────────────────────────────────────────────
+  - id: 16412
+    level: 13
+    description: "Autodiscover — POST burst (mailbox enumeration / probing)"
+    groups: [autodiscover, exchange, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/autodiscover/autodiscover\\.xml.*\\sPOST\\s"}
+    correlation:
+      window: "5m"
+      threshold: 30
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1087.002"}]
+    alert: {title: "Autodiscover: POST burst"}
+    enabled: true
+
+  - id: 16413
+    level: 13
+    description: "Autodiscover — request from external IP to internal-only mailbox naming pattern"
+    groups: [autodiscover, exchange, leakage]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/autodiscover/autodiscover\\.xml.*<EMailAddress>(?:[^<@]+@(?!yourdomain\\.com))"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1087.002"}]
+    alert: {title: "Autodiscover: External request for tenant mailbox"}
+    enabled: true
+
+  # ── OAB / NSPI ────────────────────────────────────────────────────────
+  - id: 16414
+    level: 12
+    description: "OAB — Offline Address Book download (mass GAL extraction)"
+    groups: [oab, exchange, gal, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/OAB/[a-f0-9\\-]+/oab\\.xml|/OAB/[a-f0-9\\-]+/\\S+\\.lzx"}
+    correlation:
+      window: "10m"
+      threshold: 5
+      group_by: ["agent_name"]
+    mitre:
+      - {tactic_id: "TA0007", technique_id: "T1087"}
+    alert: {title: "OAB: Repeated OAB downloads (GAL extract)"}
+    enabled: true
+
+  - id: 16415
+    level: 12
+    description: "NSPI — Name Service Provider Interface enumeration burst"
+    groups: [nspi, exchange, gal, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/mapi/nspi/"}
+    correlation:
+      window: "5m"
+      threshold: 30
+    mitre: [{tactic_id: "TA0007", technique_id: "T1087"}]
+    alert: {title: "NSPI: Address list enumeration burst"}
+    enabled: true
+
+  # ── Auth / Token Anomalies ────────────────────────────────────────────
+  - id: 16416
+    level: 13
+    description: "EWS — OAuth token used from new IP for service principal"
+    groups: [ews, exchange, oauth, token_theft]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/EWS/Exchange\\.asmx.*Authorization:\\s*Bearer "}
+    enrich:
+      baseline: "service_principal.client_ip"
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1528"}
+    alert: {title: "EWS: OAuth Bearer from new IP"}
+    enabled: true
+
+  - id: 16417
+    level: 14
+    description: "EWS — service account using token globally (impersonation farm)"
+    groups: [ews, exchange, service_account_abuse, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)X-AnchorMailbox"}
+    correlation:
+      window: "15m"
+      threshold: 100
+      distinct: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1098.002"}]
+    alert: {title: "EWS: Service account mass-impersonation"}
+    enabled: true
+
+  # ── Errors / Service Health ───────────────────────────────────────────
+  - id: 16418
+    level: 11
+    description: "RPCClientAccess — connection failures (auth/perm anomalies)"
+    groups: [rpc, exchange, auth, errors]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)MSExchange RpcClientAccess.*(failed|denied|invalid)"}
+    correlation:
+      window: "10m"
+      threshold: 20
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110"}]
+    alert: {title: "RPCClientAccess: failure burst"}
+    enabled: true
+
+  - id: 16419
+    level: 12
+    description: "EWS — 401/403 burst (token/credential abuse)"
+    groups: [ews, exchange, auth, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/EWS/Exchange\\.asmx.*\\s(401|403)\\s"}
+    correlation:
+      window: "5m"
+      threshold: 25
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "EWS: Auth failure burst"}
+    enabled: true

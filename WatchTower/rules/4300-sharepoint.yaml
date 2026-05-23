@@ -1,0 +1,415 @@
+# WatchTower — SharePoint Server / SharePoint Online Detection
+# Rule IDs: 16300-16329
+#
+# Sources expected:
+#   - On-prem: IIS logs + Windows Application eventlog (Provider:
+#     Microsoft-SharePoint Products-SharePoint Foundation) + ULS logs at
+#     C:\Program Files\Common Files\microsoft shared\Web Server Extensions\
+#     <ver>\LOGS\*.log
+#   - SharePoint Online: O365 audit log (see 4200-office365_audit.yaml for
+#     workload=SharePoint events). This file focuses on on-prem-specific
+#     and document/site-level events that aren't in the O365 file.
+
+rules:
+  # ── CVEs on SharePoint Server ─────────────────────────────────────────
+  - id: 16300
+    level: 14
+    description: "SharePoint — CVE-2019-0604 deserialization exploit pattern"
+    groups: [sharepoint, cve, rce, deserialization, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/_layouts/15/Picker\\.aspx.*EntitySeparator|/_layouts/15/iframe\\.aspx"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "SharePoint: CVE-2019-0604 picker exploit"}
+    enabled: true
+
+  - id: 16301
+    level: 14
+    description: "SharePoint — CVE-2023-29357 / 24955 spoofing → RCE chain"
+    groups: [sharepoint, cve, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)x-ms-trust-encoded.*\\bbypass\\b|/_api/web/siteusers\\?@v"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "SharePoint: CVE-2023-29357 spoofing pattern"}
+    enabled: true
+
+  - id: 16302
+    level: 13
+    description: "SharePoint — request to /_vti_bin/ administrative service"
+    groups: [sharepoint, recon, web_service]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/_vti_bin/(client\\.svc|listdata\\.svc|sites\\.asmx|webs\\.asmx)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "SharePoint: _vti_bin service probe"}
+    enabled: true
+
+  # ── Web Part / Page Modification ──────────────────────────────────────
+  - id: 16303
+    level: 13
+    description: "SharePoint — custom web part uploaded / installed"
+    groups: [sharepoint, web_part, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(/_catalogs/wp/|webpart\\.dwp|/_catalogs/solutions/)"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1505"}
+    alert: {title: "SharePoint: Web part/solution upload"}
+    enabled: true
+
+  - id: 16304
+    level: 13
+    description: "SharePoint — script editor web part or content editor (XSS persistence)"
+    groups: [sharepoint, xss, persistence, content_editor]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)<WebPart.*ScriptEditorWebPart|ContentEditorWebPart.*<script"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505"}]
+    alert: {title: "SharePoint: Script/Content editor web part with script"}
+    enabled: true
+
+  - id: 16305
+    level: 13
+    description: "SharePoint — master page / layout modified"
+    groups: [sharepoint, master_page, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(/_catalogs/masterpage/.*\\.master|PUT\\s+.*\\.aspx\\s)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505"}]
+    alert: {title: "SharePoint: Master page / layout PUT"}
+    enabled: true
+
+  # ── Site / Collection Permissions ─────────────────────────────────────
+  - id: 16306
+    level: 12
+    description: "SharePoint — site collection administrator added"
+    groups: [sharepoint, privilege_escalation, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Site Collection Administrator.*added"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "SharePoint: Site collection admin added"}
+    enabled: true
+
+  - id: 16307
+    level: 13
+    description: "SharePoint — 'Everyone' or 'NT AUTHORITY\\authenticated users' added to site permissions"
+    groups: [sharepoint, permissions, exposure]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)(Everyone|NT AUTHORITY\\\\authenticated users).*added.*permission"}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1567.002"}
+    alert: {title: "SharePoint: Everyone / authenticated users granted access"}
+    enabled: true
+
+  - id: 16308
+    level: 12
+    description: "SharePoint — anonymous access enabled on site"
+    groups: [sharepoint, anonymous_access, exposure]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Anonymous access.*(enabled|granted)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "SharePoint: Anonymous access enabled"}
+    enabled: true
+
+  - id: 16309
+    level: 12
+    description: "SharePoint — broken inheritance on document library (privilege isolation change)"
+    groups: [sharepoint, permissions]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)inheritance.*broken|stopped inheriting permissions"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1564"}]
+    alert: {title: "SharePoint: Permission inheritance broken"}
+    enabled: true
+
+  # ── File Access & Exfiltration ────────────────────────────────────────
+  - id: 16310
+    level: 13
+    description: "SharePoint — bulk document download from single user (>50 in 5m)"
+    groups: [sharepoint, exfiltration, bulk_download]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\\sGET\\s\\S+\\.(docx?|xlsx?|pptx?|pdf|zip|csv)\\s"}
+    correlation:
+      window: "5m"
+      threshold: 50
+      group_by: ["agent_name"]
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1567.002"}
+    alert: {title: "SharePoint: Bulk document download burst"}
+    enabled: true
+
+  - id: 16311
+    level: 13
+    description: "SharePoint — sensitive document accessed (filename matches PII/secret keywords)"
+    groups: [sharepoint, sensitive_access, dlp]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(?:passwords?|secrets?|salary|payroll|finance|HR|confidential|propietary|customers?)\\.(docx?|xlsx?|pptx?|csv|pdf)"}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1213.002"}]
+    alert: {title: "SharePoint: Sensitive-named document accessed"}
+    enabled: true
+
+  - id: 16312
+    level: 13
+    description: "SharePoint — sharing link created with anonymous access (on-prem External Sharing)"
+    groups: [sharepoint, sharing_link, exfiltration]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)sharing.*(anonymous|public link).*created"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567.002"}]
+    alert: {title: "SharePoint: Anonymous sharing link created"}
+    enabled: true
+
+  - id: 16313
+    level: 13
+    description: "SharePoint — large file upload (>50 MB) by non-admin"
+    groups: [sharepoint, upload, malware_drop]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)POST\\s+\\S+\\s+200\\s+\\d{8,}"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1105"}]
+    alert: {title: "SharePoint: Large file upload"}
+    enabled: true
+
+  - id: 16314
+    level: 12
+    description: "SharePoint — executable file uploaded to document library"
+    groups: [sharepoint, upload, malware_drop]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)PUT\\s+\\S+\\.(exe|dll|ps1|bat|hta|js|vbs|jar|wsf)\\s"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1105"}
+    alert: {title: "SharePoint: Executable file uploaded"}
+    enabled: true
+
+  - id: 16315
+    level: 13
+    description: "SharePoint — bulk file deletion (mass-delete impact)"
+    groups: [sharepoint, impact, bulk_delete]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\\sDELETE\\s\\S+\\s"}
+    correlation:
+      window: "5m"
+      threshold: 30
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "SharePoint: Bulk delete burst"}
+    enabled: true
+
+  # ── App / Solution Installation ───────────────────────────────────────
+  - id: 16316
+    level: 14
+    description: "SharePoint — sandboxed/farm solution activated by non-admin"
+    groups: [sharepoint, solution_install, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)(Install-SPSolution|Add-SPSolution|Enable-SPFeature).*-Force"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1505"}
+    alert: {title: "SharePoint: Solution force-installed"}
+    enabled: true
+
+  - id: 16317
+    level: 13
+    description: "SharePoint — SharePoint Framework (SPFx) app deployed tenant-wide"
+    groups: [sharepoint, spfx, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)SPFx.*deployment.*tenant|app catalog.*deployed"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505"}]
+    alert: {title: "SharePoint: SPFx app tenant-deployed"}
+    enabled: true
+
+  - id: 16318
+    level: 14
+    description: "SharePoint — PnP PowerShell mass operation (likely bulk export)"
+    groups: [sharepoint, pnp, bulk_operation, exfiltration]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Connect-PnPOnline|Get-PnPFile.*-AsFile"}
+    correlation:
+      window: "10m"
+      threshold: 50
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567.002"}]
+    alert: {title: "SharePoint: PnP PowerShell bulk export"}
+    enabled: true
+
+  # ── Search / API Abuse ────────────────────────────────────────────────
+  - id: 16319
+    level: 11
+    description: "SharePoint — Search query for sensitive terms (passwords/confidential)"
+    groups: [sharepoint, search, recon, dlp]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/_api/search/query\\?querytext=.*('password'|'secret'|'confidential'|'ssn')"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1213.002"}]
+    alert: {title: "SharePoint: Search for sensitive terms"}
+    enabled: true
+
+  - id: 16320
+    level: 12
+    description: "SharePoint — REST API enumeration burst"
+    groups: [sharepoint, api_abuse, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/_api/(web|site|users|lists)"}
+    correlation:
+      window: "5m"
+      threshold: 100
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1213.002"}]
+    alert: {title: "SharePoint: REST API enumeration"}
+    enabled: true
+
+  - id: 16321
+    level: 12
+    description: "SharePoint — CSOM client.svc bulk batched request (mass operations)"
+    groups: [sharepoint, csom, bulk_operation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/_vti_bin/client\\.svc/ProcessQuery"}
+    correlation:
+      window: "5m"
+      threshold: 50
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567.002"}]
+    alert: {title: "SharePoint: CSOM bulk operation burst"}
+    enabled: true
+
+  # ── User Profile / Identity Abuse ─────────────────────────────────────
+  - id: 16322
+    level: 12
+    description: "SharePoint — user profile property changed (display name spoofing)"
+    groups: [sharepoint, profile, impersonation]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)UserProfile.*PropertyChanged"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1564"}]
+    alert: {title: "SharePoint: User profile property changed"}
+    enabled: true
+
+  # ── Audit Log Tampering ───────────────────────────────────────────────
+  - id: 16323
+    level: 14
+    description: "SharePoint — auditing disabled on site collection"
+    groups: [sharepoint, audit_tampering, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Audit.*(disabled|trim|removed).*SiteCollection"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.002"}
+    alert: {title: "SharePoint: Site collection audit disabled"}
+    enabled: true
+
+  - id: 16324
+    level: 13
+    description: "SharePoint — audit log trimmed manually"
+    groups: [sharepoint, audit_tampering, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)(Get-SPAuditEntry.*-EndDate.*Remove|SPAudit.*DeleteEntries)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070"}]
+    alert: {title: "SharePoint: Audit log trimmed"}
+    enabled: true
+
+  # ── User-Initiated Sharing Anomalies ──────────────────────────────────
+  - id: 16325
+    level: 12
+    description: "SharePoint — external sharing invitation sent to multiple domains"
+    groups: [sharepoint, external_sharing, anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(SharingInvitationCreated|SharingSet).*\"InvitedUser\":\\s*\"[^@]+@[^@\"]+\""}
+    correlation:
+      window: "10m"
+      threshold: 10
+      distinct: ["agent_name"]
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567.002"}]
+    alert: {title: "SharePoint: Many external sharing invitations"}
+    enabled: true
+
+  - id: 16326
+    level: 13
+    description: "SharePoint — sharing with personal-email domain (gmail/outlook/yahoo)"
+    groups: [sharepoint, external_sharing, personal_email, exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"InvitedUser\":\\s*\"[^@\"]+@(gmail|outlook|yahoo|hotmail|aol|protonmail|icloud)\\.com\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567.002"}]
+    alert: {title: "SharePoint: Sharing with personal-email domain"}
+    enabled: true
+
+  # ── ULS / Application Eventlog Errors ─────────────────────────────────
+  - id: 16327
+    level: 11
+    description: "SharePoint — ULS error: Critical / Unexpected severity"
+    groups: [sharepoint, uls, errors]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\\b(Unexpected|Critical|High)\\b.*SharePoint"}
+    correlation:
+      window: "5m"
+      threshold: 20
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "SharePoint: ULS critical/unexpected burst"}
+    enabled: true
+
+  - id: 16328
+    level: 11
+    description: "SharePoint — Timer Job failure"
+    groups: [sharepoint, timer_job, errors]
+    match:
+      type: "log.eventlog"
+      fields:
+        message: {regex: "(?i)Timer Job.*failed"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "SharePoint: Timer job failure"}
+    enabled: true
+
+  - id: 16329
+    level: 13
+    description: "SharePoint — STSADM / SPManagement Shell run from unusual account"
+    groups: [sharepoint, admin_tool, lateral_movement]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(stsadm|psconfig|SharePoint Management Shell)\\.exe$"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1078"}]
+    alert: {title: "SharePoint: stsadm/psconfig executed"}
+    enabled: true
