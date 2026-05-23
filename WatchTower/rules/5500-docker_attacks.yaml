@@ -1,0 +1,657 @@
+# WatchTower — Docker Attack Detection
+# Rule IDs: 17500-17549
+#
+# Sources:
+#   - Docker daemon log (dockerd, /var/log/docker.log or journald)
+#   - auditd events for /var/run/docker.sock access
+#   - Sysmon Event 1 / EXECVE for docker / dockerd / containerd commands
+
+rules:
+  # ── Docker Socket Abuse ───────────────────────────────────────────────
+  - id: 17500
+    level: 14
+    description: "Docker — /var/run/docker.sock accessed by non-root / non-docker process"
+    groups: [docker, socket_abuse, container_escape, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=PATH.*name=\"/var/run/docker\\.sock\""}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1611"}
+    alert: {title: "Docker: docker.sock accessed"}
+    enabled: true
+
+  - id: 17501
+    level: 14
+    description: "Docker — TCP daemon API exposed on 0.0.0.0:2375 / 2376 (no auth)"
+    groups: [docker, daemon_exposure, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)dockerd.*API listen.*tcp://0\\.0\\.0\\.0:(2375|2376)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Docker: daemon API on 0.0.0.0:2375/2376"}
+    enabled: true
+
+  - id: 17502
+    level: 14
+    description: "Docker — container run with --privileged"
+    groups: [docker, privileged, container_escape, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+(run|create).*--privileged"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1611"}
+    alert: {title: "Docker: --privileged container"}
+    enabled: true
+
+  - id: 17503
+    level: 14
+    description: "Docker — container run mounting host root or sensitive paths"
+    groups: [docker, host_mount, container_escape, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+(run|create).*-v\\s+(/:/|/etc:|/root:|/var/run/docker\\.sock:|/proc:|/sys:)"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1611"}
+    alert: {title: "Docker: host filesystem mounted"}
+    enabled: true
+
+  - id: 17504
+    level: 14
+    description: "Docker — container with --net=host or --pid=host or --ipc=host (namespace escape)"
+    groups: [docker, host_namespace, container_escape, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+(run|create).*--(net|network|pid|ipc|uts)=host"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "Docker: container with host namespace"}
+    enabled: true
+
+  - id: 17505
+    level: 14
+    description: "Docker — container with --cap-add SYS_ADMIN / SYS_PTRACE / NET_ADMIN"
+    groups: [docker, capabilities, container_escape, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)--cap-add[= ]+(SYS_ADMIN|SYS_PTRACE|NET_ADMIN|SYS_MODULE|DAC_READ_SEARCH|DAC_OVERRIDE)"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "Docker: dangerous capability added"}
+    enabled: true
+
+  - id: 17506
+    level: 13
+    description: "Docker — container with --security-opt seccomp=unconfined / apparmor=unconfined"
+    groups: [docker, security_opt, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)--security-opt[= ]+(seccomp=unconfined|apparmor=unconfined|no-new-privileges=false)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "Docker: seccomp/apparmor unconfined"}
+    enabled: true
+
+  - id: 17507
+    level: 13
+    description: "Docker — container run as root user (no --user flag)"
+    groups: [docker, root_user, misconfiguration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+(run|create)\\s+(?!.*--user\\b).*"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1078"}]
+    alert: {title: "Docker: container without --user flag (likely root)"}
+    enabled: true
+
+  - id: 17508
+    level: 13
+    description: "Docker — exec into running container (potentially attacker action)"
+    groups: [docker, exec, lateral_movement]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+exec\\s.*\\s(/bin/(bash|sh)|sh|bash)\\b"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1609"}]
+    alert: {title: "Docker: docker exec shell into container"}
+    enabled: true
+
+  - id: 17509
+    level: 14
+    description: "Docker — container pulled from non-allowlist registry"
+    groups: [docker, image_pull, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+(pull|run).*\\b([a-z0-9\\-]+\\.[a-z]{2,}|[a-z0-9\\-]+)/[a-z0-9\\-_]+:[a-z0-9\\-_\\.]+"}
+      enrich:
+        baseline: "registry.allowlist"
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1195.002"}
+    alert: {title: "Docker: image from non-allowlisted registry"}
+    enabled: true
+
+  - id: 17510
+    level: 13
+    description: "Docker — image pulled with :latest tag (mutable, supply-chain risk)"
+    groups: [docker, image_pull, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+(pull|run).*:latest\\b"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.002"}]
+    alert: {title: "Docker: image pulled with :latest tag"}
+    enabled: true
+
+  - id: 17511
+    level: 13
+    description: "Docker — container with --device=/dev/kmsg or /dev/mem (kernel access)"
+    groups: [docker, device_access, container_escape]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)--device[= ]+/dev/(kmsg|mem|kcore|nvme|sd[a-z])"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "Docker: dangerous device mount"}
+    enabled: true
+
+  - id: 17512
+    level: 13
+    description: "Docker — container started with userns-remap disabled when host has it on (escape vector)"
+    groups: [docker, userns, container_escape]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+(run|create).*--userns[= ]+host"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "Docker: --userns=host"}
+    enabled: true
+
+  # ── Cryptominer / Resource Hijack ─────────────────────────────────────
+  - id: 17513
+    level: 14
+    description: "Docker — running container image associated with cryptomining (xmrig/minero/coinhive)"
+    groups: [docker, cryptomining, impact, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+(pull|run).*\\b(xmrig|cpuminer|minero|coinhive|monero|nicehash|t-rex|nbminer|phoenixminer)\\b"}
+    mitre:
+      - {tactic_id: "TA0040", technique_id: "T1496"}
+    alert: {title: "Docker: cryptominer image"}
+    enabled: true
+
+  - id: 17514
+    level: 13
+    description: "Docker — container with CPU shares max / unlimited memory (resource hog)"
+    groups: [docker, resource_hijack, impact]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+run.*--cpus(=|\\s+)?(0|none)|--memory(=|\\s+)?(0|none|unlimited)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1496"}]
+    alert: {title: "Docker: unbounded resources"}
+    enabled: true
+
+  # ── Daemon / Config ───────────────────────────────────────────────────
+  - id: 17515
+    level: 13
+    description: "Docker — daemon configuration file modified"
+    groups: [docker, daemon_config, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=PATH.*name=\"/etc/docker/daemon\\.json\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Docker: /etc/docker/daemon.json modified"}
+    enabled: true
+
+  - id: 17516
+    level: 13
+    description: "Docker — TLS verification disabled (insecure-registries / insecure tlsverify=false)"
+    groups: [docker, tls, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(insecure-registries|tlsverify\\s*=\\s*false|--tls=false)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Docker: TLS verification disabled"}
+    enabled: true
+
+  - id: 17517
+    level: 14
+    description: "Docker — docker.service / dockerd binary modified"
+    groups: [docker, binary_tamper, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=PATH.*name=\"/usr/bin/(docker|dockerd|containerd|runc)\""}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1554"}
+    alert: {title: "Docker: docker/dockerd/containerd/runc binary modified"}
+    enabled: true
+
+  # ── runc / containerd specific ───────────────────────────────────────
+  - id: 17518
+    level: 14
+    description: "runc — CVE-2019-5736 host runc binary overwrite pattern"
+    groups: [runc, cve_2019_5736, container_escape, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=PATH.*name=\"/proc/self/exe\"|type=PATH.*name=\"/run/runc"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1611"}
+    alert: {title: "runc: CVE-2019-5736 file pattern"}
+    enabled: true
+
+  - id: 17519
+    level: 13
+    description: "containerd — shim binary launched from non-standard path"
+    groups: [containerd, shim, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=EXECVE.*containerd-shim.*(/tmp/|/var/tmp/|/home/)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1014"}]
+    alert: {title: "containerd: shim binary in non-standard path"}
+    enabled: true
+
+  # ── Container Process Anomalies (Falco-style) ─────────────────────────
+  - id: 17520
+    level: 13
+    description: "Container — shell spawned inside container (sh/bash from container PID)"
+    groups: [container, shell_inside, falco]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)container_id=\\S+.*comm=\"(bash|sh|zsh|dash|ash)\""}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059.004"}]
+    alert: {title: "Container: shell process spawned"}
+    enabled: true
+
+  - id: 17521
+    level: 13
+    description: "Container — package manager run inside container (apt/yum/apk) — supply-chain risk"
+    groups: [container, package_manager, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)container_id=\\S+.*comm=\"(apt|apt-get|yum|dnf|apk|pacman|emerge|portage|brew)\""}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.002"}]
+    alert: {title: "Container: package manager invoked"}
+    enabled: true
+
+  - id: 17522
+    level: 13
+    description: "Container — outbound network from container to internet (potential C2)"
+    groups: [container, c2_suspect, falco]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)container_id=\\S+.*outbound.*(connect|sendto)"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071.001"}]
+    alert: {title: "Container: outbound connection"}
+    enabled: true
+
+  - id: 17523
+    level: 13
+    description: "Container — write under /etc inside container (likely runtime mod)"
+    groups: [container, runtime_modification, falco]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)container_id=\\S+.*open.*write.*/etc/"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1014"}]
+    alert: {title: "Container: write under /etc"}
+    enabled: true
+
+  - id: 17524
+    level: 13
+    description: "Container — process attempts to mount filesystem from inside"
+    groups: [container, mount, container_escape]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)container_id=\\S+.*syscall=mount"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1611"}
+    alert: {title: "Container: mount syscall from inside"}
+    enabled: true
+
+  - id: 17525
+    level: 13
+    description: "Container — process attempts ptrace on host PID (escape)"
+    groups: [container, ptrace, container_escape]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)container_id=\\S+.*syscall=ptrace"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "Container: ptrace syscall"}
+    enabled: true
+
+  - id: 17526
+    level: 13
+    description: "Container — kernel module insertion attempt"
+    groups: [container, kernel_module, container_escape]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)container_id=\\S+.*syscall=(init_module|finit_module)"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "Container: kernel module insert from inside"}
+    enabled: true
+
+  # ── Sensitive Filesystem Read From Container ──────────────────────────
+  - id: 17527
+    level: 13
+    description: "Container — read of /proc/self/status of another PID (namespace escape probe)"
+    groups: [container, proc_recon, container_escape]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)container_id=\\S+.*open.*/proc/[1-9]\\d{0,5}/(status|cmdline|environ)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1083"}]
+    alert: {title: "Container: /proc enumeration of other PIDs"}
+    enabled: true
+
+  - id: 17528
+    level: 14
+    description: "Container — write to /proc/sys/kernel/* (kernel parameter tamper)"
+    groups: [container, kernel_param, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)container_id=\\S+.*open.*write.*/proc/sys/(kernel|net|vm)/"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562"}
+    alert: {title: "Container: write to /proc/sys/kernel"}
+    enabled: true
+
+  - id: 17529
+    level: 14
+    description: "Container — write to /sys/kernel/security/apparmor or /sys/fs/cgroup (escape vector)"
+    groups: [container, sys_fs_write, container_escape, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)container_id=\\S+.*open.*write.*/sys/(kernel|fs/cgroup)/"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "Container: write to /sys/kernel or /sys/fs/cgroup"}
+    enabled: true
+
+  # ── Image / Registry Anomalies ────────────────────────────────────────
+  - id: 17530
+    level: 13
+    description: "Docker — push to unknown registry (potential exfil channel)"
+    groups: [docker, image_push, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+push\\s+\\S+"}
+      enrich:
+        baseline: "registry.allowlist"
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567"}]
+    alert: {title: "Docker: image pushed to non-allowlisted registry"}
+    enabled: true
+
+  - id: 17531
+    level: 13
+    description: "Docker — image with no signature / unsigned (Docker Content Trust disabled)"
+    groups: [docker, dct, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)DOCKER_CONTENT_TRUST=0|--disable-content-trust"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.002"}]
+    alert: {title: "Docker: DOCKER_CONTENT_TRUST disabled"}
+    enabled: true
+
+  - id: 17532
+    level: 14
+    description: "Docker — image tag overwritten (mutation / poisoning attack)"
+    groups: [docker, image_mutation, supply_chain, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+(tag|push)\\s+\\S+:[a-z0-9\\-_\\.]+"}
+    correlation:
+      window: "10m"
+      threshold: 5
+      group_by: ["agent_name"]
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1195.002"}
+    alert: {title: "Docker: rapid image retagging (poisoning suspect)"}
+    enabled: true
+
+  - id: 17533
+    level: 12
+    description: "Docker — login to registry from unusual user agent / IP"
+    groups: [docker, registry_login, anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+login\\s"}
+    enrich:
+      baseline: "registry.user_agent"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "Docker: registry login (review)"}
+    enabled: true
+
+  # ── Volume / Mount Anomalies ──────────────────────────────────────────
+  - id: 17534
+    level: 13
+    description: "Docker — volume created with bind mount of host /etc/shadow / sensitive paths"
+    groups: [docker, volume_mount, exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+(run|create|volume).*\\b(/etc/shadow|/etc/sudoers|/root/\\.ssh|/var/log/audit)\\b"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1611"}
+    alert: {title: "Docker: sensitive host path bind-mount"}
+    enabled: true
+
+  # ── Logging / Audit ───────────────────────────────────────────────────
+  - id: 17535
+    level: 14
+    description: "Docker — log driver set to 'none' (logs silently dropped)"
+    groups: [docker, log_driver, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)--log-driver[= ]+none"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.008"}
+    alert: {title: "Docker: --log-driver=none"}
+    enabled: true
+
+  - id: 17536
+    level: 13
+    description: "Docker — daemon log file deleted / truncated"
+    groups: [docker, log_tamper, anti_forensics]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=EXECVE.*(rm|truncate|shred).*\\b(/var/log/docker\\.log|/var/lib/docker/containers/.*-json\\.log)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070.002"}]
+    alert: {title: "Docker: daemon log file deleted/truncated"}
+    enabled: true
+
+  # ── Specific Misconfigurations ────────────────────────────────────────
+  - id: 17537
+    level: 13
+    description: "Docker — port -p 0.0.0.0:<sensitive> exposed (sensitive ports to all interfaces)"
+    groups: [docker, port_exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+(run|create).*-p\\s+0\\.0\\.0\\.0:(22|3389|3306|5432|6379|27017|9200|1433):"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Docker: sensitive port published on 0.0.0.0"}
+    enabled: true
+
+  - id: 17538
+    level: 13
+    description: "Docker — environment variable contains password/secret pattern"
+    groups: [docker, secret_in_env, credential_exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+(run|create).*-e\\s+(\\w*(PASSWORD|PASS|TOKEN|SECRET|KEY|API_KEY|AWS_SECRET))=\\S+"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1552.001"}]
+    alert: {title: "Docker: secret in -e environment variable"}
+    enabled: true
+
+  # ── Suspicious docker exec patterns ───────────────────────────────────
+  - id: 17539
+    level: 14
+    description: "Docker — docker exec running nsenter / chroot (container escape)"
+    groups: [docker, escape_tool, container_escape, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+exec.*\\b(nsenter|chroot|unshare)\\b"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1611"}
+    alert: {title: "Docker: exec nsenter/chroot/unshare"}
+    enabled: true
+
+  - id: 17540
+    level: 13
+    description: "Docker — docker cp from /var/run/docker.sock or sensitive host path"
+    groups: [docker, docker_cp, credential_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+cp\\s.*\\b(/etc/shadow|/root/|/var/run/docker\\.sock)\\b"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1552.001"}]
+    alert: {title: "Docker: docker cp from sensitive host path"}
+    enabled: true
+
+  # ── Docker Swarm ──────────────────────────────────────────────────────
+  - id: 17541
+    level: 13
+    description: "Docker Swarm — manager initialized (cluster created — verify expected)"
+    groups: [docker, swarm, cluster_init]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+swarm\\s+init"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1525"}]
+    alert: {title: "Docker Swarm: cluster initialized"}
+    enabled: true
+
+  - id: 17542
+    level: 13
+    description: "Docker Swarm — node joined cluster from unexpected IP"
+    groups: [docker, swarm, node_join]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+swarm\\s+join\\b"}
+    enrich:
+      baseline: "swarm.allowed_nodes"
+    mitre: [{tactic_id: "TA0008", technique_id: "T1525"}]
+    alert: {title: "Docker Swarm: node join (verify origin)"}
+    enabled: true
+
+  - id: 17543
+    level: 13
+    description: "Docker Swarm — service updated with new image (supply-chain change)"
+    groups: [docker, swarm, service_update, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+service\\s+update.*--image"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.002"}]
+    alert: {title: "Docker Swarm: service image updated"}
+    enabled: true
+
+  # ── Falco-style direct detections ─────────────────────────────────────
+  - id: 17544
+    level: 13
+    description: "Falco-style — outbound connection to non-corporate IP from production container"
+    groups: [falco, container, network_anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)container.image=.*production.*connect.*to_addr"}
+    enrich:
+      baseline: "corp_ranges"
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071"}]
+    alert: {title: "Container: prod outbound to non-corp"}
+    enabled: true
+
+  - id: 17545
+    level: 14
+    description: "Falco-style — shellcode pattern in container process memory"
+    groups: [falco, container, shellcode, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)falco.*(shellcode|memory_injection|VirtualAlloc)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1055"}]
+    alert: {title: "Falco: shellcode pattern in container"}
+    enabled: true
+
+  - id: 17546
+    level: 13
+    description: "Falco-style — sensitive file read inside container (/etc/shadow, /root/.ssh)"
+    groups: [falco, container, sensitive_read, credential_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)falco.*open.*(/etc/shadow|/root/\\.ssh|/etc/sudoers|/etc/krb5\\.conf)"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1552.001"}
+    alert: {title: "Container: sensitive file read inside container"}
+    enabled: true
+
+  # ── Image vulnerabilities ─────────────────────────────────────────────
+  - id: 17547
+    level: 13
+    description: "Image scan — Critical CVE detected in pulled image"
+    groups: [docker, image_scan, vulnerability]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(trivy|grype|snyk).*CRITICAL.*CVE-\\d+-\\d+"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.002"}]
+    alert: {title: "Image scan: Critical CVE in image"}
+    enabled: true
+
+  - id: 17548
+    level: 12
+    description: "Image scan — many HIGH CVEs in image (burst)"
+    groups: [docker, image_scan, vulnerability]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(trivy|grype|snyk).*HIGH.*CVE-\\d+-\\d+"}
+    correlation:
+      window: "5m"
+      threshold: 10
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.002"}]
+    alert: {title: "Image scan: many HIGH CVEs"}
+    enabled: true
+
+  # ── Catch-all: Unknown image hash ─────────────────────────────────────
+  - id: 17549
+    level: 13
+    description: "Docker — container image SHA not in allowlist (unknown image)"
+    groups: [docker, unknown_image, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)docker\\s+(run|pull).*@sha256:[a-f0-9]{64}"}
+    enrich:
+      baseline: "image.sha_allowlist"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.002"}]
+    alert: {title: "Docker: unknown image SHA"}
+    enabled: true

@@ -1,0 +1,518 @@
+# WatchTower — Container Runtime / Falco-Equivalent Detection
+# Rule IDs: 17700-17739
+#
+# Sources: runtime telemetry (Falco / Tetragon / eBPF) ingested as JSON.
+# Common fields: container.id, container.image.repository, k8s.pod.name,
+# proc.name, proc.cmdline, proc.pname, fd.name, fd.directory, evt.type.
+
+rules:
+  # ── Process Anomalies in Containers ───────────────────────────────────
+  - id: 17700
+    level: 13
+    description: "Runtime — shell in container (bash/sh/zsh launched in pod)"
+    groups: [runtime, shell_in_container, falco]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"proc\\.name\":\\s*\"(bash|sh|zsh|dash|ash|ksh)\".*\"container\\.id\""}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1059.004"}
+    alert: {title: "Runtime: shell in container"}
+    enabled: true
+
+  - id: 17701
+    level: 13
+    description: "Runtime — process from suspicious directory inside container (/tmp/.X11-unix, /dev/shm)"
+    groups: [runtime, suspicious_path, falco]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"proc\\.exepath\":\\s*\"(/tmp/|/var/tmp/|/dev/shm/|/run/user/)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1059"}]
+    alert: {title: "Runtime: execution from temp directory"}
+    enabled: true
+
+  - id: 17702
+    level: 13
+    description: "Runtime — package manager installed package inside running container (T1505)"
+    groups: [runtime, package_manager, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"proc\\.name\":\\s*\"(apt|apt-get|yum|dnf|apk|pip|pip3|npm|gem|cargo|go)\".*install"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.002"}]
+    alert: {title: "Runtime: package install inside container"}
+    enabled: true
+
+  - id: 17703
+    level: 13
+    description: "Runtime — curl|wget piped to shell inside container (download-and-exec)"
+    groups: [runtime, ingress, download_exec, falco]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"proc\\.cmdline\":\\s*\"[^\"]*(curl|wget)[^|]+\\|\\s*(sh|bash|python|perl)\""}
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1105"}
+    alert: {title: "Runtime: curl|sh inside container"}
+    enabled: true
+
+  - id: 17704
+    level: 13
+    description: "Runtime — reverse shell pattern (bash -i / /dev/tcp / nc -e) inside container"
+    groups: [runtime, reverse_shell, falco]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"proc\\.cmdline\":\\s*\"[^\"]*(bash\\s+-i|/dev/tcp/|nc\\s+-e|mkfifo|socat\\s+exec)"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1059.004"}]
+    alert: {title: "Runtime: reverse-shell pattern in container"}
+    enabled: true
+
+  - id: 17705
+    level: 14
+    description: "Runtime — base64-decoded payload piped to shell"
+    groups: [runtime, encoded_stager, falco]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"proc\\.cmdline\":\\s*\"[^\"]*echo\\s+[A-Za-z0-9+/=]{40,}.*base64\\s+-d.*\\|\\s*(sh|bash)"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1027"}
+    alert: {title: "Runtime: base64 decode | shell"}
+    enabled: true
+
+  # ── Filesystem Reads ──────────────────────────────────────────────────
+  - id: 17706
+    level: 14
+    description: "Runtime — /etc/shadow read inside container"
+    groups: [runtime, sensitive_read, credential_access, falco]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.name\":\\s*\"/etc/shadow\""}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1552.001"}
+    alert: {title: "Runtime: /etc/shadow read"}
+    enabled: true
+
+  - id: 17707
+    level: 14
+    description: "Runtime — SSH private key read inside container"
+    groups: [runtime, ssh_key_theft, credential_access, falco]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.name\":\\s*\"/[^\"]*\\.ssh/(id_rsa|id_ed25519|id_ecdsa|id_dsa|authorized_keys|known_hosts)\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1552.004"}]
+    alert: {title: "Runtime: SSH key file read"}
+    enabled: true
+
+  - id: 17708
+    level: 14
+    description: "Runtime — AWS credentials file (~/.aws/credentials) read"
+    groups: [runtime, cloud_creds, credential_access, falco]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.name\":\\s*\"/[^\"]*\\.aws/(credentials|config)\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1552.001"}]
+    alert: {title: "Runtime: AWS creds file read"}
+    enabled: true
+
+  - id: 17709
+    level: 14
+    description: "Runtime — GCP / Azure credential file read"
+    groups: [runtime, cloud_creds, credential_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.name\":\\s*\"/[^\"]*(\\.config/gcloud/.+|\\.azure/.+|application_default_credentials\\.json)\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1552.001"}]
+    alert: {title: "Runtime: GCP / Azure creds file read"}
+    enabled: true
+
+  - id: 17710
+    level: 13
+    description: "Runtime — Docker config (~/.docker/config.json) read"
+    groups: [runtime, docker_creds, credential_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.name\":\\s*\"/[^\"]*\\.docker/config\\.json\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1552.001"}]
+    alert: {title: "Runtime: Docker config read"}
+    enabled: true
+
+  - id: 17711
+    level: 14
+    description: "Runtime — /var/run/secrets/kubernetes.io/serviceaccount/token read by non-pod user"
+    groups: [runtime, k8s_sa_token, credential_access, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.name\":\\s*\"/var/run/secrets/kubernetes\\.io/serviceaccount/token\""}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1552.007"}
+    alert: {title: "Runtime: K8s SA token read"}
+    enabled: true
+
+  - id: 17712
+    level: 14
+    description: "Runtime — cloud metadata service contact (169.254.169.254 / metadata.google.internal)"
+    groups: [runtime, imds, metadata_theft, falco]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.sip\":\\s*\"169\\.254\\.169\\.254\"|metadata\\.google\\.internal|metadata\\.azure\\.com"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1552.005"}
+    alert: {title: "Runtime: cloud metadata contacted"}
+    enabled: true
+
+  # ── Process Injection / Hooking ───────────────────────────────────────
+  - id: 17713
+    level: 14
+    description: "Runtime — ptrace from container process to another process"
+    groups: [runtime, ptrace, container_escape, falco]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"evt\\.type\":\\s*\"ptrace\".*\"container\\.id\""}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1055"}
+    alert: {title: "Runtime: ptrace from container"}
+    enabled: true
+
+  - id: 17714
+    level: 14
+    description: "Runtime — LD_PRELOAD environment variable set in container exec"
+    groups: [runtime, ld_preload, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"proc\\.aenv\":\\s*\\[?\\s*\"LD_PRELOAD="}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1574.006"}
+    alert: {title: "Runtime: LD_PRELOAD set in container"}
+    enabled: true
+
+  - id: 17715
+    level: 13
+    description: "Runtime — process memory dump file written (gcore output)"
+    groups: [runtime, memory_dump, credential_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.name\":\\s*\"/[^\"]+/core\\.\\d+\"|\"proc\\.name\":\\s*\"(gcore|gdb)\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1003"}]
+    alert: {title: "Runtime: core dump / gcore in container"}
+    enabled: true
+
+  # ── Network Anomalies ────────────────────────────────────────────────
+  - id: 17716
+    level: 13
+    description: "Runtime — outbound connection from container to non-allowlisted IP"
+    groups: [runtime, c2_suspect, falco]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"evt\\.type\":\\s*\"connect\".*\"container\\.id\""}
+    enrich:
+      baseline: "egress.allowlist"
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071.001"}]
+    alert: {title: "Runtime: outbound not in allowlist"}
+    enabled: true
+
+  - id: 17717
+    level: 13
+    description: "Runtime — outbound connection to known C2 / mining-pool IP"
+    groups: [runtime, c2, mining, threatintel]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.sip\":"}
+      enrich:
+        ti_source: "malicious_ips,mining_pools"
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071"}]
+    alert: {title: "Runtime: container outbound to TI IP"}
+    enabled: true
+
+  - id: 17718
+    level: 13
+    description: "Runtime — DNS query for known mining pool / DGA domain from container"
+    groups: [runtime, dns_anomaly, mining]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"evt\\.type\":\\s*\"socket.connect\".*\"fd\\.sport\":\\s*\"53\""}
+      enrich:
+        ti_source: "malicious_domains,mining_pools"
+    mitre: [{tactic_id: "TA0011", technique_id: "T1568"}]
+    alert: {title: "Runtime: container DNS to TI domain"}
+    enabled: true
+
+  - id: 17719
+    level: 13
+    description: "Runtime — listening socket created inside container (unexpected service)"
+    groups: [runtime, listener, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"evt\\.type\":\\s*\"listen\".*\"container\\.id\""}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1571"}]
+    alert: {title: "Runtime: listening socket in container"}
+    enabled: true
+
+  # ── Filesystem Write Anomalies ───────────────────────────────────────
+  - id: 17720
+    level: 13
+    description: "Runtime — write under /etc/cron.* / /var/spool/cron from container"
+    groups: [runtime, cron_persistence, falco]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.directory\":\\s*\"/(etc/cron|var/spool/cron)"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1053.003"}
+    alert: {title: "Runtime: cron path write in container"}
+    enabled: true
+
+  - id: 17721
+    level: 13
+    description: "Runtime — write under /etc/systemd / /lib/systemd from container"
+    groups: [runtime, systemd_persistence, falco]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.directory\":\\s*\"/(etc/systemd|lib/systemd|usr/lib/systemd)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543.002"}]
+    alert: {title: "Runtime: systemd unit write"}
+    enabled: true
+
+  - id: 17722
+    level: 13
+    description: "Runtime — write under /etc/ld.so.conf.d (library path persistence)"
+    groups: [runtime, ld_so_conf, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.name\":\\s*\"/etc/ld\\.so\\.(conf|conf\\.d)\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1574.006"}]
+    alert: {title: "Runtime: /etc/ld.so.conf write"}
+    enabled: true
+
+  - id: 17723
+    level: 13
+    description: "Runtime — write to PAM module / /etc/pam.d (auth tamper)"
+    groups: [runtime, pam_tamper, credential_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.directory\":\\s*\"/etc/pam\\.d"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1556"}]
+    alert: {title: "Runtime: PAM config write"}
+    enabled: true
+
+  - id: 17724
+    level: 13
+    description: "Runtime — write to /root/.bashrc / /root/.profile (root shell persistence)"
+    groups: [runtime, shell_rc, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.name\":\\s*\"/root/\\.(bashrc|bash_profile|profile|zshrc)\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.004"}]
+    alert: {title: "Runtime: root shell rc write"}
+    enabled: true
+
+  - id: 17725
+    level: 13
+    description: "Runtime — file write to read-only filesystem (typically container root)"
+    groups: [runtime, rofs_violation, runtime_anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"evt\\.res\":\\s*\"EROFS\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1014"}]
+    alert: {title: "Runtime: write to read-only filesystem (rofs violation)"}
+    enabled: true
+
+  # ── Container Lifecycle / Escape Sequences ───────────────────────────
+  - id: 17726
+    level: 14
+    description: "Runtime — process trying to access /proc/1 of host PID namespace"
+    groups: [runtime, host_proc, container_escape, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.name\":\\s*\"/proc/1/(root|ns/|cgroup)"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1611"}
+    alert: {title: "Runtime: /proc/1 access from container"}
+    enabled: true
+
+  - id: 17727
+    level: 14
+    description: "Runtime — nsenter / unshare invoked inside container"
+    groups: [runtime, namespace_escape, container_escape, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"proc\\.name\":\\s*\"(nsenter|unshare)\""}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1611"}
+    alert: {title: "Runtime: nsenter / unshare in container"}
+    enabled: true
+
+  - id: 17728
+    level: 14
+    description: "Runtime — mount syscall inside container"
+    groups: [runtime, mount_syscall, container_escape, falco]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"evt\\.type\":\\s*\"mount\".*\"container\\.id\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "Runtime: mount syscall in container"}
+    enabled: true
+
+  - id: 17729
+    level: 14
+    description: "Runtime — write to /proc/self/exe (runc CVE-2019-5736 exploit)"
+    groups: [runtime, runc_escape, cve_2019_5736, container_escape, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.name\":\\s*\"/proc/self/exe\".*write"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1611"}
+    alert: {title: "Runtime: write to /proc/self/exe (CVE-2019-5736)"}
+    enabled: true
+
+  - id: 17730
+    level: 14
+    description: "Runtime — symlink from /proc/self/root or /proc/self/fd to host paths"
+    groups: [runtime, symlink_escape, container_escape, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"proc\\.name\":\\s*\"symlink\"|\"evt\\.type\":\\s*\"symlinkat\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "Runtime: symlink syscall in container"}
+    enabled: true
+
+  - id: 17731
+    level: 14
+    description: "Runtime — userfaultfd / clone3 / pidfd_open syscalls (kernel exploit primitives)"
+    groups: [runtime, kernel_exploit, container_escape, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"evt\\.type\":\\s*\"(userfaultfd|clone3|pidfd_open|kexec_load|bpf)\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1068"}]
+    alert: {title: "Runtime: kernel-exploit primitive syscall"}
+    enabled: true
+
+  # ── eBPF Abuse ────────────────────────────────────────────────────────
+  - id: 17732
+    level: 14
+    description: "Runtime — bpf() syscall load from container (eBPF tracer / rootkit)"
+    groups: [runtime, ebpf, rootkit, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"evt\\.type\":\\s*\"bpf\".*\"container\\.id\""}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1014"}
+    alert: {title: "Runtime: bpf syscall in container"}
+    enabled: true
+
+  # ── Network Lateral / Pivot ──────────────────────────────────────────
+  - id: 17733
+    level: 13
+    description: "Runtime — connection from container to k8s api-server port (10250 / 6443) from non-control-plane pod"
+    groups: [runtime, k8s_api_access, lateral_movement]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.sport\":\\s*\"(6443|10250|10255)\""}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1021"}]
+    alert: {title: "Runtime: container to kube-apiserver / kubelet"}
+    enabled: true
+
+  # ── Image / Configuration Drift ──────────────────────────────────────
+  - id: 17734
+    level: 13
+    description: "Runtime — container running with image SHA different from pod-spec image (image drift / runtime mutation)"
+    groups: [runtime, image_drift, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"container\\.image\\.digest\".*mismatch|image_drift"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1195"}
+    alert: {title: "Runtime: container image SHA drift"}
+    enabled: true
+
+  - id: 17735
+    level: 13
+    description: "Runtime — entrypoint changed at runtime (proc.name != image entrypoint)"
+    groups: [runtime, entrypoint_change, anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"proc\\.name\".*entrypoint_mismatch"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1036"}]
+    alert: {title: "Runtime: entrypoint mismatch"}
+    enabled: true
+
+  # ── Sensitive Process Spawned ────────────────────────────────────────
+  - id: 17736
+    level: 13
+    description: "Runtime — chmod 4xxx (setuid bit) on file inside container"
+    groups: [runtime, setuid, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"proc\\.cmdline\":\\s*\"chmod\\s+[+-]?[0-7]?4\\d{3}\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1548.001"}]
+    alert: {title: "Runtime: chmod setuid in container"}
+    enabled: true
+
+  - id: 17737
+    level: 13
+    description: "Runtime — pkill / killall of security agent (Falco / Tetragon / Sysdig)"
+    groups: [runtime, agent_kill, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"proc\\.cmdline\":\\s*\"(pkill|killall|kill)\\s+.*(falco|tetragon|sysdig|aqua|sentinel|crowdstrike)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "Runtime: kill security agent"}
+    enabled: true
+
+  - id: 17738
+    level: 13
+    description: "Runtime — Tetragon / Falco rule explicitly fired CRITICAL severity"
+    groups: [runtime, severity_critical]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"priority\":\\s*\"(CRITICAL|EMERGENCY|ALERT)\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1496"}]
+    alert: {title: "Runtime: CRITICAL severity event"}
+    enabled: true
+
+  - id: 17739
+    level: 13
+    description: "Runtime — write to container.image file (mutation in image layer)"
+    groups: [runtime, image_layer_write, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"fd\\.directory\":\\s*\"/var/lib/(docker|containerd)/(overlay2|images)/"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1554"}]
+    alert: {title: "Runtime: write to container image storage"}
+    enabled: true

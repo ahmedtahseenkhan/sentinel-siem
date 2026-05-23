@@ -1,0 +1,531 @@
+# WatchTower — Helm / Container Supply-Chain Detection
+# Rule IDs: 17800-17839
+#
+# Sources:
+#   - Helm CLI invocations (via auditd / Sysmon)
+#   - GitHub Actions / GitLab CI / Jenkins build logs
+#   - Image registry audit logs (Harbor, Docker Hub, GCR, ECR, ACR)
+#   - SBOM / sigstore / cosign verification logs
+
+rules:
+  # ── Helm CLI Abuse ────────────────────────────────────────────────────
+  - id: 17800
+    level: 13
+    description: "Helm — install/upgrade from non-allowlisted chart repo"
+    groups: [helm, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)helm\\s+(install|upgrade)\\s+\\S+\\s+(https?://|oci://)"}
+    enrich:
+      baseline: "helm.repo_allowlist"
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1195.002"}
+    alert: {title: "Helm: install from non-allowlisted repo"}
+    enabled: true
+
+  - id: 17801
+    level: 14
+    description: "Helm — install with --no-hooks (skip security hooks)"
+    groups: [helm, hook_bypass, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)helm\\s+(install|upgrade).*--no-hooks"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "Helm: install --no-hooks"}
+    enabled: true
+
+  - id: 17802
+    level: 13
+    description: "Helm — install with --skip-crds (bypass schema enforcement)"
+    groups: [helm, crd_bypass]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)helm\\s+install.*--skip-crds"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Helm: install --skip-crds"}
+    enabled: true
+
+  - id: 17803
+    level: 13
+    description: "Helm — release uninstall (mass-delete via single command)"
+    groups: [helm, uninstall, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)helm\\s+(uninstall|delete)\\s+\\S+"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "Helm: release uninstalled"}
+    enabled: true
+
+  - id: 17804
+    level: 13
+    description: "Helm — chart pulled with --devel (pre-release / unsigned version)"
+    groups: [helm, devel_chart, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)helm\\s+(install|pull|upgrade).*--devel"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.002"}]
+    alert: {title: "Helm: --devel (pre-release) chart"}
+    enabled: true
+
+  - id: 17805
+    level: 13
+    description: "Helm — repo add for unfamiliar URL"
+    groups: [helm, repo_add, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)helm\\s+repo\\s+add\\s+\\S+\\s+(https?|oci)://"}
+    enrich:
+      baseline: "helm.repo_allowlist"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.002"}]
+    alert: {title: "Helm: new repo added"}
+    enabled: true
+
+  - id: 17806
+    level: 13
+    description: "Helm — chart values containing suspicious image (latest / random tag)"
+    groups: [helm, chart_values, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)image:\\s*\\S+:(latest|main|master|develop|nightly)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.002"}]
+    alert: {title: "Helm: mutable image tag in chart values"}
+    enabled: true
+
+  - id: 17807
+    level: 13
+    description: "Helm — chart with privileged: true in values.yaml"
+    groups: [helm, privileged, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)privileged:\\s*true"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1611"}
+    alert: {title: "Helm: chart sets privileged=true"}
+    enabled: true
+
+  - id: 17808
+    level: 13
+    description: "Helm — chart hostPath mount in values"
+    groups: [helm, hostpath, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)hostPath:\\s*\\n\\s*path:\\s*/"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "Helm: chart uses hostPath mount"}
+    enabled: true
+
+  # ── Image Signing / Sigstore ──────────────────────────────────────────
+  - id: 17809
+    level: 14
+    description: "Image — pulled image failed cosign signature verification"
+    groups: [supply_chain, cosign, sigstore, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)cosign.*(verification failed|no matching signatures|sig: not found)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1195.002"}
+    alert: {title: "Cosign: image signature verification failed"}
+    enabled: true
+
+  - id: 17810
+    level: 13
+    description: "Image — unsigned image deployed (no SBOM / no attestation)"
+    groups: [supply_chain, unsigned_image]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(no sbom found|no attestation|image not signed|trust:\\s*false)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.002"}]
+    alert: {title: "Supply: unsigned image / no SBOM"}
+    enabled: true
+
+  - id: 17811
+    level: 13
+    description: "Image — SBOM contains known vulnerable package (Critical CVE)"
+    groups: [supply_chain, sbom, vulnerability]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sbom.*CVE-\\d+-\\d+.*severity\\s*=\\s*Critical"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.002"}]
+    alert: {title: "Supply: SBOM critical CVE"}
+    enabled: true
+
+  - id: 17812
+    level: 14
+    description: "Image — Sigstore Rekor log absence (no transparency entry)"
+    groups: [supply_chain, rekor, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)rekor.*not.*found|no transparency log entry"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1553"}
+    alert: {title: "Supply: Rekor entry missing"}
+    enabled: true
+
+  # ── Registry Anomalies ───────────────────────────────────────────────
+  - id: 17813
+    level: 14
+    description: "Registry — image overwrite (push same tag with different SHA)"
+    groups: [registry, image_overwrite, supply_chain, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)image_pushed.*existing.*tag.*overwritten"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1195.002"}
+    alert: {title: "Registry: tag overwritten"}
+    enabled: true
+
+  - id: 17814
+    level: 13
+    description: "Registry — large image pulled from unknown geographic IP"
+    groups: [registry, geo_anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)pull.*size.*(\\d{3,}|MB|GB)"}
+    enrich:
+      geoip: true
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567"}]
+    alert: {title: "Registry: large pull from unusual geo"}
+    enabled: true
+
+  - id: 17815
+    level: 13
+    description: "Registry — many image pulls from single IP in short time (scrape / mirror)"
+    groups: [registry, mass_pull, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)action=pull"}
+    correlation:
+      window: "5m"
+      threshold: 50
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "Registry: pull burst from single IP"}
+    enabled: true
+
+  - id: 17816
+    level: 13
+    description: "Registry — image deleted from production repo"
+    groups: [registry, image_delete, integrity]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)action=delete.*repository.*prod"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "Registry: production image deleted"}
+    enabled: true
+
+  - id: 17817
+    level: 13
+    description: "Registry — Harbor / Quay admin login from new IP"
+    groups: [registry, admin_login, anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)harbor.*admin.*login|quay.*superuser.*login"}
+    enrich:
+      baseline: "registry.admin_ip"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "Registry: admin login from new IP"}
+    enabled: true
+
+  - id: 17818
+    level: 13
+    description: "Registry — robot account / pull token created (potential CI compromise)"
+    groups: [registry, robot_account, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(robot account.*created|pull.*token.*generated)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098.001"}]
+    alert: {title: "Registry: robot account created"}
+    enabled: true
+
+  - id: 17819
+    level: 13
+    description: "Registry — webhook configured pointing externally (exfil channel)"
+    groups: [registry, webhook, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)webhook.*url.*(https?://[^\"]+)"}
+      enrich:
+        baseline: "registry.webhook_allowlist"
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567"}]
+    alert: {title: "Registry: webhook to external URL"}
+    enabled: true
+
+  # ── CI/CD Pipeline Abuse ─────────────────────────────────────────────
+  - id: 17820
+    level: 14
+    description: "CI/CD — GitHub Actions workflow file modified to add new step (supply-chain)"
+    groups: [ci_cd, github_actions, supply_chain, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\\.github/workflows/.*\\.ya?ml.*(modified|edited).*added"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1195.001"}
+    alert: {title: "CI/CD: GH Actions workflow modified"}
+    enabled: true
+
+  - id: 17821
+    level: 14
+    description: "CI/CD — GitHub Actions self-hosted runner connection from new IP"
+    groups: [ci_cd, github_actions, runner_compromise, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)actions.runner.*connected.*from"}
+    enrich:
+      baseline: "github.runner_ip"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195"}]
+    alert: {title: "CI/CD: GH self-hosted runner new IP"}
+    enabled: true
+
+  - id: 17822
+    level: 14
+    description: "CI/CD — GitLab CI runner registered with non-org account"
+    groups: [ci_cd, gitlab_ci, runner_compromise, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)gitlab-runner.*register.*token=glrt-"}
+    enrich:
+      baseline: "gitlab.org_runners"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195"}]
+    alert: {title: "CI/CD: GL runner registered (verify org)"}
+    enabled: true
+
+  - id: 17823
+    level: 13
+    description: "CI/CD — Jenkins build step running shell with curl|sh"
+    groups: [ci_cd, jenkins, download_exec]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)jenkins.*build.*(curl|wget)\\s+\\S+\\s*\\|\\s*(sh|bash)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.001"}]
+    alert: {title: "CI/CD: Jenkins curl|sh"}
+    enabled: true
+
+  - id: 17824
+    level: 14
+    description: "CI/CD — pipeline triggered by external pull-request modifying CI config (PR fork-bomb attack)"
+    groups: [ci_cd, pr_attack, supply_chain, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)external.*pr.*(\\.github/workflows|\\.gitlab-ci\\.yml|Jenkinsfile).*modified"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1195.001"}
+    alert: {title: "CI/CD: external PR modified CI config"}
+    enabled: true
+
+  - id: 17825
+    level: 13
+    description: "CI/CD — secret/credential pattern leaked in build log"
+    groups: [ci_cd, secret_leak, credential_exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z\\-_]{35}|ghp_[A-Za-z0-9]{36}|ghs_[A-Za-z0-9]{36}|xox[abp]-[0-9]{11,12}-[0-9]{11,12}-[a-zA-Z0-9]{24})"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1552.005"}]
+    alert: {title: "CI/CD: API key pattern in build log"}
+    enabled: true
+
+  - id: 17826
+    level: 13
+    description: "CI/CD — git push of file containing private key"
+    groups: [ci_cd, git_push, secret_leak]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1552.004"}]
+    alert: {title: "CI/CD: private-key block in push"}
+    enabled: true
+
+  - id: 17827
+    level: 13
+    description: "CI/CD — npm package install with --unsafe-perm (script-execution risk)"
+    groups: [ci_cd, npm, unsafe_perm, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)npm\\s+(install|ci).*--unsafe-perm"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.001"}]
+    alert: {title: "CI/CD: npm --unsafe-perm"}
+    enabled: true
+
+  - id: 17828
+    level: 13
+    description: "CI/CD — npm install from unfamiliar registry (--registry=...)"
+    groups: [ci_cd, npm, registry_swap]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)npm\\s+(install|ci|publish).*--registry=https?://"}
+      enrich:
+        baseline: "npm.registry_allowlist"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.001"}]
+    alert: {title: "CI/CD: npm --registry override"}
+    enabled: true
+
+  - id: 17829
+    level: 13
+    description: "CI/CD — pip install from non-PyPI index (--index-url override)"
+    groups: [ci_cd, pip, registry_swap]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)pip\\s+install.*--index-url\\s+https?://"}
+      enrich:
+        baseline: "pip.registry_allowlist"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.001"}]
+    alert: {title: "CI/CD: pip --index-url override"}
+    enabled: true
+
+  - id: 17830
+    level: 13
+    description: "CI/CD — go get with insecure flag / GOPROXY=off"
+    groups: [ci_cd, go_mod, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)go\\s+(get|build|install).*GOFLAGS.*insecure|GOPROXY=off"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.001"}]
+    alert: {title: "CI/CD: go module flags insecure"}
+    enabled: true
+
+  # ── Sigstore / Cosign ─────────────────────────────────────────────────
+  - id: 17831
+    level: 14
+    description: "Sigstore — cosign verify failed at admission webhook (image rejected)"
+    groups: [sigstore, admission_block, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)admission.*cosign.*denied|fulcio.*verification failed"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1195.002"}
+    alert: {title: "Sigstore: cosign verify denied"}
+    enabled: true
+
+  - id: 17832
+    level: 13
+    description: "Sigstore — cosign verify --insecure-ignore-tlog (verification weakened)"
+    groups: [sigstore, weakened_verify, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)cosign\\s+verify.*--insecure-ignore-tlog"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Sigstore: cosign verify with --insecure-ignore-tlog"}
+    enabled: true
+
+  # ── Repository / Git anomalies ───────────────────────────────────────
+  - id: 17833
+    level: 14
+    description: "Git — push to default branch (main/master) outside business hours"
+    groups: [git, push_anomaly, time_anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)git.*push.*(main|master)"}
+    enrich:
+      baseline: "git.business_hours"
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1195"}
+    alert: {title: "Git: push to main off-hours"}
+    enabled: true
+
+  - id: 17834
+    level: 14
+    description: "Git — branch protection rule deleted"
+    groups: [git, branch_protection, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)branch protection.*(deleted|removed|disabled)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Git: branch protection removed"}
+    enabled: true
+
+  - id: 17835
+    level: 13
+    description: "Git — force push to default branch"
+    groups: [git, force_push, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)git push.*--force.*(main|master)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070"}]
+    alert: {title: "Git: --force push to main"}
+    enabled: true
+
+  - id: 17836
+    level: 13
+    description: "Git — repository transferred / made public (exposure)"
+    groups: [git, repo_transfer, exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(repository transferred|visibility.*public|repository.*made public)"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567"}]
+    alert: {title: "Git: repo made public or transferred"}
+    enabled: true
+
+  - id: 17837
+    level: 13
+    description: "Git — deploy key added to repo with write access"
+    groups: [git, deploy_key, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)deploy key.*added.*\\b(write|admin)\\b"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098.004"}]
+    alert: {title: "Git: deploy key with write added"}
+    enabled: true
+
+  - id: 17838
+    level: 13
+    description: "Git — webhook added pointing to external URL (potential exfil)"
+    groups: [git, webhook, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)webhook.*added.*url=https?://"}
+      enrich:
+        baseline: "git.webhook_allowlist"
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567"}]
+    alert: {title: "Git: webhook to external URL"}
+    enabled: true
+
+  - id: 17839
+    level: 13
+    description: "Git — secret-scanning alert raised (e.g. AWS / API key detected in code)"
+    groups: [git, secret_scan, credential_exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)secret_scanning.*alert.*(aws_secret_access_key|api_key|private_key|access_token)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1552.001"}]
+    alert: {title: "Git: secret-scan alert"}
+    enabled: true

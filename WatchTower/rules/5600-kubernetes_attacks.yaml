@@ -1,0 +1,922 @@
+# WatchTower — Kubernetes Attack Detection
+# Rule IDs: 17600-17669
+#
+# Sources:
+#   - Kubernetes audit log (kube-apiserver --audit-log-path)
+#   - kubelet logs
+#   - etcd access logs
+#   - container runtime events (via Falco / 5500-docker_attacks.yaml)
+
+rules:
+  # ── Anonymous / Unauthorized API Access ───────────────────────────────
+  - id: 17600
+    level: 14
+    description: "K8s — anonymous user accessing API (system:anonymous, system:unauthenticated)"
+    groups: [k8s, anonymous_access, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"user\":\\{[^}]*\"username\":\\s*\"system:(anonymous|unauthenticated)\""}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "K8s: anonymous API access"}
+    enabled: true
+
+  - id: 17601
+    level: 13
+    description: "K8s — Forbidden (403) burst from single user / service account (probing)"
+    groups: [k8s, recon, unauthorized]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"responseStatus\":\\{\"code\":\\s*403"}
+    correlation:
+      window: "10m"
+      threshold: 20
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1078.004"}]
+    alert: {title: "K8s: 403 Forbidden burst"}
+    enabled: true
+
+  - id: 17602
+    level: 13
+    description: "K8s — 401 Unauthorized burst (token brute force / replay)"
+    groups: [k8s, auth, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"responseStatus\":\\{\"code\":\\s*401"}
+    correlation:
+      window: "10m"
+      threshold: 20
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110"}]
+    alert: {title: "K8s: 401 Unauthorized burst"}
+    enabled: true
+
+  # ── Privileged Pod / SecurityContext Abuse ────────────────────────────
+  - id: 17603
+    level: 14
+    description: "K8s — privileged pod created (securityContext.privileged=true)"
+    groups: [k8s, privileged_pod, container_escape, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"verb\":\\s*\"create\".*\"resource\":\\s*\"pods\".*\"privileged\":\\s*true"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1611"}
+    alert: {title: "K8s: privileged pod created"}
+    enabled: true
+
+  - id: 17604
+    level: 14
+    description: "K8s — pod with hostPath volume mounting / (root filesystem)"
+    groups: [k8s, hostpath, container_escape, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"hostPath\":\\{[^}]*\"path\":\\s*\"/(\"|etc|root|var/run/docker\\.sock|proc|sys)"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "K8s: pod with sensitive hostPath"}
+    enabled: true
+
+  - id: 17605
+    level: 13
+    description: "K8s — pod with hostNetwork / hostPID / hostIPC true"
+    groups: [k8s, host_namespace, container_escape]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"(hostNetwork|hostPID|hostIPC)\":\\s*true"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "K8s: pod with host namespace"}
+    enabled: true
+
+  - id: 17606
+    level: 13
+    description: "K8s — pod with allowPrivilegeEscalation true (PSP / PSA violation)"
+    groups: [k8s, allow_privilege_escalation, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"allowPrivilegeEscalation\":\\s*true"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "K8s: pod allowPrivilegeEscalation=true"}
+    enabled: true
+
+  - id: 17607
+    level: 13
+    description: "K8s — pod with capabilities.add SYS_ADMIN / NET_ADMIN / SYS_PTRACE"
+    groups: [k8s, capabilities, container_escape]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"capabilities\":\\{\"add\":\\s*\\[[^\\]]*\"(SYS_ADMIN|NET_ADMIN|SYS_PTRACE|SYS_MODULE|DAC_OVERRIDE|DAC_READ_SEARCH)\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "K8s: pod requesting dangerous capability"}
+    enabled: true
+
+  - id: 17608
+    level: 13
+    description: "K8s — pod running as root (runAsUser=0 or unset + image runs as root)"
+    groups: [k8s, root_user, misconfiguration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"runAsUser\":\\s*0|\"runAsNonRoot\":\\s*false"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1078"}]
+    alert: {title: "K8s: pod running as root"}
+    enabled: true
+
+  - id: 17609
+    level: 13
+    description: "K8s — pod with no resource limits (CPU/memory) — DoS risk"
+    groups: [k8s, no_limits, dos_risk]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"verb\":\\s*\"create\".*\"resource\":\\s*\"pods\"(?![^}]*\"limits\")"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "K8s: pod without resource limits"}
+    enabled: true
+
+  # ── Exec / Attach / Port-Forward / Cp ─────────────────────────────────
+  - id: 17610
+    level: 14
+    description: "K8s — kubectl exec into a pod (interactive shell)"
+    groups: [k8s, exec_pod, lateral_movement, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"verb\":\\s*\"create\".*\"subresource\":\\s*\"exec\""}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1609"}
+    alert: {title: "K8s: pod exec"}
+    enabled: true
+
+  - id: 17611
+    level: 13
+    description: "K8s — kubectl attach to running container"
+    groups: [k8s, attach, lateral_movement]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"verb\":\\s*\"create\".*\"subresource\":\\s*\"attach\""}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1609"}]
+    alert: {title: "K8s: pod attach"}
+    enabled: true
+
+  - id: 17612
+    level: 13
+    description: "K8s — kubectl port-forward (tunneling pod ports)"
+    groups: [k8s, port_forward, tunneling]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"verb\":\\s*\"create\".*\"subresource\":\\s*\"portforward\""}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1572"}]
+    alert: {title: "K8s: port-forward"}
+    enabled: true
+
+  - id: 17613
+    level: 13
+    description: "K8s — kubectl cp out of pod (file exfiltration)"
+    groups: [k8s, cp_pod, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"verb\":\\s*\"create\".*\"subresource\":\\s*\"exec\".*tar\\s+cf"}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1567"}
+    alert: {title: "K8s: kubectl cp out of pod"}
+    enabled: true
+
+  # ── RBAC / Privilege Escalation ───────────────────────────────────────
+  - id: 17614
+    level: 14
+    description: "K8s — cluster-admin ClusterRoleBinding created"
+    groups: [k8s, rbac, cluster_admin, privilege_escalation, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"clusterrolebindings\".*\"verb\":\\s*\"create\".*\"name\":\\s*\"cluster-admin\""}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1098"}
+    alert: {title: "K8s: cluster-admin ClusterRoleBinding created"}
+    enabled: true
+
+  - id: 17615
+    level: 14
+    description: "K8s — ClusterRoleBinding to system:masters group (root equivalent)"
+    groups: [k8s, rbac, masters, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"clusterrolebindings\".*\"subjects\":\\s*\\[[^\\]]*system:masters"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "K8s: binding to system:masters"}
+    enabled: true
+
+  - id: 17616
+    level: 14
+    description: "K8s — ClusterRole with wildcard apiGroups/resources/verbs ('*': '*')"
+    groups: [k8s, rbac, wildcard, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"clusterroles\".*\"verbs\":\\s*\\[\\s*\"\\*\".*\"resources\":\\s*\\[\\s*\"\\*\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "K8s: ClusterRole wildcard *:*"}
+    enabled: true
+
+  - id: 17617
+    level: 13
+    description: "K8s — service account token mounted into many pods (escalation surface)"
+    groups: [k8s, service_account, token_abuse]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"automountServiceAccountToken\":\\s*true"}
+    correlation:
+      window: "10m"
+      threshold: 50
+    mitre: [{tactic_id: "TA0006", technique_id: "T1528"}]
+    alert: {title: "K8s: many pods automount SA token"}
+    enabled: true
+
+  - id: 17618
+    level: 13
+    description: "K8s — service account created with high-privilege role"
+    groups: [k8s, service_account, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"serviceaccounts\".*\"verb\":\\s*\"create\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "K8s: service account created"}
+    enabled: true
+
+  - id: 17619
+    level: 14
+    description: "K8s — token request for service account (TokenRequest API)"
+    groups: [k8s, token_request, credential_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"serviceaccounts/token\".*\"verb\":\\s*\"create\""}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1528"}
+    alert: {title: "K8s: service-account TokenRequest"}
+    enabled: true
+
+  # ── Secrets ───────────────────────────────────────────────────────────
+  - id: 17620
+    level: 14
+    description: "K8s — secret read by user/SA outside of normal pattern (mass GET)"
+    groups: [k8s, secret_access, credential_access, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"secrets\".*\"verb\":\\s*\"(get|list)\""}
+    correlation:
+      window: "10m"
+      threshold: 20
+      group_by: ["agent_name"]
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1552.007"}
+    alert: {title: "K8s: secret GET/LIST burst"}
+    enabled: true
+
+  - id: 17621
+    level: 13
+    description: "K8s — secret deleted"
+    groups: [k8s, secret_delete, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"secrets\".*\"verb\":\\s*\"delete\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "K8s: secret deleted"}
+    enabled: true
+
+  - id: 17622
+    level: 13
+    description: "K8s — secret type ServiceAccountToken created outside namespace defaults"
+    groups: [k8s, sa_token, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"secrets\".*\"type\":\\s*\"kubernetes\\.io/service-account-token\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "K8s: SA token secret created"}
+    enabled: true
+
+  # ── Network Policy / Ingress / Service Exposure ───────────────────────
+  - id: 17623
+    level: 13
+    description: "K8s — NetworkPolicy deleted (egress lockdown removed)"
+    groups: [k8s, networkpolicy, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"networkpolicies\".*\"verb\":\\s*\"delete\""}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "K8s: NetworkPolicy deleted"}
+    enabled: true
+
+  - id: 17624
+    level: 13
+    description: "K8s — Service type=LoadBalancer or NodePort created (public exposure)"
+    groups: [k8s, service, public_exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"services\".*\"type\":\\s*\"(LoadBalancer|NodePort)\""}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "K8s: Service LoadBalancer / NodePort"}
+    enabled: true
+
+  - id: 17625
+    level: 13
+    description: "K8s — Ingress with no TLS (cleartext)"
+    groups: [k8s, ingress, tls]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"ingresses\".*\"verb\":\\s*\"(create|update)\"(?![^}]*\"tls\")"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1040"}]
+    alert: {title: "K8s: Ingress without TLS"}
+    enabled: true
+
+  # ── Etcd / API Server tampering ───────────────────────────────────────
+  - id: 17626
+    level: 14
+    description: "K8s — etcd direct API access (not via kube-apiserver)"
+    groups: [k8s, etcd_direct, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)etcd.*client_request_method=(PUT|DELETE).*not.*apiserver"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1552"}
+    alert: {title: "K8s: direct etcd write"}
+    enabled: true
+
+  - id: 17627
+    level: 14
+    description: "K8s — kube-apiserver --anonymous-auth=true (legacy / insecure)"
+    groups: [k8s, apiserver_misconfig, anonymous, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)kube-apiserver.*--anonymous-auth=true"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "K8s: API server anonymous-auth=true"}
+    enabled: true
+
+  - id: 17628
+    level: 14
+    description: "K8s — kube-apiserver --insecure-bind-address used (deprecated insecure listener)"
+    groups: [k8s, apiserver_misconfig, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)kube-apiserver.*--insecure-bind-address"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "K8s: insecure API server listener"}
+    enabled: true
+
+  - id: 17629
+    level: 13
+    description: "K8s — audit-log disabled (--audit-log-path empty)"
+    groups: [k8s, audit_tampering, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)kube-apiserver.*--audit-log-path=(none|/dev/null|\\\"\\\")"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.008"}]
+    alert: {title: "K8s: audit logging disabled"}
+    enabled: true
+
+  # ── PodSecurity / OPA / Admission Tampering ───────────────────────────
+  - id: 17630
+    level: 13
+    description: "K8s — ValidatingWebhookConfiguration deleted (admission bypass)"
+    groups: [k8s, admission, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"validatingwebhookconfigurations\".*\"verb\":\\s*\"delete\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "K8s: ValidatingWebhook deleted"}
+    enabled: true
+
+  - id: 17631
+    level: 14
+    description: "K8s — MutatingWebhookConfiguration created with broad scope (admission control hijack)"
+    groups: [k8s, admission_hijack, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"mutatingwebhookconfigurations\".*\"verb\":\\s*\"create\".*\"rules\":\\s*\\[[^\\]]*\"\\*\""}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1543"}
+    alert: {title: "K8s: MutatingWebhook with wildcard rules"}
+    enabled: true
+
+  - id: 17632
+    level: 13
+    description: "K8s — PodSecurityPolicy / PSA label removed from namespace (security control bypass)"
+    groups: [k8s, psp_bypass, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"namespaces\".*\"verb\":\\s*\"(update|patch)\".*\"pod-security\\.kubernetes\\.io/enforce\":\\s*\"privileged\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "K8s: namespace PSA enforce=privileged"}
+    enabled: true
+
+  # ── Workload Tampering ────────────────────────────────────────────────
+  - id: 17633
+    level: 14
+    description: "K8s — Deployment image changed (supply-chain swap)"
+    groups: [k8s, deployment_change, supply_chain, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"deployments\".*\"verb\":\\s*\"(update|patch)\".*\"image\":"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1648"}
+    alert: {title: "K8s: Deployment image updated"}
+    enabled: true
+
+  - id: 17634
+    level: 13
+    description: "K8s — DaemonSet created (runs on every node — persistence vector)"
+    groups: [k8s, daemonset, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"daemonsets\".*\"verb\":\\s*\"create\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543"}]
+    alert: {title: "K8s: DaemonSet created"}
+    enabled: true
+
+  - id: 17635
+    level: 14
+    description: "K8s — DaemonSet using image from public registry without scanning"
+    groups: [k8s, daemonset, supply_chain, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"daemonsets\".*\"image\":\\s*\"(docker\\.io|index\\.docker\\.io|gcr\\.io|quay\\.io)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.002"}]
+    alert: {title: "K8s: DaemonSet from public registry"}
+    enabled: true
+
+  - id: 17636
+    level: 13
+    description: "K8s — CronJob created (potential scheduled persistence)"
+    groups: [k8s, cronjob, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"cronjobs\".*\"verb\":\\s*\"create\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1053.005"}]
+    alert: {title: "K8s: CronJob created"}
+    enabled: true
+
+  - id: 17637
+    level: 13
+    description: "K8s — Job created in kube-system namespace (sensitive scope)"
+    groups: [k8s, job, kube_system, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"jobs\".*\"namespace\":\\s*\"kube-system\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543"}]
+    alert: {title: "K8s: Job in kube-system"}
+    enabled: true
+
+  # ── Image / Container Anomalies ──────────────────────────────────────
+  - id: 17638
+    level: 13
+    description: "K8s — pod with image pulled from non-allowlisted registry"
+    groups: [k8s, image_pull, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"image\":\\s*\"[a-z0-9\\-]+\\.[a-z]{2,}/[^\"]+\""}
+      enrich:
+        baseline: "registry.allowlist"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.002"}]
+    alert: {title: "K8s: image from non-allowlisted registry"}
+    enabled: true
+
+  - id: 17639
+    level: 12
+    description: "K8s — pod with :latest tag image (mutable)"
+    groups: [k8s, image_pull, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"image\":\\s*\"[^\"]+:latest\""}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195.002"}]
+    alert: {title: "K8s: image :latest tag"}
+    enabled: true
+
+  - id: 17640
+    level: 14
+    description: "K8s — pod with imagePullPolicy=Always but registry credentials in env (creds leak)"
+    groups: [k8s, env_secret, credential_exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"env\":\\s*\\[[^\\]]*\\\"name\\\":\\s*\\\"\\w*(PASSWORD|TOKEN|SECRET|API_KEY)\\\""}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1552.007"}
+    alert: {title: "K8s: secret in env var of pod"}
+    enabled: true
+
+  # ── Node Compromise / Kubelet ─────────────────────────────────────────
+  - id: 17641
+    level: 14
+    description: "K8s — kubelet API exposed on 10250 without auth (anonymous-auth=true)"
+    groups: [k8s, kubelet, exposure, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)kubelet.*--anonymous-auth=true"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "K8s: kubelet anonymous-auth=true"}
+    enabled: true
+
+  - id: 17642
+    level: 14
+    description: "K8s — kubelet authorization-mode=AlwaysAllow (no checks)"
+    groups: [k8s, kubelet, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)kubelet.*--authorization-mode=AlwaysAllow"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "K8s: kubelet authorization-mode=AlwaysAllow"}
+    enabled: true
+
+  - id: 17643
+    level: 14
+    description: "K8s — kubectl proxy on 0.0.0.0 (insecure local API exposure)"
+    groups: [k8s, kubectl_proxy, exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)kubectl\\s+proxy.*--address=0\\.0\\.0\\.0"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "K8s: kubectl proxy bound to 0.0.0.0"}
+    enabled: true
+
+  # ── etcd / Backup Tampering ───────────────────────────────────────────
+  - id: 17644
+    level: 14
+    description: "K8s — etcd snapshot file accessed (cluster state theft)"
+    groups: [k8s, etcd, backup_theft, exfiltration, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=PATH.*name=.*etcd.*\\.db|etcd.*snapshot save"}
+    mitre:
+      - {tactic_id: "TA0009", technique_id: "T1213"}
+    alert: {title: "K8s: etcd snapshot accessed"}
+    enabled: true
+
+  - id: 17645
+    level: 13
+    description: "K8s — etcd write to /registry/secrets (direct secret tamper)"
+    groups: [k8s, etcd, secret_tamper]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)etcd.*PUT.*\\/registry\\/secrets\\/"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1552"}]
+    alert: {title: "K8s: etcd direct write to /registry/secrets"}
+    enabled: true
+
+  # ── Audit Log Tampering ───────────────────────────────────────────────
+  - id: 17646
+    level: 14
+    description: "K8s — audit policy modified (rule change)"
+    groups: [k8s, audit_tampering, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"auditsinks\".*\"verb\":\\s*\"(create|update|delete)\""}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.008"}
+    alert: {title: "K8s: AuditSink modified"}
+    enabled: true
+
+  - id: 17647
+    level: 14
+    description: "K8s — events resource deleted (event-log tamper)"
+    groups: [k8s, event_tamper, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"events\".*\"verb\":\\s*\"delete\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070"}]
+    alert: {title: "K8s: events deleted"}
+    enabled: true
+
+  # ── User / Cert / OIDC ────────────────────────────────────────────────
+  - id: 17648
+    level: 14
+    description: "K8s — CertificateSigningRequest approved with cluster-admin signer"
+    groups: [k8s, csr, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"certificatesigningrequests\".*\"verb\":\\s*\"approve\""}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1098.001"}
+    alert: {title: "K8s: CSR approved"}
+    enabled: true
+
+  - id: 17649
+    level: 13
+    description: "K8s — OIDC issuer URL modified on API server (auth pipeline tamper)"
+    groups: [k8s, oidc, auth_tamper, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)kube-apiserver.*--oidc-issuer-url"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1556"}]
+    alert: {title: "K8s: OIDC issuer changed"}
+    enabled: true
+
+  # ── Namespace operations ─────────────────────────────────────────────
+  - id: 17650
+    level: 14
+    description: "K8s — namespace deleted (mass destruction)"
+    groups: [k8s, namespace_delete, destructive, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"namespaces\".*\"verb\":\\s*\"delete\""}
+    mitre:
+      - {tactic_id: "TA0040", technique_id: "T1485"}
+    alert: {title: "K8s: namespace deleted"}
+    enabled: true
+
+  - id: 17651
+    level: 13
+    description: "K8s — namespace created with privileged PSA enforce"
+    groups: [k8s, namespace_create, exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"namespaces\".*\"verb\":\\s*\"create\".*pod-security\\.kubernetes\\.io/enforce.*privileged"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "K8s: namespace created with privileged PSA"}
+    enabled: true
+
+  # ── ConfigMap / RBAC tricks ───────────────────────────────────────────
+  - id: 17652
+    level: 13
+    description: "K8s — ConfigMap with kubeconfig data (creds in plain configmap)"
+    groups: [k8s, configmap, credential_exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"configmaps\".*(apiVersion:|clusters:|users:|kind:\\s*Config)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1552.001"}]
+    alert: {title: "K8s: ConfigMap contains kubeconfig"}
+    enabled: true
+
+  - id: 17653
+    level: 13
+    description: "K8s — RoleBinding using 'escalate' or 'bind' verb (rbac-bypass primitives)"
+    groups: [k8s, rbac, escalate_verb, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"verbs\":\\s*\\[[^\\]]*\"(escalate|bind|impersonate)\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "K8s: RBAC verb escalate/bind/impersonate"}
+    enabled: true
+
+  # ── Pod-to-Pod Lateral / Operator Abuse ──────────────────────────────
+  - id: 17654
+    level: 13
+    description: "K8s — pod created with serviceAccountName=default in kube-system"
+    groups: [k8s, default_sa, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"namespace\":\\s*\"kube-system\".*\"serviceAccountName\":\\s*\"default\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1078"}]
+    alert: {title: "K8s: pod in kube-system using default SA"}
+    enabled: true
+
+  - id: 17655
+    level: 13
+    description: "K8s — pod scheduled on master/control-plane node (tolerations bypass)"
+    groups: [k8s, tolerations, lateral_movement]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"tolerations\":\\s*\\[[^\\]]*node-role\\.kubernetes\\.io/master"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1078"}]
+    alert: {title: "K8s: pod tolerates master node"}
+    enabled: true
+
+  # ── Suspect tools / Operator abuse ───────────────────────────────────
+  - id: 17656
+    level: 13
+    description: "K8s — kubectl-trace / kubectl-debug invoked (host-tracing)"
+    groups: [k8s, debug_tool, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)kubectl-(trace|debug|sniff|node-shell)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1057"}]
+    alert: {title: "K8s: kubectl plugin debug/trace used"}
+    enabled: true
+
+  - id: 17657
+    level: 14
+    description: "K8s — peirates / kube-hunter / kube-bench tool invocation in audit"
+    groups: [k8s, attack_tool, recon, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"user-agent\":\\s*\"(peirates|kube-hunter|kube-bench|botb|amicontained)"}
+    mitre:
+      - {tactic_id: "TA0007", technique_id: "T1595"}
+    alert: {title: "K8s: pentest/recon tool UA"}
+    enabled: true
+
+  # ── etcd / Vault / External Secret Stores ────────────────────────────
+  - id: 17658
+    level: 13
+    description: "K8s — External Secrets Operator pushed secret to external store (exfil suspect)"
+    groups: [k8s, external_secrets, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"externalsecrets\".*\"verb\":\\s*\"create\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567"}]
+    alert: {title: "K8s: ExternalSecret created"}
+    enabled: true
+
+  # ── Cluster autoscaler / Karpenter abuse ─────────────────────────────
+  - id: 17659
+    level: 13
+    description: "K8s — Karpenter / Cluster Autoscaler scaling burst (resource hijack)"
+    groups: [k8s, autoscaler, resource_hijack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(karpenter|cluster-autoscaler).*provisioning"}
+    correlation:
+      window: "10m"
+      threshold: 20
+    mitre: [{tactic_id: "TA0040", technique_id: "T1496"}]
+    alert: {title: "K8s: Autoscaler provisioning burst"}
+    enabled: true
+
+  # ── Init / Sidecar Container Abuse ────────────────────────────────────
+  - id: 17660
+    level: 13
+    description: "K8s — initContainer running shell script with curl|sh pattern"
+    groups: [k8s, init_container, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"initContainers\":\\s*\\[[^\\]]*curl\\s+[^|]+\\|\\s*(sh|bash)"}
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1105"}
+    alert: {title: "K8s: initContainer curl|sh"}
+    enabled: true
+
+  # ── Volume Snapshot / Backup ──────────────────────────────────────────
+  - id: 17661
+    level: 13
+    description: "K8s — VolumeSnapshot created (potential PV theft)"
+    groups: [k8s, volume_snapshot, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"volumesnapshots\".*\"verb\":\\s*\"create\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1537"}]
+    alert: {title: "K8s: VolumeSnapshot created"}
+    enabled: true
+
+  - id: 17662
+    level: 13
+    description: "K8s — PersistentVolume reclaimPolicy=Delete with mass PVC delete"
+    groups: [k8s, pv_delete, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"persistentvolumeclaims\".*\"verb\":\\s*\"delete\""}
+    correlation:
+      window: "5m"
+      threshold: 10
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "K8s: mass PVC delete"}
+    enabled: true
+
+  # ── Webhook Tokens / Bootstrap Tokens ─────────────────────────────────
+  - id: 17663
+    level: 14
+    description: "K8s — bootstrap-token secret created (cluster join credential)"
+    groups: [k8s, bootstrap_token, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"secrets\".*\"type\":\\s*\"bootstrap\\.kubernetes\\.io/token\""}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1098"}
+    alert: {title: "K8s: bootstrap-token secret created"}
+    enabled: true
+
+  # ── Sensitive API Audit Events ────────────────────────────────────────
+  - id: 17664
+    level: 13
+    description: "K8s — request impersonation header used (Impersonate-User / Impersonate-Group)"
+    groups: [k8s, impersonation, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"Impersonate-(User|Group|Uid|Extra)\":"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1134"}]
+    alert: {title: "K8s: API request with impersonation header"}
+    enabled: true
+
+  - id: 17665
+    level: 14
+    description: "K8s — request impersonation to system:masters (full admin via header)"
+    groups: [k8s, impersonation, masters, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Impersonate-Group.*system:masters"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1134"}
+    alert: {title: "K8s: impersonate system:masters"}
+    enabled: true
+
+  # ── ServiceAccount Token Mounted Outside Pod ──────────────────────────
+  - id: 17666
+    level: 14
+    description: "K8s — service account token file read from /var/run/secrets/kubernetes.io/serviceaccount on host"
+    groups: [k8s, sa_token_theft, credential_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=PATH.*name=\"/var/run/secrets/kubernetes\\.io/serviceaccount/token\""}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1552.007"}
+    alert: {title: "K8s: SA token file accessed"}
+    enabled: true
+
+  # ── Pod Eviction & Crash Loops ────────────────────────────────────────
+  - id: 17667
+    level: 12
+    description: "K8s — pod evicted under memory pressure (resource abuse)"
+    groups: [k8s, eviction, resource_pressure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)pod.*evicted.*memory pressure"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "K8s: pod evicted (memory)"}
+    enabled: true
+
+  - id: 17668
+    level: 12
+    description: "K8s — many pod CrashLoopBackOff events (instability / abuse)"
+    groups: [k8s, crashloop, anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CrashLoopBackOff"}
+    correlation:
+      window: "10m"
+      threshold: 20
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "K8s: CrashLoopBackOff burst"}
+    enabled: true
+
+  # ── Image Pull Secret Abuse ───────────────────────────────────────────
+  - id: 17669
+    level: 13
+    description: "K8s — imagePullSecret created in non-standard namespace"
+    groups: [k8s, image_pull_secret, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resource\":\\s*\"secrets\".*\"type\":\\s*\"kubernetes\\.io/dockerconfigjson\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "K8s: dockerconfigjson secret created"}
+    enabled: true
