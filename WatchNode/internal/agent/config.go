@@ -96,6 +96,7 @@ type CollectorsConfig struct {
 	Registry       RegistryCollectorConfig       `yaml:"registry"`
 	Osquery        OsqueryCollectorConfig        `yaml:"osquery"`
 	Cloud          CloudCollectorConfig          `yaml:"cloud"`
+	Audit          AuditCollectorConfig          `yaml:"audit"`
 }
 
 // CloudCollectorConfig for cloud provider log ingestion.
@@ -155,6 +156,20 @@ type FileIntegrityCollectorConfig struct {
 	Paths         []FIMPathConfig `yaml:"paths"`
 	HashAlgorithms []string      `yaml:"hash_algorithms"`
 	ScanOnStart   bool           `yaml:"scan_on_start"`
+	// Whodata enables user-attribution enrichment on FIM events. On Linux it
+	// causes the FIM collector to drop its path list into a helper file that
+	// the audit collector reads to install `auditctl -w <path>` rules; on
+	// Windows it relies on the eventlog collector consuming 4663/4656 events
+	// (operator must enable Object Access auditing via auditpol or GPO).
+	Whodata bool `yaml:"whodata"`
+}
+
+// AuditCollectorConfig for the Linux auditd tailer.
+type AuditCollectorConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Interval string `yaml:"interval"`
+	// Path overrides /var/log/audit/audit.log.
+	Path string `yaml:"path"`
 }
 
 // LogSourceConfig is a single log source.

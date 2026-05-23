@@ -10,6 +10,7 @@ import (
 	"unsafe"
 
 	"github.com/watchnode/watchnode/internal/models"
+	"github.com/watchnode/watchnode/internal/whodata"
 	"golang.org/x/sys/windows"
 )
 
@@ -265,6 +266,25 @@ func renderEvent(handle evtHandle, channel string) *models.DataPoint {
 	// Promote EventData fields to standard Sigma field names so detection rules
 	// can reference Image, CommandLine, TargetUserName etc. directly.
 	normalizeSigmaFields(numericID, evData, fields)
+
+	// Whodata: 4663 (Object Access) carries SubjectUserName + ObjectName, which
+	// the FIM collector uses to attribute filesystem changes to a user.
+	// 4656 (Handle Requested) is the precursor and carries the same identity
+	// data; record both so a rapidly-deleted handle still attributes.
+	if numericID == 4663 || numericID == 4656 {
+		path := evData["ObjectName"]
+		user := evData["SubjectUserName"]
+		if path != "" {
+			whodata.Default().Record(whodata.Entry{
+				Path:        path,
+				User:        user,
+				ProcessName: evData["ProcessName"],
+				PID:         evData["ProcessId"],
+				Source:      "eventlog",
+				Timestamp:   ts,
+			})
+		}
+	}
 
 	return &models.DataPoint{
 		Timestamp: ts,

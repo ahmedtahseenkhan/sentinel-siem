@@ -11,6 +11,7 @@ import (
 	"github.com/watchnode/watchnode/internal/agent"
 	"github.com/watchnode/watchnode/internal/models"
 	"github.com/watchnode/watchnode/internal/utils"
+	"github.com/watchnode/watchnode/internal/whodata"
 )
 
 const CollectorName = "file_integrity"
@@ -64,6 +65,13 @@ func (c *Collector) Start(ctx context.Context) error {
 
 	if c.cfg.ScanOnStart {
 		c.runBaselineScan()
+	}
+
+	// Drop the configured FIM paths into the helper file so the audit
+	// collector (Linux) can auto-install `auditctl -w` rules and the
+	// FIM events that follow can be attributed to a user.
+	if c.cfg.Whodata {
+		c.writeWhodataPathsFile()
 	}
 
 	for _, p := range c.cfg.Paths {
@@ -281,10 +289,52 @@ func (c *Collector) runIncrementalScan() {
 }
 
 func (c *Collector) emit(ts time.Time, typ string, fields map[string]interface{}, tags map[string]string) {
+	// Whodata enrichment: if an audit / 4663 event for this path arrived
+	// within the cache TTL, attach the user attribution before emitting.
+	// Lookup is cheap (one map probe under a mutex) and a miss is fine —
+	// the field simply isn't added.
+	if path, ok := fields["path"].(string); ok && path != "" {
+		if e, ok := whodata.Default().Lookup(path); ok {
+			if e.User != "" {
+				fields["user"] = e.User
+			}
+			if e.ProcessName != "" {
+				fields["process_name"] = e.ProcessName
+			}
+			if e.UID != "" {
+				fields["audit_uid"] = e.UID
+			}
+			if e.PID != "" {
+				fields["audit_pid"] = e.PID
+			}
+			fields["whodata_source"] = e.Source
+		}
+	}
 	select {
 	case c.dataCh <- models.DataPoint{Timestamp: ts, Type: typ, Fields: fields, Tags: tags}:
 	default:
 	}
+}
+
+// writeWhodataPathsFile drops the list of recursive FIM paths into a
+// well-known location that the audit collector reads to install
+// `auditctl -w <path>` rules. Decouples the two collectors so the audit
+// collector doesn't need to import agent.FileIntegrityCollectorConfig.
+// Best-effort: failure is logged silently (we don't have a logger here)
+// and just means auto-rule-install is skipped — operators can still
+// manage audit rules manually.
+func (c *Collector) writeWhodataPathsFile() {
+	const helperPath = "/var/lib/watchnode/whodata-paths"
+	_ = os.MkdirAll(filepath.Dir(helperPath), 0o755)
+	var b []byte
+	for _, p := range c.cfg.Paths {
+		if p.Path == "" {
+			continue
+		}
+		b = append(b, []byte(p.Path)...)
+		b = append(b, '\n')
+	}
+	_ = os.WriteFile(helperPath, b, 0o644)
 }
 
 // Stop implements models.Collector.

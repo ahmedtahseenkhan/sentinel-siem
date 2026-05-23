@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/watchnode/watchnode/internal/agent"
+	"github.com/watchnode/watchnode/internal/collectors/audit"
 	"github.com/watchnode/watchnode/internal/collectors/cloud"
 	"github.com/watchnode/watchnode/internal/collectors/docker"
 	"github.com/watchnode/watchnode/internal/collectors/fim"
@@ -204,6 +205,9 @@ func buildCollectors(cfg *agent.Config) []models.Collector {
 	}
 	if cfg.Collectors.Cloud.Enabled {
 		collectors = append(collectors, cloud.New(cfg.Collectors.Cloud))
+	}
+	if cfg.Collectors.Audit.Enabled {
+		collectors = append(collectors, audit.New(cfg.Collectors.Audit))
 	}
 	return collectors
 }
