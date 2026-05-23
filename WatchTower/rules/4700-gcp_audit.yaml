@@ -1,0 +1,653 @@
+# WatchTower — Google Cloud Platform Audit Log Detection
+# Rule IDs: 16700-16749
+#
+# Sources: GCP Cloud Audit Logs (Admin Activity, Data Access, System Event)
+# ingested via Pub/Sub or via the cloud connector. Fields:
+#   protoPayload.methodName, protoPayload.serviceName,
+#   protoPayload.authenticationInfo.principalEmail, severity,
+#   protoPayload.requestMetadata.callerIp, resource.labels.*,
+#   protoPayload.status.code, protoPayload.authorizationInfo[*].permission
+
+rules:
+  # ── IAM Identity ──────────────────────────────────────────────────────
+  - id: 16700
+    level: 14
+    description: "GCP — IAM SetIamPolicy granting roles/owner to identity"
+    groups: [gcp, iam, privilege_escalation, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"SetIamPolicy\".*\"role\":\\s*\"roles/owner\""}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1098"}
+    alert: {title: "GCP: roles/owner granted via SetIamPolicy"}
+    enabled: true
+
+  - id: 16701
+    level: 13
+    description: "GCP — IAM SetIamPolicy granting roles/editor or admin roles"
+    groups: [gcp, iam, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"SetIamPolicy\".*\"role\":\\s*\"roles/(editor|.*admin)\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "GCP: Editor/admin role granted"}
+    enabled: true
+
+  - id: 16702
+    level: 14
+    description: "GCP — service account key created (long-lived credential)"
+    groups: [gcp, iam, service_account, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.iam\\.admin\\.v1\\.CreateServiceAccountKey\""}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1098.001"}
+    alert: {title: "GCP: ServiceAccountKey created"}
+    enabled: true
+
+  - id: 16703
+    level: 13
+    description: "GCP — service account created"
+    groups: [gcp, iam, account_creation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.iam\\.admin\\.v1\\.CreateServiceAccount\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1136"}]
+    alert: {title: "GCP: Service account created"}
+    enabled: true
+
+  - id: 16704
+    level: 13
+    description: "GCP — service account impersonation (generateAccessToken)"
+    groups: [gcp, iam, impersonation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"GenerateAccessToken\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1078.004"}]
+    alert: {title: "GCP: GenerateAccessToken (impersonation)"}
+    enabled: true
+
+  - id: 16705
+    level: 14
+    description: "GCP — IAM signJwt / signBlob (token forgery suspect)"
+    groups: [gcp, iam, token_forgery, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"(SignJwt|SignBlob)\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1606"}]
+    alert: {title: "GCP: signJwt/signBlob called"}
+    enabled: true
+
+  - id: 16706
+    level: 13
+    description: "GCP — OS Login disabled on project / VM"
+    groups: [gcp, oslogin, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"metadata\".*enable-oslogin.*FALSE"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "GCP: OS Login disabled"}
+    enabled: true
+
+  - id: 16707
+    level: 13
+    description: "GCP — SSH key added to project metadata (persistence)"
+    groups: [gcp, ssh_key, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"v1\\.compute\\.projects\\.setCommonInstanceMetadata\".*ssh-keys"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098.004"}]
+    alert: {title: "GCP: SSH key added to project metadata"}
+    enabled: true
+
+  # ── Audit Logging Tampering ───────────────────────────────────────────
+  - id: 16708
+    level: 14
+    description: "GCP — Audit log sink deleted (forwarding disabled)"
+    groups: [gcp, audit_tampering, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.logging\\.v2\\.ConfigServiceV2\\.DeleteSink\""}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.008"}
+    alert: {title: "GCP: Log sink deleted"}
+    enabled: true
+
+  - id: 16709
+    level: 13
+    description: "GCP — Audit log sink updated (filter narrowed)"
+    groups: [gcp, audit_tampering, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.logging\\.v2\\.ConfigServiceV2\\.UpdateSink\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.008"}]
+    alert: {title: "GCP: Log sink updated"}
+    enabled: true
+
+  - id: 16710
+    level: 13
+    description: "GCP — log bucket deleted"
+    groups: [gcp, audit_tampering, log_bucket]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.logging\\.v2\\.ConfigServiceV2\\.DeleteBucket\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.008"}]
+    alert: {title: "GCP: Log bucket deleted"}
+    enabled: true
+
+  - id: 16711
+    level: 13
+    description: "GCP — log exclusion added (filter suppression)"
+    groups: [gcp, audit_tampering, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.logging\\.v2\\.ConfigServiceV2\\.CreateExclusion\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.008"}]
+    alert: {title: "GCP: Log exclusion created"}
+    enabled: true
+
+  # ── Storage / GCS ─────────────────────────────────────────────────────
+  - id: 16712
+    level: 14
+    description: "GCP GCS — bucket IAM granting allUsers/allAuthenticatedUsers"
+    groups: [gcp, gcs, public_exposure, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"storage\\.setIamPermissions\".*\"member\":\\s*\"(allUsers|allAuthenticatedUsers)\""}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1567.002"}
+    alert: {title: "GCP GCS: bucket public access granted"}
+    enabled: true
+
+  - id: 16713
+    level: 13
+    description: "GCP GCS — object ACL set to public-read"
+    groups: [gcp, gcs, public_exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"storage\\.objects\\.update\".*\"entity\":\\s*\"allUsers\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567.002"}]
+    alert: {title: "GCP GCS: object ACL public"}
+    enabled: true
+
+  - id: 16714
+    level: 13
+    description: "GCP GCS — bucket lifecycle policy added (expiration / delete)"
+    groups: [gcp, gcs, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"storage\\.buckets\\.update\".*\"lifecycle\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "GCP GCS: bucket lifecycle changed"}
+    enabled: true
+
+  - id: 16715
+    level: 13
+    description: "GCP GCS — bucket versioning disabled"
+    groups: [gcp, gcs, ransomware_prep]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"storage\\.buckets\\.update\".*\"versioning\":\\s*\\{\\s*\"enabled\":\\s*false"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1490"}]
+    alert: {title: "GCP GCS: bucket versioning disabled"}
+    enabled: true
+
+  - id: 16716
+    level: 14
+    description: "GCP GCS — bucket deleted"
+    groups: [gcp, gcs, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"storage\\.buckets\\.delete\""}
+    mitre:
+      - {tactic_id: "TA0040", technique_id: "T1485"}
+    alert: {title: "GCP GCS: bucket deleted"}
+    enabled: true
+
+  - id: 16717
+    level: 13
+    description: "GCP GCS — mass object download from one identity (exfiltration)"
+    groups: [gcp, gcs, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"storage\\.objects\\.get\""}
+    correlation:
+      window: "5m"
+      threshold: 200
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0010", technique_id: "T1530"}]
+    alert: {title: "GCP GCS: object GET burst (exfil)"}
+    enabled: true
+
+  - id: 16718
+    level: 13
+    description: "GCP GCS — mass object delete (impact)"
+    groups: [gcp, gcs, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"storage\\.objects\\.delete\""}
+    correlation:
+      window: "5m"
+      threshold: 50
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "GCP GCS: mass object delete"}
+    enabled: true
+
+  # ── Compute Engine ────────────────────────────────────────────────────
+  - id: 16719
+    level: 14
+    description: "GCP — firewall rule allowing 0.0.0.0/0 on SSH/RDP/DB ports"
+    groups: [gcp, firewall, exposure, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"v1\\.compute\\.firewalls\\.insert\".*\"sourceRanges\":\\s*\\[\\s*\"0\\.0\\.0\\.0/0\".*\"ports\":\\s*\\[\\s*\"(22|3389|3306|5432|1433|6379|27017)\""}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "GCP: firewall opens sensitive port to 0.0.0.0/0"}
+    enabled: true
+
+  - id: 16720
+    level: 13
+    description: "GCP — firewall rule allowing 0.0.0.0/0 (generic)"
+    groups: [gcp, firewall, exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"v1\\.compute\\.firewalls\\.insert\".*\"sourceRanges\":\\s*\\[\\s*\"0\\.0\\.0\\.0/0\""}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "GCP: firewall 0.0.0.0/0 rule added"}
+    enabled: true
+
+  - id: 16721
+    level: 13
+    description: "GCP — Compute instance created with public IP"
+    groups: [gcp, compute, exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"v1\\.compute\\.instances\\.insert\".*\"accessConfigs\":\\s*\\[\\s*\\{\\s*\"type\":\\s*\"ONE_TO_ONE_NAT\""}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "GCP: Compute instance with public IP"}
+    enabled: true
+
+  - id: 16722
+    level: 13
+    description: "GCP — large GPU/N-series instance launched (mining suspect)"
+    groups: [gcp, compute, cryptomining, impact]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"v1\\.compute\\.instances\\.insert\".*\"machineType\":\\s*\".*(n2-highmem|n2-standard-(32|64|96)|a2-(highgpu|megagpu)|t4|v100|a100)\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1496"}]
+    alert: {title: "GCP: Large/GPU instance launched"}
+    enabled: true
+
+  - id: 16723
+    level: 13
+    description: "GCP — Compute instance startup-script set (custom code at boot — persistence)"
+    groups: [gcp, compute, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"v1\\.compute\\.instances\\.setMetadata\".*startup-script"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543"}]
+    alert: {title: "GCP: instance startup-script metadata set"}
+    enabled: true
+
+  - id: 16724
+    level: 14
+    description: "GCP — Compute instance metadata key 'enable-oslogin' set to FALSE on instance"
+    groups: [gcp, oslogin, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"v1\\.compute\\.instances\\.setMetadata\".*enable-oslogin.*FALSE"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "GCP: OS Login disabled on instance"}
+    enabled: true
+
+  - id: 16725
+    level: 13
+    description: "GCP — Compute disk snapshot copied to another project"
+    groups: [gcp, compute, snapshot, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"v1\\.compute\\.snapshots\\.insert\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1537"}]
+    alert: {title: "GCP: Disk snapshot created"}
+    enabled: true
+
+  - id: 16726
+    level: 13
+    description: "GCP — instance delete burst"
+    groups: [gcp, compute, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"v1\\.compute\\.instances\\.delete\""}
+    correlation:
+      window: "5m"
+      threshold: 5
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "GCP: instance delete burst"}
+    enabled: true
+
+  # ── GKE / Container ──────────────────────────────────────────────────
+  - id: 16727
+    level: 14
+    description: "GCP GKE — cluster created with public endpoint and no master authorized networks"
+    groups: [gcp, gke, exposure, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.container\\.v\\d+\\.ClusterManager\\.CreateCluster\".*\"masterAuthorizedNetworksConfig\":\\s*\\{\\s*\"enabled\":\\s*false"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "GCP GKE: cluster with public endpoint, no master-authorized-networks"}
+    enabled: true
+
+  - id: 16728
+    level: 13
+    description: "GCP GKE — workload identity / RBAC binding granting cluster-admin"
+    groups: [gcp, gke, rbac, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"io\\.k8s\\.authorization\\.rbac\\.v1\\.ClusterRoleBindings\\.create\".*cluster-admin"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "GCP GKE: cluster-admin binding created"}
+    enabled: true
+
+  - id: 16729
+    level: 13
+    description: "GCP — Container Registry / Artifact Registry image deleted"
+    groups: [gcp, container_registry, integrity]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"(google\\.devtools\\.artifactregistry|gcr\\.io).*Delete\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "GCP: container image deleted"}
+    enabled: true
+
+  # ── Secret Manager / KMS ──────────────────────────────────────────────
+  - id: 16730
+    level: 14
+    description: "GCP Secret Manager — secret access burst (credential harvest)"
+    groups: [gcp, secret_manager, credential_access, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.cloud\\.secretmanager\\.v1\\.SecretManagerService\\.AccessSecretVersion\""}
+    correlation:
+      window: "10m"
+      threshold: 30
+      group_by: ["agent_name"]
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1555.006"}
+    alert: {title: "GCP Secret Manager: AccessSecretVersion burst"}
+    enabled: true
+
+  - id: 16731
+    level: 13
+    description: "GCP Secret Manager — secret deleted"
+    groups: [gcp, secret_manager, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.cloud\\.secretmanager\\.v1\\.SecretManagerService\\.DeleteSecret\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "GCP Secret Manager: secret deleted"}
+    enabled: true
+
+  - id: 16732
+    level: 14
+    description: "GCP KMS — key destroyed (data loss / ransomware-prep)"
+    groups: [gcp, kms, destructive, ransomware, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"DestroyCryptoKeyVersion\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "GCP KMS: key version destroyed"}
+    enabled: true
+
+  - id: 16733
+    level: 13
+    description: "GCP KMS — key disabled"
+    groups: [gcp, kms, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"DisableCryptoKeyVersion\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "GCP KMS: key disabled"}
+    enabled: true
+
+  # ── Network / VPC ─────────────────────────────────────────────────────
+  - id: 16734
+    level: 13
+    description: "GCP — VPC peering / Cloud Interconnect / VPN created (exfil channel)"
+    groups: [gcp, vpc, lateral_movement]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*(\"v1\\.compute\\.networks\\.addPeering\"|\"v1\\.compute\\.vpnTunnels\\.insert\"|\"v1\\.compute\\.interconnects\\.insert\")"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1199"}]
+    alert: {title: "GCP: VPC peering/VPN/Interconnect created"}
+    enabled: true
+
+  - id: 16735
+    level: 13
+    description: "GCP — Cloud Router / NAT modified"
+    groups: [gcp, networking, modification]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"v1\\.compute\\.routers\\.(insert|update|delete)\""}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1090"}]
+    alert: {title: "GCP: Cloud Router changed"}
+    enabled: true
+
+  # ── BigQuery / Data Access ────────────────────────────────────────────
+  - id: 16736
+    level: 13
+    description: "GCP BigQuery — large query / export to GCS (potential exfil)"
+    groups: [gcp, bigquery, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.cloud\\.bigquery\\.v2\\.JobService\\.InsertJob\".*\"destinationUris\":\\s*\\[\\s*\"gs://"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567"}]
+    alert: {title: "GCP BigQuery: export to GCS"}
+    enabled: true
+
+  - id: 16737
+    level: 12
+    description: "GCP BigQuery — dataset / table public access added"
+    groups: [gcp, bigquery, public_exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.cloud\\.bigquery\\.v2\\.DatasetService\\.PatchDataset\".*\"role\":\\s*\"READER\".*\"specialGroup\":\\s*\"allAuthenticatedUsers\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567.002"}]
+    alert: {title: "GCP BigQuery: dataset made public"}
+    enabled: true
+
+  - id: 16738
+    level: 14
+    description: "GCP BigQuery — dataset / table deleted"
+    groups: [gcp, bigquery, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.cloud\\.bigquery\\.v2\\.(Dataset|Table)Service\\.Delete(Dataset|Table)\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "GCP BigQuery: dataset/table deleted"}
+    enabled: true
+
+  # ── Cloud Functions / Cloud Run / App Engine ──────────────────────────
+  - id: 16739
+    level: 14
+    description: "GCP Cloud Function — allUsers invoker (publicly callable)"
+    groups: [gcp, cloud_functions, public_exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.cloud\\.functions\\.v1\\.CloudFunctionsService\\.SetIamPolicy\".*\"member\":\\s*\"allUsers\".*\"role\":\\s*\"roles/cloudfunctions\\.invoker\""}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "GCP CF: allUsers invoker added"}
+    enabled: true
+
+  - id: 16740
+    level: 13
+    description: "GCP Cloud Function — source code updated"
+    groups: [gcp, cloud_functions, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.cloud\\.functions\\.v\\d+\\.CloudFunctionsService\\.UpdateFunction\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1648"}]
+    alert: {title: "GCP CF: function code updated"}
+    enabled: true
+
+  - id: 16741
+    level: 13
+    description: "GCP Cloud Run — service deployed with allUsers invoker"
+    groups: [gcp, cloud_run, public_exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.cloud\\.run\\.v\\d+\\..*SetIamPolicy\".*\"member\":\\s*\"allUsers\".*\"role\":\\s*\"roles/run\\.invoker\""}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "GCP Cloud Run: allUsers invoker added"}
+    enabled: true
+
+  # ── Org / Folder / Project ────────────────────────────────────────────
+  - id: 16742
+    level: 14
+    description: "GCP — Organization policy constraint removed (control bypass)"
+    groups: [gcp, org_policy, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.cloud\\.orgpolicy\\.v\\d+\\.OrgPolicy\\.ClearOrgPolicy\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.008"}]
+    alert: {title: "GCP: Org policy cleared"}
+    enabled: true
+
+  - id: 16743
+    level: 13
+    description: "GCP — Project moved to another folder/org (isolation)"
+    groups: [gcp, project_move, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"MoveProject\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1535"}]
+    alert: {title: "GCP: Project moved"}
+    enabled: true
+
+  - id: 16744
+    level: 13
+    description: "GCP — Project labels mass-modified (cost-tracking obfuscation)"
+    groups: [gcp, project, obfuscation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"SetIamPolicy\".*\"resource\\.type\":\\s*\"project\""}
+    correlation:
+      window: "5m"
+      threshold: 10
+    mitre: [{tactic_id: "TA0005", technique_id: "T1564"}]
+    alert: {title: "GCP: project IAM changes burst"}
+    enabled: true
+
+  # ── Security Command Center / SCC ─────────────────────────────────────
+  - id: 16745
+    level: 13
+    description: "GCP — Security Command Center notification config deleted (alerting bypass)"
+    groups: [gcp, scc, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.cloud\\.securitycenter\\.v\\d+\\.SecurityCenter\\.DeleteNotificationConfig\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "GCP SCC: notification config deleted"}
+    enabled: true
+
+  - id: 16746
+    level: 13
+    description: "GCP — Security source / muting rule changed (alerting weakened)"
+    groups: [gcp, scc, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.cloud\\.securitycenter\\.v\\d+\\.SecurityCenter\\.(SetMute|CreateMuteConfig)\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "GCP SCC: finding muted"}
+    enabled: true
+
+  # ── Pub/Sub / Eventing ────────────────────────────────────────────────
+  - id: 16747
+    level: 12
+    description: "GCP Pub/Sub — topic subscriber added (alerting hijack risk)"
+    groups: [gcp, pubsub, hijack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"methodName\":\\s*\"google\\.pubsub\\.v\\d+\\.Subscriber\\.CreateSubscription\""}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1213"}]
+    alert: {title: "GCP Pub/Sub: subscription created"}
+    enabled: true
+
+  # ── Anomalies ─────────────────────────────────────────────────────────
+  - id: 16748
+    level: 13
+    description: "GCP — PERMISSION_DENIED burst (recon / token abuse)"
+    groups: [gcp, recon, unauthorized]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"status\":\\s*\\{\\s*\"code\":\\s*7|\"PERMISSION_DENIED\""}
+    correlation:
+      window: "10m"
+      threshold: 30
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1078.004"}]
+    alert: {title: "GCP: PERMISSION_DENIED burst"}
+    enabled: true
+
+  - id: 16749
+    level: 13
+    description: "GCP — API call from new region / location"
+    groups: [gcp, region_anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"requestMetadata\".*\"callerIp\":"}
+    enrich:
+      baseline: "principal.region"
+    mitre: [{tactic_id: "TA0005", technique_id: "T1535"}]
+    alert: {title: "GCP: API call from new region"}
+    enabled: true

@@ -1,0 +1,519 @@
+# WatchTower — Google Workspace Audit Detection
+# Rule IDs: 16800-16839
+#
+# Sources: Google Workspace Admin SDK Reports API events ingested via the
+# cloud connector. Fields follow:
+#   id.applicationName  ("login","admin","drive","groups","gmail","calendar",
+#                        "token","saml","mobile","user_accounts","contacts")
+#   actor.email, ipAddress, events[].name, events[].parameters[].name/value
+
+rules:
+  # ── Login ─────────────────────────────────────────────────────────────
+  - id: 16800
+    level: 12
+    description: "Workspace — login failure"
+    groups: [google_workspace, login, auth]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"applicationName\":\\s*\"login\".*\"name\":\\s*\"login_failure\""}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1110"}
+    alert: {title: "Workspace: login failure"}
+    enabled: true
+
+  - id: 16801
+    level: 13
+    description: "Workspace — brute force (failed logins from same IP)"
+    groups: [google_workspace, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"login_failure\""}
+    correlation:
+      window: "10m"
+      threshold: 10
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "Workspace: brute force"}
+    enabled: true
+
+  - id: 16802
+    level: 14
+    description: "Workspace — suspicious login (Google flagged)"
+    groups: [google_workspace, suspicious_login, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"suspicious_login\""}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1078.004"}
+    alert: {title: "Workspace: Suspicious login flagged"}
+    enabled: true
+
+  - id: 16803
+    level: 13
+    description: "Workspace — login from suspicious IP"
+    groups: [google_workspace, login, anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"suspicious_login_less_secure_app\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1078.004"}]
+    alert: {title: "Workspace: Less-secure-app login"}
+    enabled: true
+
+  - id: 16804
+    level: 13
+    description: "Workspace — account warning for compromised credentials"
+    groups: [google_workspace, compromise]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*(\"account_warning_for_compromised\"|\"account_disabled_password_leak\")"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1078"}]
+    alert: {title: "Workspace: Compromised account warning"}
+    enabled: true
+
+  - id: 16805
+    level: 13
+    description: "Workspace — 2-step verification disabled by user"
+    groups: [google_workspace, mfa, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"2sv_disable\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1556"}]
+    alert: {title: "Workspace: 2SV disabled by user"}
+    enabled: true
+
+  # ── Admin Actions ─────────────────────────────────────────────────────
+  - id: 16806
+    level: 14
+    description: "Workspace — user granted super-admin privilege"
+    groups: [google_workspace, super_admin, privilege_escalation, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"applicationName\":\\s*\"admin\".*\"name\":\\s*\"GRANT_ADMIN_PRIVILEGE\""}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1098"}
+    alert: {title: "Workspace: Super admin privilege granted"}
+    enabled: true
+
+  - id: 16807
+    level: 13
+    description: "Workspace — admin role assigned to user"
+    groups: [google_workspace, admin_role, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"ASSIGN_ROLE\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "Workspace: Admin role assigned"}
+    enabled: true
+
+  - id: 16808
+    level: 13
+    description: "Workspace — admin role created with high-privilege"
+    groups: [google_workspace, admin_role, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"CREATE_ROLE\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "Workspace: New admin role created"}
+    enabled: true
+
+  - id: 16809
+    level: 13
+    description: "Workspace — user account suspended / unsuspended"
+    groups: [google_workspace, account_state, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*(\"SUSPEND_USER\"|\"UNSUSPEND_USER\")"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1531"}]
+    alert: {title: "Workspace: User suspended/unsuspended"}
+    enabled: true
+
+  - id: 16810
+    level: 14
+    description: "Workspace — user account deleted"
+    groups: [google_workspace, account_state, destructive, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"DELETE_USER\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1531"}]
+    alert: {title: "Workspace: User deleted"}
+    enabled: true
+
+  - id: 16811
+    level: 13
+    description: "Workspace — user password reset by admin"
+    groups: [google_workspace, password_reset, account_manipulation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"CHANGE_USER_PASSWORD\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1098"}]
+    alert: {title: "Workspace: User password reset by admin"}
+    enabled: true
+
+  - id: 16812
+    level: 13
+    description: "Workspace — user 2SV disabled by admin"
+    groups: [google_workspace, mfa, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"TURN_OFF_2_STEP_VERIFICATION\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1556"}]
+    alert: {title: "Workspace: 2SV disabled by admin"}
+    enabled: true
+
+  - id: 16813
+    level: 13
+    description: "Workspace — enforcement of 2-step verification disabled at org level"
+    groups: [google_workspace, mfa, org_setting, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"CHANGE_2SV_FREQUENCY\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Workspace: 2SV enforcement changed"}
+    enabled: true
+
+  # ── Drive / File Sharing ──────────────────────────────────────────────
+  - id: 16814
+    level: 14
+    description: "Workspace Drive — file shared 'anyone with link' or public"
+    groups: [google_workspace, drive, anonymous_share, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"applicationName\":\\s*\"drive\".*\"name\":\\s*\"change_acl_editors\".*\"visibility\":\\s*\"(people_within_domain_with_link|public_on_the_web|public_in_the_domain)\""}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1567.002"}
+    alert: {title: "Workspace Drive: file shared publicly"}
+    enabled: true
+
+  - id: 16815
+    level: 13
+    description: "Workspace Drive — bulk file download from one identity"
+    groups: [google_workspace, drive, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"applicationName\":\\s*\"drive\".*\"name\":\\s*\"download\""}
+    correlation:
+      window: "5m"
+      threshold: 50
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567.002"}]
+    alert: {title: "Workspace Drive: bulk download"}
+    enabled: true
+
+  - id: 16816
+    level: 13
+    description: "Workspace Drive — bulk file deletion (impact)"
+    groups: [google_workspace, drive, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"applicationName\":\\s*\"drive\".*\"name\":\\s*\"trash\""}
+    correlation:
+      window: "5m"
+      threshold: 50
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "Workspace Drive: bulk trash/delete"}
+    enabled: true
+
+  - id: 16817
+    level: 13
+    description: "Workspace Drive — file shared with external (non-domain) email"
+    groups: [google_workspace, drive, external_share]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"change_user_access\".*\"target_user\":\\s*\"[^@\"]+@(?!yourdomain\\.com)"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567.002"}]
+    alert: {title: "Workspace Drive: external share"}
+    enabled: true
+
+  - id: 16818
+    level: 13
+    description: "Workspace Drive — file shared with personal email domain"
+    groups: [google_workspace, drive, personal_email]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"target_user\":\\s*\"[^@\"]+@(gmail|outlook|yahoo|hotmail|aol|protonmail|icloud)\\.com\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567.002"}]
+    alert: {title: "Workspace Drive: share to personal-email domain"}
+    enabled: true
+
+  - id: 16819
+    level: 13
+    description: "Workspace Drive — DLP rule match"
+    groups: [google_workspace, drive, dlp]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"dlp_rule_match\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567"}]
+    alert: {title: "Workspace Drive: DLP match"}
+    enabled: true
+
+  - id: 16820
+    level: 12
+    description: "Workspace Drive — shared drive admin added"
+    groups: [google_workspace, shared_drive, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"sheets_import\".*organizer|\"name\":\\s*\"add_to_folder\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "Workspace: Shared drive permission change"}
+    enabled: true
+
+  # ── OAuth / Tokens / 3rd-Party Apps ───────────────────────────────────
+  - id: 16821
+    level: 14
+    description: "Workspace — OAuth token authorized for 3rd-party app with risky scope"
+    groups: [google_workspace, oauth, illicit_consent, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"applicationName\":\\s*\"token\".*\"name\":\\s*\"authorize\".*scope.*(mail\\.|drive|admin\\.directory)"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1528"}
+    alert: {title: "Workspace: OAuth token with risky scope"}
+    enabled: true
+
+  - id: 16822
+    level: 13
+    description: "Workspace — 3rd-party app trusted by user"
+    groups: [google_workspace, oauth, app_trust]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"authorize\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1528"}]
+    alert: {title: "Workspace: 3rd-party OAuth authorize"}
+    enabled: true
+
+  - id: 16823
+    level: 13
+    description: "Workspace — app whitelisted at org level"
+    groups: [google_workspace, oauth, app_whitelist, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"WHITELIST_APPLICATION\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098.001"}]
+    alert: {title: "Workspace: Application whitelisted"}
+    enabled: true
+
+  - id: 16824
+    level: 13
+    description: "Workspace — app data access scope granted at org level"
+    groups: [google_workspace, oauth, app_grant]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"TRUST_DOMAIN_OWNED_OAUTH2_APPS\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098.001"}]
+    alert: {title: "Workspace: Domain-owned OAuth trust changed"}
+    enabled: true
+
+  # ── Gmail ────────────────────────────────────────────────────────────
+  - id: 16825
+    level: 13
+    description: "Workspace Gmail — forwarding address set on user mailbox"
+    groups: [google_workspace, gmail, mail_forwarding, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"email_forwarding_out_of_domain\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1114.003"}]
+    alert: {title: "Workspace Gmail: forwarding out of domain"}
+    enabled: true
+
+  - id: 16826
+    level: 13
+    description: "Workspace Gmail — filter created with forward/delete/skip-inbox action"
+    groups: [google_workspace, gmail, filter, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"gmail_user_filter\".*(forward|delete|skip_inbox)"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1114.003"}]
+    alert: {title: "Workspace Gmail: filter forward/delete"}
+    enabled: true
+
+  - id: 16827
+    level: 12
+    description: "Workspace Gmail — outbound delegate access granted"
+    groups: [google_workspace, gmail, delegate, impersonation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"gmail_user_delegate\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1098.002"}]
+    alert: {title: "Workspace Gmail: delegate added"}
+    enabled: true
+
+  - id: 16828
+    level: 13
+    description: "Workspace Gmail — phishing email reported / spoofing detected"
+    groups: [google_workspace, gmail, phishing]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*(\"REPORTED_AS_PHISHING\"|\"GMAIL_PHISHING_REPORTED\")"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1566.002"}]
+    alert: {title: "Workspace Gmail: phishing reported"}
+    enabled: true
+
+  - id: 16829
+    level: 13
+    description: "Workspace Gmail — content compliance / DLP rule match"
+    groups: [google_workspace, gmail, dlp, compliance]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"GMAIL_RULE_TRIGGERED\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567"}]
+    alert: {title: "Workspace Gmail: rule triggered"}
+    enabled: true
+
+  # ── Groups ────────────────────────────────────────────────────────────
+  - id: 16830
+    level: 13
+    description: "Workspace Groups — group access policy widened (allow outside org)"
+    groups: [google_workspace, groups, exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"applicationName\":\\s*\"groups\".*\"name\":\\s*\"CHANGE_GROUP_SETTING\".*allow_external"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1199"}]
+    alert: {title: "Workspace Groups: external access widened"}
+    enabled: true
+
+  # ── Calendar ─────────────────────────────────────────────────────────
+  - id: 16831
+    level: 11
+    description: "Workspace Calendar — many external invites in short window (recon / phishing)"
+    groups: [google_workspace, calendar, phishing, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"applicationName\":\\s*\"calendar\".*\"name\":\\s*\"create_event\""}
+    correlation:
+      window: "10m"
+      threshold: 20
+    mitre: [{tactic_id: "TA0001", technique_id: "T1566"}]
+    alert: {title: "Workspace Calendar: external invite burst"}
+    enabled: true
+
+  # ── Mobile / Devices ─────────────────────────────────────────────────
+  - id: 16832
+    level: 12
+    description: "Workspace Mobile — device wiped by user"
+    groups: [google_workspace, mobile, device]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"applicationName\":\\s*\"mobile\".*\"name\":\\s*\"WIPE_ACCOUNT\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "Workspace: Device wiped"}
+    enabled: true
+
+  - id: 16833
+    level: 12
+    description: "Workspace Mobile — device hardware change detected"
+    groups: [google_workspace, mobile, device_anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"applicationName\":\\s*\"mobile\".*\"name\":\\s*\"DEVICE_COMPROMISED\""}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "Workspace: Device flagged compromised"}
+    enabled: true
+
+  # ── Org Policy / SAML / SSO ──────────────────────────────────────────
+  - id: 16834
+    level: 14
+    description: "Workspace — SAML SSO profile created / modified"
+    groups: [google_workspace, saml, sso, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"applicationName\":\\s*\"saml\".*\"name\":\\s*\"(CREATE_SAML_PROFILE|UPDATE_SAML_PROFILE)\""}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1606.002"}
+    alert: {title: "Workspace: SAML profile created/modified"}
+    enabled: true
+
+  - id: 16835
+    level: 14
+    description: "Workspace — SAML IdP certificate rotated (Golden SAML risk)"
+    groups: [google_workspace, saml, golden_saml, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"UPDATE_SAML_PROFILE\".*certificate"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1606.002"}]
+    alert: {title: "Workspace: SAML certificate rotated"}
+    enabled: true
+
+  - id: 16836
+    level: 13
+    description: "Workspace — domain added (tenant expansion suspect)"
+    groups: [google_workspace, domain, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"ADD_DOMAIN_ALIAS\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "Workspace: Domain alias added"}
+    enabled: true
+
+  # ── Token / Recovery ─────────────────────────────────────────────────
+  - id: 16837
+    level: 13
+    description: "Workspace — backup codes generated (recovery method abuse)"
+    groups: [google_workspace, backup_codes, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"GENERATE_BACKUP_CODES\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "Workspace: Backup codes generated"}
+    enabled: true
+
+  - id: 16838
+    level: 13
+    description: "Workspace — app password created (legacy auth bypass)"
+    groups: [google_workspace, app_password, legacy_auth]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"GENERATE_APP_PASSWORD\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1078"}]
+    alert: {title: "Workspace: App password generated"}
+    enabled: true
+
+  - id: 16839
+    level: 13
+    description: "Workspace — audit log alert rule deleted"
+    groups: [google_workspace, audit_tampering, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"name\":\\s*\"DELETE_ALERT\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Workspace: Alert rule deleted"}
+    enabled: true

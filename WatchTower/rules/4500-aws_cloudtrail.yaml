@@ -1,0 +1,1047 @@
+# WatchTower — AWS CloudTrail Detection
+# Rule IDs: 16500-16579
+#
+# Source: CloudTrail events ingested via a cloud connector. Each event is
+# JSON; rules match against the raw `message` field. Common fields:
+#   eventName, eventSource, userIdentity.type, userIdentity.userName,
+#   userIdentity.arn, sourceIPAddress, awsRegion, errorCode, errorMessage,
+#   requestParameters, responseElements, mfaAuthenticated.
+
+rules:
+  # ── Identity / Root / IAM ─────────────────────────────────────────────
+  - id: 16500
+    level: 14
+    description: "AWS — Root account console login"
+    groups: [aws, cloudtrail, root_account, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"ConsoleLogin\".*\"userIdentity\".*\"type\":\\s*\"Root\""}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1078.004"}
+    alert: {title: "AWS: Root account console login"}
+    enabled: true
+
+  - id: 16501
+    level: 14
+    description: "AWS — Root account API activity"
+    groups: [aws, cloudtrail, root_account, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"userIdentity\".*\"type\":\\s*\"Root\".*\"eventSource\":"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078.004"}]
+    alert: {title: "AWS: Root API call (review immediately)"}
+    enabled: true
+
+  - id: 16502
+    level: 13
+    description: "AWS — Console login without MFA"
+    groups: [aws, cloudtrail, mfa, weak_auth]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"ConsoleLogin\".*\"MFAUsed\":\\s*\"No\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1078.004"}]
+    alert: {title: "AWS: Console login without MFA"}
+    enabled: true
+
+  - id: 16503
+    level: 13
+    description: "AWS — Failed console login (brute force)"
+    groups: [aws, cloudtrail, brute_force, auth]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"ConsoleLogin\".*\"errorMessage\":\\s*\"Failed authentication\""}
+    correlation:
+      window: "10m"
+      threshold: 5
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "AWS: Console login brute force"}
+    enabled: true
+
+  - id: 16504
+    level: 13
+    description: "AWS — IAM user created"
+    groups: [aws, cloudtrail, iam, account_creation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"CreateUser\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1136.003"}]
+    alert: {title: "AWS: IAM CreateUser"}
+    enabled: true
+
+  - id: 16505
+    level: 14
+    description: "AWS — IAM access key created for existing user (persistence)"
+    groups: [aws, cloudtrail, iam, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"CreateAccessKey\""}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1098.001"}
+    alert: {title: "AWS: IAM CreateAccessKey (persistence)"}
+    enabled: true
+
+  - id: 16506
+    level: 13
+    description: "AWS — IAM login profile created/updated for user (password set / persistence)"
+    groups: [aws, cloudtrail, iam, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*(\"CreateLoginProfile\"|\"UpdateLoginProfile\")"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098.001"}]
+    alert: {title: "AWS: IAM login profile created/updated"}
+    enabled: true
+
+  - id: 16507
+    level: 14
+    description: "AWS — AdministratorAccess policy attached to user/role"
+    groups: [aws, cloudtrail, iam, privilege_escalation, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"AttachUserPolicy\".*AdministratorAccess|\"eventName\":\\s*\"AttachRolePolicy\".*AdministratorAccess"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1098"}
+    alert: {title: "AWS: AdministratorAccess policy attached"}
+    enabled: true
+
+  - id: 16508
+    level: 14
+    description: "AWS — PutUserPolicy / PutRolePolicy with wildcard action+resource"
+    groups: [aws, cloudtrail, iam, privilege_escalation, wildcard, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"PutUserPolicy|PutRolePolicy\".*\"Action\":\\s*\"\\*\".*\"Resource\":\\s*\"\\*\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "AWS: Inline policy with *:* (full admin)"}
+    enabled: true
+
+  - id: 16509
+    level: 13
+    description: "AWS — IAM CreatePolicyVersion + SetDefault (policy version hijack)"
+    groups: [aws, cloudtrail, iam, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*(\"CreatePolicyVersion\"|\"SetDefaultPolicyVersion\")"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "AWS: Managed policy version manipulated"}
+    enabled: true
+
+  - id: 16510
+    level: 14
+    description: "AWS — AssumeRole by suspicious external account / unusual principal"
+    groups: [aws, cloudtrail, iam, lateral_movement]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"AssumeRole\""}
+    enrich:
+      baseline: "principal.arn"
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1078.004"}
+    alert: {title: "AWS: AssumeRole — review principal"}
+    enabled: true
+
+  - id: 16511
+    level: 13
+    description: "AWS — UpdateAssumeRolePolicy modifying trust relationship"
+    groups: [aws, cloudtrail, iam, trust_relationship, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"UpdateAssumeRolePolicy\""}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1098"}]
+    alert: {title: "AWS: Role trust policy updated"}
+    enabled: true
+
+  - id: 16512
+    level: 13
+    description: "AWS — IAM password policy weakened"
+    groups: [aws, cloudtrail, iam, hardening_regression]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"UpdateAccountPasswordPolicy\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "AWS: Account password policy updated"}
+    enabled: true
+
+  - id: 16513
+    level: 14
+    description: "AWS — MFA device deactivated for user"
+    groups: [aws, cloudtrail, mfa, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DeactivateMFADevice\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1556"}]
+    alert: {title: "AWS: MFA deactivated"}
+    enabled: true
+
+  - id: 16514
+    level: 13
+    description: "AWS — virtual MFA device deleted"
+    groups: [aws, cloudtrail, mfa, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DeleteVirtualMFADevice\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1556"}]
+    alert: {title: "AWS: Virtual MFA device deleted"}
+    enabled: true
+
+  # ── CloudTrail / Logging / Monitoring Tampering ───────────────────────
+  - id: 16515
+    level: 14
+    description: "AWS — CloudTrail trail stopped"
+    groups: [aws, cloudtrail, audit_tampering, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"StopLogging\""}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.008"}
+    alert: {title: "AWS: CloudTrail StopLogging"}
+    enabled: true
+
+  - id: 16516
+    level: 14
+    description: "AWS — CloudTrail trail deleted"
+    groups: [aws, cloudtrail, audit_tampering, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DeleteTrail\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.008"}]
+    alert: {title: "AWS: CloudTrail trail deleted"}
+    enabled: true
+
+  - id: 16517
+    level: 13
+    description: "AWS — CloudTrail trail updated (S3 bucket / filter change)"
+    groups: [aws, cloudtrail, audit_tampering, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"UpdateTrail\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.008"}]
+    alert: {title: "AWS: CloudTrail UpdateTrail"}
+    enabled: true
+
+  - id: 16518
+    level: 13
+    description: "AWS — CloudTrail event selector modified (log scope reduced)"
+    groups: [aws, cloudtrail, audit_tampering, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"PutEventSelectors\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.008"}]
+    alert: {title: "AWS: CloudTrail event selector modified"}
+    enabled: true
+
+  - id: 16519
+    level: 13
+    description: "AWS — S3 bucket logging disabled"
+    groups: [aws, cloudtrail, s3, audit_tampering]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"PutBucketLogging\".*\"LoggingEnabled\":\\s*null"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.008"}]
+    alert: {title: "AWS: S3 bucket logging disabled"}
+    enabled: true
+
+  - id: 16520
+    level: 13
+    description: "AWS — VPC FlowLog deleted"
+    groups: [aws, vpc, audit_tampering]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DeleteFlowLogs\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.008"}]
+    alert: {title: "AWS: VPC FlowLog deleted"}
+    enabled: true
+
+  - id: 16521
+    level: 13
+    description: "AWS — GuardDuty detector disabled / deleted"
+    groups: [aws, guardduty, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*(\"DeleteDetector\"|\"UpdateDetector\".*\"Enable\":\\s*false)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "AWS: GuardDuty detector disabled/deleted"}
+    enabled: true
+
+  - id: 16522
+    level: 13
+    description: "AWS — AWS Config recorder stopped / deleted"
+    groups: [aws, config, audit_tampering]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*(\"StopConfigurationRecorder\"|\"DeleteConfigurationRecorder\")"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.008"}]
+    alert: {title: "AWS: Config recorder stopped/deleted"}
+    enabled: true
+
+  - id: 16523
+    level: 13
+    description: "AWS — CloudWatch alarm deleted (alert suppression)"
+    groups: [aws, cloudwatch, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DeleteAlarms\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "AWS: CloudWatch alarm deleted"}
+    enabled: true
+
+  - id: 16524
+    level: 13
+    description: "AWS — CloudWatch Logs log group deleted"
+    groups: [aws, cloudwatch, audit_tampering]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DeleteLogGroup\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.008"}]
+    alert: {title: "AWS: CloudWatch log group deleted"}
+    enabled: true
+
+  # ── S3 ────────────────────────────────────────────────────────────────
+  - id: 16525
+    level: 14
+    description: "AWS — S3 bucket policy granting public access"
+    groups: [aws, s3, public_exposure, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"PutBucketPolicy\".*\"Principal\":\\s*\"\\*\""}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1567.002"}
+    alert: {title: "AWS: S3 bucket policy with Principal=*"}
+    enabled: true
+
+  - id: 16526
+    level: 13
+    description: "AWS — S3 bucket ACL set to public-read or public-read-write"
+    groups: [aws, s3, public_exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"PutBucketAcl\".*\"public-read(-write)?\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567.002"}]
+    alert: {title: "AWS: S3 ACL set public"}
+    enabled: true
+
+  - id: 16527
+    level: 13
+    description: "AWS — S3 PublicAccessBlock removed"
+    groups: [aws, s3, public_exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DeletePublicAccessBlock\"|PutPublicAccessBlock.*\"BlockPublicAcls\":\\s*false"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "AWS: S3 PublicAccessBlock weakened"}
+    enabled: true
+
+  - id: 16528
+    level: 13
+    description: "AWS — Mass S3 ListObjects from one identity (data discovery)"
+    groups: [aws, s3, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"ListObjects\""}
+    correlation:
+      window: "10m"
+      threshold: 100
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0009", technique_id: "T1530"}]
+    alert: {title: "AWS: S3 ListObjects burst"}
+    enabled: true
+
+  - id: 16529
+    level: 14
+    description: "AWS — Mass S3 GetObject burst (data exfiltration)"
+    groups: [aws, s3, exfiltration, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"GetObject\""}
+    correlation:
+      window: "5m"
+      threshold: 200
+      group_by: ["agent_name"]
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1530"}
+    alert: {title: "AWS: S3 GetObject mass-read"}
+    enabled: true
+
+  - id: 16530
+    level: 13
+    description: "AWS — S3 DeleteObject burst (destruction / ransomware-prep)"
+    groups: [aws, s3, destructive, impact]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DeleteObject\""}
+    correlation:
+      window: "5m"
+      threshold: 50
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "AWS: S3 mass DeleteObject"}
+    enabled: true
+
+  - id: 16531
+    level: 13
+    description: "AWS — S3 versioning suspended / disabled"
+    groups: [aws, s3, defense_evasion, ransomware_prep]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"PutBucketVersioning\".*\"Status\":\\s*\"Suspended\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "AWS: S3 bucket versioning suspended"}
+    enabled: true
+
+  - id: 16532
+    level: 13
+    description: "AWS — S3 lifecycle rule expiring objects added"
+    groups: [aws, s3, destructive, ransomware_prep]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"PutBucketLifecycle\".*\"Expiration\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "AWS: S3 lifecycle expiration added"}
+    enabled: true
+
+  # ── EC2 / Compute ─────────────────────────────────────────────────────
+  - id: 16533
+    level: 13
+    description: "AWS — RunInstances of GPU/large instance (cryptomining suspect)"
+    groups: [aws, ec2, cryptomining, impact]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"RunInstances\".*\"instanceType\":\\s*\"(p3|p4|g4|g5|x1|x2|c5|c6).*xlarge\""}
+    mitre:
+      - {tactic_id: "TA0040", technique_id: "T1496"}
+    alert: {title: "AWS: Large/GPU instance launched"}
+    enabled: true
+
+  - id: 16534
+    level: 13
+    description: "AWS — Mass RunInstances burst (resource hijack)"
+    groups: [aws, ec2, cryptomining, impact]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"RunInstances\""}
+    correlation:
+      window: "5m"
+      threshold: 10
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0040", technique_id: "T1496"}]
+    alert: {title: "AWS: RunInstances burst (mining suspect)"}
+    enabled: true
+
+  - id: 16535
+    level: 13
+    description: "AWS — EC2 instance launched in unusual region"
+    groups: [aws, ec2, region_anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"RunInstances\""}
+    enrich:
+      baseline: "account.region"
+    mitre: [{tactic_id: "TA0005", technique_id: "T1535"}]
+    alert: {title: "AWS: Instance in new region"}
+    enabled: true
+
+  - id: 16536
+    level: 14
+    description: "AWS — Security group rule allowing 0.0.0.0/0 on SSH/RDP/DB ports"
+    groups: [aws, ec2, security_group, exposure, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"AuthorizeSecurityGroupIngress\".*\"cidrIp\":\\s*\"0\\.0\\.0\\.0/0\".*\"(fromPort|toPort)\":\\s*(22|3389|3306|5432|1433|6379|27017|9200|9300)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "AWS: SG opens sensitive port to 0.0.0.0/0"}
+    enabled: true
+
+  - id: 16537
+    level: 12
+    description: "AWS — Security group rule with 0.0.0.0/0 (any other port)"
+    groups: [aws, ec2, security_group, exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"AuthorizeSecurityGroupIngress\".*\"cidrIp\":\\s*\"0\\.0\\.0\\.0/0\""}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "AWS: SG opens port to 0.0.0.0/0"}
+    enabled: true
+
+  - id: 16538
+    level: 13
+    description: "AWS — Network ACL allowing 0.0.0.0/0"
+    groups: [aws, vpc, exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"CreateNetworkAclEntry\".*\"cidrBlock\":\\s*\"0\\.0\\.0\\.0/0\".*\"ruleAction\":\\s*\"allow\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.007"}]
+    alert: {title: "AWS: NACL allow 0.0.0.0/0"}
+    enabled: true
+
+  - id: 16539
+    level: 13
+    description: "AWS — IMDSv2 disabled / metadata service made v1"
+    groups: [aws, ec2, imds, downgrade]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"ModifyInstanceMetadataOptions\".*\"HttpTokens\":\\s*\"optional\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1552.005"}]
+    alert: {title: "AWS: IMDSv2 made optional (v1 reintroduced)"}
+    enabled: true
+
+  - id: 16540
+    level: 14
+    description: "AWS — EC2 instance metadata token requested by unusual process (SSRF suspect)"
+    groups: [aws, ec2, imds, ssrf, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"sourceIPAddress\":\\s*\"169\\.254\\.169\\.254\""}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1552.005"}
+    alert: {title: "AWS: Metadata service accessed via SSRF (169.254.169.254)"}
+    enabled: true
+
+  # ── Lambda ────────────────────────────────────────────────────────────
+  - id: 16541
+    level: 13
+    description: "AWS — Lambda function code updated"
+    groups: [aws, lambda, supply_chain, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"UpdateFunctionCode\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1648"}]
+    alert: {title: "AWS: Lambda UpdateFunctionCode"}
+    enabled: true
+
+  - id: 16542
+    level: 13
+    description: "AWS — Lambda function created with admin role"
+    groups: [aws, lambda, privilege_escalation, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"CreateFunction\".*role.*(Admin|admin)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1648"}]
+    alert: {title: "AWS: Lambda created with admin role"}
+    enabled: true
+
+  - id: 16543
+    level: 14
+    description: "AWS — Lambda layer added from external account (supply-chain)"
+    groups: [aws, lambda, supply_chain, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"UpdateFunctionConfiguration\".*\"Layers\":.*arn:aws:lambda:[^:]+:(?!\\d+:layer:internal)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1195"}
+    alert: {title: "AWS: Lambda layer from external account"}
+    enabled: true
+
+  - id: 16544
+    level: 13
+    description: "AWS — Lambda function URL created with no auth (public)"
+    groups: [aws, lambda, public_exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"CreateFunctionUrlConfig\".*\"AuthType\":\\s*\"NONE\""}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "AWS: Lambda Function URL with no auth"}
+    enabled: true
+
+  # ── KMS / Secrets / Parameter Store ───────────────────────────────────
+  - id: 16545
+    level: 14
+    description: "AWS — KMS key scheduled for deletion"
+    groups: [aws, kms, destructive, ransomware_prep, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"ScheduleKeyDeletion\""}
+    mitre:
+      - {tactic_id: "TA0040", technique_id: "T1485"}
+    alert: {title: "AWS: KMS ScheduleKeyDeletion"}
+    enabled: true
+
+  - id: 16546
+    level: 13
+    description: "AWS — KMS key disabled"
+    groups: [aws, kms, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DisableKey\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "AWS: KMS key disabled"}
+    enabled: true
+
+  - id: 16547
+    level: 13
+    description: "AWS — Secrets Manager GetSecretValue burst"
+    groups: [aws, secrets_manager, credential_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"GetSecretValue\""}
+    correlation:
+      window: "10m"
+      threshold: 50
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1555.006"}]
+    alert: {title: "AWS: Secrets Manager mass GetSecretValue"}
+    enabled: true
+
+  - id: 16548
+    level: 13
+    description: "AWS — SSM Parameter Store GetParameter burst (with decryption)"
+    groups: [aws, ssm, credential_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"GetParameter\".*WithDecryption.*true"}
+    correlation:
+      window: "10m"
+      threshold: 50
+    mitre: [{tactic_id: "TA0006", technique_id: "T1552"}]
+    alert: {title: "AWS: SSM Parameter mass decrypt"}
+    enabled: true
+
+  # ── EBS Snapshot / RDS Snapshot exfiltration ──────────────────────────
+  - id: 16549
+    level: 14
+    description: "AWS — EBS snapshot shared with external account"
+    groups: [aws, ebs, snapshot, exfiltration, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"ModifySnapshotAttribute\".*\"UserId\":\\s*\"(?!\\d{12})\\d+\"|ModifySnapshotAttribute.*\"groupNames\":\\s*\\[\\s*\"all\""}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1537"}
+    alert: {title: "AWS: EBS snapshot shared externally"}
+    enabled: true
+
+  - id: 16550
+    level: 14
+    description: "AWS — EBS snapshot made public"
+    groups: [aws, ebs, snapshot, exposure, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"ModifySnapshotAttribute\".*\"groupNames\":\\s*\\[\\s*\"all\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1537"}]
+    alert: {title: "AWS: EBS snapshot made public"}
+    enabled: true
+
+  - id: 16551
+    level: 14
+    description: "AWS — RDS snapshot shared with another account"
+    groups: [aws, rds, snapshot, exfiltration, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"ModifyDBSnapshotAttribute\".*\"valuesToAdd\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1537"}]
+    alert: {title: "AWS: RDS snapshot shared with another account"}
+    enabled: true
+
+  - id: 16552
+    level: 13
+    description: "AWS — AMI shared with external account"
+    groups: [aws, ec2, ami, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"ModifyImageAttribute\".*\"add\":.*\"groups\":.*\"all\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1537"}]
+    alert: {title: "AWS: AMI made public"}
+    enabled: true
+
+  # ── RDS / DynamoDB ────────────────────────────────────────────────────
+  - id: 16553
+    level: 13
+    description: "AWS — RDS master password modified"
+    groups: [aws, rds, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"ModifyDBInstance\".*\"masterUserPassword\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1098"}]
+    alert: {title: "AWS: RDS master password changed"}
+    enabled: true
+
+  - id: 16554
+    level: 13
+    description: "AWS — RDS instance made publicly accessible"
+    groups: [aws, rds, exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"ModifyDBInstance\".*\"publiclyAccessible\":\\s*true"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "AWS: RDS instance made public"}
+    enabled: true
+
+  - id: 16555
+    level: 13
+    description: "AWS — DynamoDB table deleted"
+    groups: [aws, dynamodb, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DeleteTable\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "AWS: DynamoDB table deleted"}
+    enabled: true
+
+  - id: 16556
+    level: 12
+    description: "AWS — DynamoDB Scan burst (full table read)"
+    groups: [aws, dynamodb, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"Scan\""}
+    correlation:
+      window: "10m"
+      threshold: 50
+    mitre: [{tactic_id: "TA0009", technique_id: "T1530"}]
+    alert: {title: "AWS: DynamoDB Scan burst"}
+    enabled: true
+
+  # ── Network / Route 53 / VPC ──────────────────────────────────────────
+  - id: 16557
+    level: 13
+    description: "AWS — Route 53 record set modified for sensitive domain"
+    groups: [aws, route53, hijack, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"ChangeResourceRecordSets\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1556"}]
+    alert: {title: "AWS: Route53 record set changed"}
+    enabled: true
+
+  - id: 16558
+    level: 13
+    description: "AWS — VPC peering connection created (cross-account access)"
+    groups: [aws, vpc, peering, lateral_movement]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"CreateVpcPeeringConnection\""}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1199"}]
+    alert: {title: "AWS: VPC peering created"}
+    enabled: true
+
+  - id: 16559
+    level: 13
+    description: "AWS — Internet Gateway attached to VPC (network exposure)"
+    groups: [aws, vpc, exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"AttachInternetGateway\""}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "AWS: Internet Gateway attached"}
+    enabled: true
+
+  - id: 16560
+    level: 12
+    description: "AWS — Route 53 query log disabled / config deleted"
+    groups: [aws, route53, audit_tampering]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DeleteQueryLoggingConfig\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.008"}]
+    alert: {title: "AWS: Route53 query logging deleted"}
+    enabled: true
+
+  # ── ECS / EKS ─────────────────────────────────────────────────────────
+  - id: 16561
+    level: 14
+    description: "AWS — EKS cluster API endpoint made public"
+    groups: [aws, eks, exposure, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"UpdateClusterConfig\".*endpointPublicAccess.*true"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "AWS: EKS cluster endpoint public"}
+    enabled: true
+
+  - id: 16562
+    level: 13
+    description: "AWS — ECS task definition with privileged container"
+    groups: [aws, ecs, container, privileged]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"RegisterTaskDefinition\".*\"privileged\":\\s*true"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1611"}
+    alert: {title: "AWS: ECS task definition privileged=true"}
+    enabled: true
+
+  # ── Misc anomalies ────────────────────────────────────────────────────
+  - id: 16563
+    level: 13
+    description: "AWS — API call from new region (region anomaly)"
+    groups: [aws, region_anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"awsRegion\":\\s*\"[a-z]{2}-[a-z]+-[0-9]\""}
+    enrich:
+      baseline: "account.region"
+    mitre: [{tactic_id: "TA0005", technique_id: "T1535"}]
+    alert: {title: "AWS: API call from new region"}
+    enabled: true
+
+  - id: 16564
+    level: 13
+    description: "AWS — UnauthorizedOperation or AccessDenied burst (recon)"
+    groups: [aws, recon, unauthorized]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"errorCode\":\\s*\"(UnauthorizedOperation|AccessDenied|Client\\.UnauthorizedOperation)\""}
+    correlation:
+      window: "10m"
+      threshold: 30
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1078.004"}]
+    alert: {title: "AWS: AccessDenied burst (recon / probing)"}
+    enabled: true
+
+  - id: 16565
+    level: 11
+    description: "AWS — API call from anonymizer / Tor (sourceIPAddress matches TI)"
+    groups: [aws, anonymizer, threatintel]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"sourceIPAddress\":\\s*\"\\d+\\.\\d+\\.\\d+\\.\\d+\""}
+      enrich:
+        ti_source: "tor_exit_nodes"
+    mitre: [{tactic_id: "TA0011", technique_id: "T1090.003"}]
+    alert: {title: "AWS: API call from Tor exit node"}
+    enabled: true
+
+  # ── Organizations / SCP / Account ─────────────────────────────────────
+  - id: 16566
+    level: 14
+    description: "AWS — Organizations SCP detached (control bypass)"
+    groups: [aws, organizations, scp, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DetachPolicy\".*\"policyType\":\\s*\"SERVICE_CONTROL_POLICY\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.008"}]
+    alert: {title: "AWS: SCP detached from account/OU"}
+    enabled: true
+
+  - id: 16567
+    level: 13
+    description: "AWS — Account removed from organization (isolation)"
+    groups: [aws, organizations, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"RemoveAccountFromOrganization\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1535"}]
+    alert: {title: "AWS: Account removed from org"}
+    enabled: true
+
+  - id: 16568
+    level: 13
+    description: "AWS — IAM Identity Center (SSO) user/permission set changed"
+    groups: [aws, sso, identity_center, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"(CreatePermissionSet|AttachManagedPolicyToPermissionSet|CreateAccountAssignment)\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "AWS: SSO permission set modified"}
+    enabled: true
+
+  # ── Backup / DLP / Data Protection ────────────────────────────────────
+  - id: 16569
+    level: 13
+    description: "AWS — Backup vault deleted (ransomware-prep)"
+    groups: [aws, backup, destructive, ransomware]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DeleteBackupVault\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1490"}]
+    alert: {title: "AWS: Backup vault deleted"}
+    enabled: true
+
+  - id: 16570
+    level: 13
+    description: "AWS — Backup plan deleted"
+    groups: [aws, backup, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DeleteBackupPlan\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1490"}]
+    alert: {title: "AWS: Backup plan deleted"}
+    enabled: true
+
+  - id: 16571
+    level: 13
+    description: "AWS — Macie scan job stopped / disabled"
+    groups: [aws, macie, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*(\"DisableMacie\"|\"UpdateClassificationJob\".*\"jobStatus\":\\s*\"CANCELLED\")"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "AWS: Macie disabled / scan cancelled"}
+    enabled: true
+
+  # ── WAF / Shield ──────────────────────────────────────────────────────
+  - id: 16572
+    level: 13
+    description: "AWS — WAF rule group disabled / removed"
+    groups: [aws, waf, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*(\"DeleteWebACL\"|\"DisassociateWebACL\")"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "AWS: WAF WebACL removed"}
+    enabled: true
+
+  - id: 16573
+    level: 12
+    description: "AWS — WAF rule action changed from BLOCK to COUNT (bypass)"
+    groups: [aws, waf, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"UpdateWebACL\".*\"OverrideAction\":\\s*\\{\\s*\"Count\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "AWS: WAF rule set to COUNT"}
+    enabled: true
+
+  # ── EC2 — Cred Theft via instance ─────────────────────────────────────
+  - id: 16574
+    level: 14
+    description: "AWS — EC2 instance role credentials used from outside AWS"
+    groups: [aws, instance_profile, credential_theft, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"userIdentity\".*\"type\":\\s*\"AssumedRole\".*\"sessionContext\".*\"ec2\\.amazonaws\\.com\""}
+      enrich:
+        not_aws_asn: true
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1552.005"}
+    alert: {title: "AWS: EC2 role creds used outside AWS"}
+    enabled: true
+
+  # ── Misc destructive ─────────────────────────────────────────────────
+  - id: 16575
+    level: 14
+    description: "AWS — TerminateInstances burst (mass destroy)"
+    groups: [aws, ec2, destructive, impact]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"TerminateInstances\""}
+    correlation:
+      window: "5m"
+      threshold: 5
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0040", technique_id: "T1496"}]
+    alert: {title: "AWS: TerminateInstances burst"}
+    enabled: true
+
+  - id: 16576
+    level: 13
+    description: "AWS — DeleteBucket"
+    groups: [aws, s3, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DeleteBucket\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "AWS: S3 bucket deleted"}
+    enabled: true
+
+  - id: 16577
+    level: 12
+    description: "AWS — DeleteFunction (lambda removal)"
+    groups: [aws, lambda, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DeleteFunction\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "AWS: Lambda function deleted"}
+    enabled: true
+
+  - id: 16578
+    level: 13
+    description: "AWS — DeleteRole removed"
+    groups: [aws, iam, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DeleteRole\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1531"}]
+    alert: {title: "AWS: IAM role deleted"}
+    enabled: true
+
+  - id: 16579
+    level: 13
+    description: "AWS — DeletePolicy removed"
+    groups: [aws, iam, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"eventName\":\\s*\"DeletePolicy\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1531"}]
+    alert: {title: "AWS: IAM policy deleted"}
+    enabled: true

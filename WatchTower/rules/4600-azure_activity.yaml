@@ -1,0 +1,783 @@
+# WatchTower — Azure Activity / Entra ID Detection
+# Rule IDs: 16600-16659
+#
+# Sources: Azure Activity log (operations on subscription) + Azure AD
+# (Entra) sign-in / audit logs ingested via a cloud connector.
+# Match against the JSON message; common fields:
+#   operationName, resourceId, identity.claims, callerIpAddress,
+#   resultType, properties.requestbody, conditions, status.
+
+rules:
+  # ── Identity / Entra ID ───────────────────────────────────────────────
+  - id: 16600
+    level: 14
+    description: "Azure AD — Global Admin role assigned"
+    groups: [azure, entra, role_assignment, privilege_escalation, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Add member to role\".*\"displayName\":\\s*\"Global Administrator\""}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1098"}
+    alert: {title: "Azure: Global Admin role assigned"}
+    enabled: true
+
+  - id: 16601
+    level: 13
+    description: "Azure AD — Privileged role assignment (Privileged Role Admin / User Admin / Exchange Admin / etc.)"
+    groups: [azure, entra, role_assignment, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Add member to role\".*\"displayName\":\\s*\"(Privileged Role Administrator|User Administrator|Exchange Administrator|SharePoint Administrator|Application Administrator|Conditional Access Administrator|Security Administrator)\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "Azure: Privileged role assigned"}
+    enabled: true
+
+  - id: 16602
+    level: 14
+    description: "Azure AD — risky sign-in (Identity Protection medium/high)"
+    groups: [azure, entra, identity_protection, risky_signin, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"riskLevelDuringSignIn\":\\s*\"(medium|high)\""}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1078.004"}
+    alert: {title: "Azure AD: Risky sign-in (med/high)"}
+    enabled: true
+
+  - id: 16603
+    level: 13
+    description: "Azure AD — impossible travel signal"
+    groups: [azure, entra, impossible_travel]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"riskEventTypes\":\\s*\\[[^\\]]*\"impossibleTravel\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1078.004"}]
+    alert: {title: "Azure AD: Impossible travel"}
+    enabled: true
+
+  - id: 16604
+    level: 12
+    description: "Azure AD — sign-in from anonymous IP"
+    groups: [azure, entra, anonymizer]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"riskEventTypes\":\\s*\\[[^\\]]*\"anonymizedIPAddress\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1078.004"}]
+    alert: {title: "Azure AD: Sign-in from anonymous IP"}
+    enabled: true
+
+  - id: 16605
+    level: 13
+    description: "Azure AD — failed sign-in burst from one IP (brute force)"
+    groups: [azure, entra, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"errorCode\":\\s*(50053|50054|50056|50057|50126)"}
+    correlation:
+      window: "10m"
+      threshold: 20
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "Azure AD: Sign-in brute force"}
+    enabled: true
+
+  - id: 16606
+    level: 13
+    description: "Azure AD — password spray (many users from one IP, low rate)"
+    groups: [azure, entra, password_spray]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"errorCode\":\\s*50126"}
+    correlation:
+      window: "30m"
+      threshold: 25
+      distinct: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.003"}]
+    alert: {title: "Azure AD: Password spray"}
+    enabled: true
+
+  - id: 16607
+    level: 13
+    description: "Azure AD — MFA fatigue / push spam followed by success"
+    groups: [azure, entra, mfa, mfa_fatigue, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resultType\":\\s*\"0\".*\"authenticationDetails\":.*\"MFA succeeded\""}
+    correlation:
+      window: "10m"
+      threshold: 1
+      precondition_match:
+        regex: "\"errorCode\":\\s*50158"
+        precondition_count: 5
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1621"}
+    alert: {title: "Azure AD: MFA fatigue success"}
+    enabled: true
+
+  - id: 16608
+    level: 13
+    description: "Azure AD — legacy auth protocol (POP/IMAP/SMTP basic) used"
+    groups: [azure, entra, legacy_auth]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"clientAppUsed\":\\s*\"(IMAP4|POP3|SMTP|Other clients)\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1078.004"}]
+    alert: {title: "Azure AD: Legacy auth used"}
+    enabled: true
+
+  - id: 16609
+    level: 13
+    description: "Azure AD — new user created"
+    groups: [azure, entra, account_creation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Add user\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1136"}]
+    alert: {title: "Azure AD: User created"}
+    enabled: true
+
+  - id: 16610
+    level: 13
+    description: "Azure AD — guest user added"
+    groups: [azure, entra, guest_user, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Invite external user\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1136.003"}]
+    alert: {title: "Azure AD: Guest user invited"}
+    enabled: true
+
+  - id: 16611
+    level: 14
+    description: "Azure AD — Conditional Access policy disabled / deleted"
+    groups: [azure, entra, conditional_access, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*(\"Delete conditional access policy\"|\"Disable policy\")"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Azure AD: CA policy disabled/deleted"}
+    enabled: true
+
+  - id: 16612
+    level: 13
+    description: "Azure AD — Conditional Access policy modified"
+    groups: [azure, entra, conditional_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Update conditional access policy\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Azure AD: CA policy modified"}
+    enabled: true
+
+  - id: 16613
+    level: 13
+    description: "Azure AD — MFA disabled for user / strong auth removed"
+    groups: [azure, entra, mfa, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Disable Strong Authentication\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1556"}]
+    alert: {title: "Azure AD: Strong auth disabled"}
+    enabled: true
+
+  - id: 16614
+    level: 13
+    description: "Azure AD — PIM role activation"
+    groups: [azure, entra, pim, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Activate role\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "Azure AD: PIM role activated"}
+    enabled: true
+
+  # ── App Registration / Service Principal / Consent ────────────────────
+  - id: 16615
+    level: 13
+    description: "Azure AD — new application registered"
+    groups: [azure, entra, app_registration, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Add application\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098.001"}]
+    alert: {title: "Azure AD: New application registered"}
+    enabled: true
+
+  - id: 16616
+    level: 14
+    description: "Azure AD — illicit OAuth consent (Consent to application)"
+    groups: [azure, entra, illicit_consent, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Consent to application\""}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1528"}
+    alert: {title: "Azure AD: OAuth consent granted"}
+    enabled: true
+
+  - id: 16617
+    level: 14
+    description: "Azure AD — service principal secret/certificate added (backdoor)"
+    groups: [azure, entra, service_principal, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Add service principal credentials\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098.001"}]
+    alert: {title: "Azure AD: Service principal credentials added"}
+    enabled: true
+
+  - id: 16618
+    level: 13
+    description: "Azure AD — owner added to application (persistence)"
+    groups: [azure, entra, app_owner, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Add owner to application\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "Azure AD: Owner added to application"}
+    enabled: true
+
+  - id: 16619
+    level: 14
+    description: "Azure AD — federation settings on domain modified (Golden SAML)"
+    groups: [azure, entra, golden_saml, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Set federation settings on domain\""}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1606.002"}
+    alert: {title: "Azure AD: Federation settings changed (Golden SAML)"}
+    enabled: true
+
+  - id: 16620
+    level: 13
+    description: "Azure AD — domain ownership added (tenant takeover prep)"
+    groups: [azure, entra, domain_takeover, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Add unverified domain\""}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1484.002"}]
+    alert: {title: "Azure AD: Unverified domain added"}
+    enabled: true
+
+  # ── Subscription / Resource Management ────────────────────────────────
+  - id: 16621
+    level: 14
+    description: "Azure — RBAC role assignment of Owner / Contributor at subscription"
+    groups: [azure, rbac, privilege_escalation, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Authorization/roleAssignments/write\".*(Owner|Contributor)"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1098"}
+    alert: {title: "Azure: Owner/Contributor role assigned"}
+    enabled: true
+
+  - id: 16622
+    level: 13
+    description: "Azure — role assignment deleted (removing controls)"
+    groups: [azure, rbac, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Authorization/roleAssignments/delete\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1531"}]
+    alert: {title: "Azure: Role assignment deleted"}
+    enabled: true
+
+  - id: 16623
+    level: 13
+    description: "Azure — policy assignment deleted (compliance bypass)"
+    groups: [azure, policy, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Authorization/policyAssignments/delete\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Azure: Policy assignment deleted"}
+    enabled: true
+
+  - id: 16624
+    level: 13
+    description: "Azure — locks removed (delete protection bypass)"
+    groups: [azure, lock, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Authorization/locks/delete\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Azure: Resource lock deleted"}
+    enabled: true
+
+  - id: 16625
+    level: 13
+    description: "Azure — resource group deleted (mass destruction)"
+    groups: [azure, destructive, impact]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Resources/subscriptions/resourceGroups/delete\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "Azure: Resource group deleted"}
+    enabled: true
+
+  # ── Storage / Blob ────────────────────────────────────────────────────
+  - id: 16626
+    level: 14
+    description: "Azure Storage — public access enabled on container"
+    groups: [azure, storage, public_exposure, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Storage/storageAccounts/blobServices/containers/write\".*\"publicAccess\":\\s*\"(blob|container)\""}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1567.002"}
+    alert: {title: "Azure: Blob container made public"}
+    enabled: true
+
+  - id: 16627
+    level: 13
+    description: "Azure Storage — account allow public access toggle"
+    groups: [azure, storage, public_exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Storage/storageAccounts/write\".*\"allowBlobPublicAccess\":\\s*true"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Azure: Storage account public access enabled"}
+    enabled: true
+
+  - id: 16628
+    level: 13
+    description: "Azure Storage — account access key regenerated"
+    groups: [azure, storage, credential_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Storage/storageAccounts/regenerateKey\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1098"}]
+    alert: {title: "Azure: Storage access key regenerated"}
+    enabled: true
+
+  - id: 16629
+    level: 13
+    description: "Azure Storage — SAS token generated (potential exfil channel)"
+    groups: [azure, storage, sas_token, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Storage/storageAccounts/listAccountSas\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567.002"}]
+    alert: {title: "Azure: Account SAS token generated"}
+    enabled: true
+
+  - id: 16630
+    level: 13
+    description: "Azure Storage — blob deletion burst"
+    groups: [azure, storage, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Storage/storageAccounts/blobServices/containers/blobs/delete\""}
+    correlation:
+      window: "5m"
+      threshold: 50
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "Azure: Blob mass delete"}
+    enabled: true
+
+  # ── Key Vault ─────────────────────────────────────────────────────────
+  - id: 16631
+    level: 14
+    description: "Azure Key Vault — vault deleted (likely ransomware-prep or destruction)"
+    groups: [azure, key_vault, destructive, ransomware, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.KeyVault/vaults/delete\""}
+    mitre:
+      - {tactic_id: "TA0040", technique_id: "T1485"}
+    alert: {title: "Azure: Key Vault deleted"}
+    enabled: true
+
+  - id: 16632
+    level: 13
+    description: "Azure Key Vault — secret deleted"
+    groups: [azure, key_vault, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.KeyVault/vaults/secrets/delete\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "Azure: Key Vault secret deleted"}
+    enabled: true
+
+  - id: 16633
+    level: 13
+    description: "Azure Key Vault — secret GET burst (credential access)"
+    groups: [azure, key_vault, credential_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.KeyVault/vaults/secrets/getSecret\""}
+    correlation:
+      window: "10m"
+      threshold: 30
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1555.006"}]
+    alert: {title: "Azure: Key Vault secret GET burst"}
+    enabled: true
+
+  - id: 16634
+    level: 13
+    description: "Azure Key Vault — purge of deleted vault (no recovery)"
+    groups: [azure, key_vault, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.KeyVault/locations/deletedVaults/purge\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "Azure: Key Vault purged (no recovery)"}
+    enabled: true
+
+  - id: 16635
+    level: 13
+    description: "Azure Key Vault — access policy modified (granting access)"
+    groups: [azure, key_vault, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.KeyVault/vaults/accessPolicies/write\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "Azure: Key Vault access policy modified"}
+    enabled: true
+
+  # ── Network Security ─────────────────────────────────────────────────
+  - id: 16636
+    level: 14
+    description: "Azure NSG — rule allowing 0.0.0.0/0 on sensitive port (SSH/RDP/DB)"
+    groups: [azure, nsg, exposure, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Network/networkSecurityGroups/securityRules/write\".*\"sourceAddressPrefix\":\\s*\"(0\\.0\\.0\\.0/0|Internet|\\*)\".*\"destinationPortRange\":\\s*\"(22|3389|3306|5432|1433|6379|27017|9200)\""}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "Azure NSG: 0.0.0.0/0 on sensitive port"}
+    enabled: true
+
+  - id: 16637
+    level: 13
+    description: "Azure NSG — rule allowing 0.0.0.0/0 on any port"
+    groups: [azure, nsg, exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Network/networkSecurityGroups/securityRules/write\".*\"sourceAddressPrefix\":\\s*\"(0\\.0\\.0\\.0/0|Internet|\\*)\""}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Azure NSG: 0.0.0.0/0 rule added"}
+    enabled: true
+
+  - id: 16638
+    level: 13
+    description: "Azure NSG / Firewall deleted (network protection bypass)"
+    groups: [azure, nsg, firewall, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Network/(networkSecurityGroups|azureFirewalls)/delete\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Azure: NSG/Firewall deleted"}
+    enabled: true
+
+  - id: 16639
+    level: 13
+    description: "Azure — Application Gateway WAF policy disabled / detection-only"
+    groups: [azure, waf, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Network/applicationGatewayWebApplicationFirewallPolicies/write\".*\"mode\":\\s*\"Detection\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Azure: WAF policy set to Detection mode"}
+    enabled: true
+
+  # ── Defender / Monitor / Logging Tampering ────────────────────────────
+  - id: 16640
+    level: 14
+    description: "Azure Defender — auto-provisioning disabled / pricing tier downgraded"
+    groups: [azure, defender, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Security/pricings/write\".*\"pricingTier\":\\s*\"Free\""}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "Azure Defender: Pricing tier downgraded to Free"}
+    enabled: true
+
+  - id: 16641
+    level: 13
+    description: "Azure — Diagnostic settings deleted (log forwarding disabled)"
+    groups: [azure, audit_tampering, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Insights/diagnosticSettings/delete\""}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.008"}
+    alert: {title: "Azure: Diagnostic settings deleted"}
+    enabled: true
+
+  - id: 16642
+    level: 13
+    description: "Azure — Log Analytics workspace deleted"
+    groups: [azure, audit_tampering, log_analytics]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.OperationalInsights/workspaces/delete\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.008"}]
+    alert: {title: "Azure: Log Analytics workspace deleted"}
+    enabled: true
+
+  - id: 16643
+    level: 13
+    description: "Azure — Activity log alert rule deleted"
+    groups: [azure, audit_tampering, alert_rule]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Insights/activityLogAlerts/delete\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Azure: Activity log alert rule deleted"}
+    enabled: true
+
+  # ── VM / Compute ──────────────────────────────────────────────────────
+  - id: 16644
+    level: 13
+    description: "Azure VM — Run Command executed (RCE-equivalent)"
+    groups: [azure, vm, run_command, execution, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Compute/virtualMachines/runCommand/action\""}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1059"}
+    alert: {title: "Azure VM: Run Command executed"}
+    enabled: true
+
+  - id: 16645
+    level: 13
+    description: "Azure VM — Custom Script Extension installed (persistence / exec)"
+    groups: [azure, vm, custom_script, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Compute/virtualMachines/extensions/write\".*CustomScript"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543"}]
+    alert: {title: "Azure VM: Custom Script Extension installed"}
+    enabled: true
+
+  - id: 16646
+    level: 13
+    description: "Azure VM — created with public IP (network exposure)"
+    groups: [azure, vm, exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Network/publicIPAddresses/write\""}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Azure: Public IP allocated"}
+    enabled: true
+
+  - id: 16647
+    level: 13
+    description: "Azure VM — large GPU/N-series instance launched (mining suspect)"
+    groups: [azure, vm, cryptomining, impact]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Compute/virtualMachines/write\".*\"vmSize\":\\s*\"Standard_(NC|ND|NV|H|M)\\S*\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1496"}]
+    alert: {title: "Azure: GPU/large VM created (mining suspect)"}
+    enabled: true
+
+  - id: 16648
+    level: 13
+    description: "Azure VM — TerminateInstances burst (mass destroy)"
+    groups: [azure, vm, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Compute/virtualMachines/delete\""}
+    correlation:
+      window: "5m"
+      threshold: 5
+    mitre: [{tactic_id: "TA0040", technique_id: "T1496"}]
+    alert: {title: "Azure: VM delete burst"}
+    enabled: true
+
+  # ── Storage / Snapshots / Backup ──────────────────────────────────────
+  - id: 16649
+    level: 14
+    description: "Azure — Recovery Services vault deleted (backup destruction)"
+    groups: [azure, backup, destructive, ransomware, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.RecoveryServices/vaults/delete\""}
+    mitre:
+      - {tactic_id: "TA0040", technique_id: "T1490"}
+    alert: {title: "Azure: Recovery Services vault deleted"}
+    enabled: true
+
+  - id: 16650
+    level: 14
+    description: "Azure — backup protected item disabled (stops backups)"
+    groups: [azure, backup, defense_evasion, ransomware]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.RecoveryServices/Vaults/backupFabrics/protectionContainers/protectedItems/delete\""}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1490"}]
+    alert: {title: "Azure: Backup protected item disabled"}
+    enabled: true
+
+  - id: 16651
+    level: 13
+    description: "Azure — disk snapshot copied to another subscription (exfil)"
+    groups: [azure, disk, snapshot, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Compute/snapshots/write\""}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1537"}]
+    alert: {title: "Azure: Snapshot created"}
+    enabled: true
+
+  - id: 16652
+    level: 14
+    description: "Azure — disk snapshot SAS URI generated (downloadable export)"
+    groups: [azure, disk, snapshot, exfiltration, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Compute/snapshots/beginGetAccess\""}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1537"}
+    alert: {title: "Azure: Snapshot SAS URI generated (exfil)"}
+    enabled: true
+
+  # ── AKS / Containers ──────────────────────────────────────────────────
+  - id: 16653
+    level: 14
+    description: "Azure AKS — cluster created with public API server"
+    groups: [azure, aks, exposure, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.ContainerService/managedClusters/write\".*\"enablePrivateCluster\":\\s*false"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Azure AKS: Cluster API server public"}
+    enabled: true
+
+  - id: 16654
+    level: 13
+    description: "Azure AKS — listClusterAdminCredential called (token theft)"
+    groups: [azure, aks, credential_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.ContainerService/managedClusters/listClusterAdminCredential\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1552"}]
+    alert: {title: "Azure AKS: listClusterAdminCredential"}
+    enabled: true
+
+  - id: 16655
+    level: 13
+    description: "Azure Container Registry — admin user enabled / login burst"
+    groups: [azure, acr, supply_chain]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.ContainerRegistry/registries/(write|listCredentials)\""}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1195"}]
+    alert: {title: "Azure: ACR credentials accessed / admin user enabled"}
+    enabled: true
+
+  # ── Cosmos DB / SQL ──────────────────────────────────────────────────
+  - id: 16656
+    level: 13
+    description: "Azure Cosmos DB — primary key regenerated"
+    groups: [azure, cosmosdb, credential_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.DocumentDB/databaseAccounts/regenerateKey\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1098"}]
+    alert: {title: "Azure Cosmos: Key regenerated"}
+    enabled: true
+
+  - id: 16657
+    level: 13
+    description: "Azure SQL — firewall rule allowing 0.0.0.0-255.255.255.255 (allow all)"
+    groups: [azure, sql, exposure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Sql/servers/firewallRules/write\".*\"startIpAddress\":\\s*\"0\\.0\\.0\\.0\".*\"endIpAddress\":\\s*\"255\\.255\\.255\\.255\""}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Azure SQL: firewall rule open to all"}
+    enabled: true
+
+  - id: 16658
+    level: 13
+    description: "Azure SQL — auditing settings disabled"
+    groups: [azure, sql, audit_tampering]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"operationName\":\\s*\"Microsoft\\.Sql/servers/auditingSettings/write\".*\"state\":\\s*\"Disabled\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.002"}]
+    alert: {title: "Azure SQL: Auditing disabled"}
+    enabled: true
+
+  # ── Misc anomalies ───────────────────────────────────────────────────
+  - id: 16659
+    level: 13
+    description: "Azure — Forbidden / Unauthorized burst (recon / token abuse)"
+    groups: [azure, recon, unauthorized]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"resultType\":\\s*\"(Forbidden|Unauthorized)\""}
+    correlation:
+      window: "10m"
+      threshold: 30
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1078.004"}]
+    alert: {title: "Azure: Forbidden/Unauthorized burst"}
+    enabled: true

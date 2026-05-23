@@ -1,0 +1,327 @@
+# WatchTower — Cross-Cloud / Provider-Agnostic Detection
+# Rule IDs: 16900-16919
+#
+# Generic cloud patterns that apply across AWS, Azure, GCP — useful when
+# the operator only knows the field shape, not which cloud provider sent it.
+
+rules:
+  - id: 16900
+    level: 14
+    description: "Cloud — privilege escalation chain: new IAM user + admin grant + key creation within 15m"
+    groups: [cloud, iam, privilege_escalation, kill_chain, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(CreateAccessKey|CreateServiceAccountKey|Add service principal credentials)"}
+    correlation:
+      window: "15m"
+      threshold: 1
+      precondition_match:
+        regex: "(?i)(CreateUser|Add user|google\\.iam\\.admin\\.v1\\.CreateServiceAccount)"
+        precondition_count: 1
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1098.001"}
+    alert: {title: "Cloud: New principal + credential creation kill-chain"}
+    enabled: true
+
+  - id: 16901
+    level: 13
+    description: "Cloud — bulk data egress to internet (download burst > 1 GB / 5m)"
+    groups: [cloud, exfiltration, egress]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(GetObject|storage\\.objects\\.get|Microsoft\\.Storage/storageAccounts/blobServices/containers/blobs/read)"}
+    correlation:
+      window: "5m"
+      threshold: 200
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567.002"}]
+    alert: {title: "Cloud: Bulk object/blob download (exfil)"}
+    enabled: true
+
+  - id: 16902
+    level: 14
+    description: "Cloud — mass-destructive ops within short window (ransomware/wiper)"
+    groups: [cloud, destructive, ransomware, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(DeleteBucket|DeleteFunction|TerminateInstances|DeleteDBInstance|storage\\.buckets\\.delete|Microsoft\\.Compute/virtualMachines/delete|google\\.container\\.v\\d+\\.ClusterManager\\.DeleteCluster)"}
+    correlation:
+      window: "10m"
+      threshold: 5
+    mitre:
+      - {tactic_id: "TA0040", technique_id: "T1485"}
+    alert: {title: "Cloud: Mass-destructive ops (ransomware/wiper suspect)"}
+    enabled: true
+
+  - id: 16903
+    level: 14
+    description: "Cloud — backup destruction kill-chain (delete vault + disable backup + delete data within 30m)"
+    groups: [cloud, ransomware, backup_destruction, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(DeleteBackupVault|Microsoft\\.RecoveryServices/vaults/delete|DeleteBackupPlan|protectedItems/delete)"}
+    correlation:
+      window: "30m"
+      threshold: 1
+      precondition_match:
+        regex: "(?i)(DeleteObject|storage\\.objects\\.delete|blobs/delete)"
+        precondition_count: 20
+    mitre: [{tactic_id: "TA0040", technique_id: "T1490"}]
+    alert: {title: "Cloud: Backup destruction kill-chain"}
+    enabled: true
+
+  - id: 16904
+    level: 13
+    description: "Cloud — single principal accessed >5 services in 10m (post-compromise enumeration)"
+    groups: [cloud, post_compromise, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"(eventSource|serviceName|methodName)\":"}
+    correlation:
+      window: "10m"
+      threshold: 1
+      distinct: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1538"}]
+    alert: {title: "Cloud: Principal touched many services"}
+    enabled: true
+
+  - id: 16905
+    level: 14
+    description: "Cloud — cryptominer pattern: GPU/large instance + outbound traffic to mining pools"
+    groups: [cloud, cryptomining, c2_suspect, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(RunInstances|virtualMachines/write|instances/insert).*(p3|p4|N\\.|a100|t4|nvidia)"}
+    enrich:
+      ti_source: "crypto_mining_pools"
+    mitre:
+      - {tactic_id: "TA0040", technique_id: "T1496"}
+    alert: {title: "Cloud: GPU instance + mining-pool DNS"}
+    enabled: true
+
+  - id: 16906
+    level: 13
+    description: "Cloud — cross-account / cross-tenant resource shared with unknown principal"
+    groups: [cloud, cross_account, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(ModifySnapshotAttribute|ModifyImageAttribute|ModifyDBSnapshotAttribute|allowSubnetSharing|setIamPolicy.*allAuthenticatedUsers)"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1537"}]
+    alert: {title: "Cloud: Resource shared cross-account/tenant"}
+    enabled: true
+
+  - id: 16907
+    level: 14
+    description: "Cloud — audit logging disabled across 2 providers in same hour (multi-cloud cover-up)"
+    groups: [cloud, audit_tampering, multi_cloud, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(StopLogging|DeleteTrail|DeleteSink|Microsoft\\.Insights/diagnosticSettings/delete)"}
+    correlation:
+      window: "60m"
+      threshold: 2
+      distinct: ["agent_name"]
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.008"}
+    alert: {title: "Cloud: Multi-provider audit tampering"}
+    enabled: true
+
+  - id: 16908
+    level: 13
+    description: "Cloud — IAM password / key change burst (post-credential-theft cleanup or persistence)"
+    groups: [cloud, iam, credential_change_burst]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(ChangePassword|UpdateLoginProfile|CreateAccessKey|regenerateKey|GenerateAccessToken)"}
+    correlation:
+      window: "10m"
+      threshold: 5
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1098"}]
+    alert: {title: "Cloud: Credential change burst"}
+    enabled: true
+
+  - id: 16909
+    level: 13
+    description: "Cloud — outbound API call to anomalous cloud region (geo-distant)"
+    groups: [cloud, region_anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"(awsRegion|location|region)\":"}
+    enrich:
+      baseline: "principal.region"
+    mitre: [{tactic_id: "TA0005", technique_id: "T1535"}]
+    alert: {title: "Cloud: API call from unusual region"}
+    enabled: true
+
+  - id: 16910
+    level: 13
+    description: "Cloud — secret/credential exfiltration: secret GET + outbound transfer within 10m"
+    groups: [cloud, credential_exfiltration, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(GetObject|storage\\.objects\\.get|blobs/read)"}
+    correlation:
+      window: "10m"
+      threshold: 1
+      precondition_match:
+        regex: "(?i)(GetSecretValue|AccessSecretVersion|secrets/getSecret)"
+        precondition_count: 1
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1555.006"}
+    alert: {title: "Cloud: secret read + bulk data access"}
+    enabled: true
+
+  - id: 16911
+    level: 13
+    description: "Cloud — non-typical UserAgent pattern (CLI bypassing console)"
+    groups: [cloud, user_agent, anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"userAgent\":\\s*\"(boto3|aws-cli|terraform|pulumi|az/|google-cloud-sdk|kubectl|curl|wget|python-requests|Go-http|Java/)\""}
+    correlation:
+      window: "10m"
+      threshold: 50
+    mitre: [{tactic_id: "TA0007", technique_id: "T1083"}]
+    alert: {title: "Cloud: Script UserAgent heavy use"}
+    enabled: true
+
+  - id: 16912
+    level: 13
+    description: "Cloud — multiple PERMISSION_DENIED followed by successful escalation (recon-then-elevate)"
+    groups: [cloud, recon, privilege_escalation, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(AdministratorAccess|roles/owner|Global Administrator|sysadmin)"}
+    correlation:
+      window: "15m"
+      threshold: 1
+      precondition_match:
+        regex: "(?i)(AccessDenied|PERMISSION_DENIED|UnauthorizedOperation|Forbidden)"
+        precondition_count: 10
+    mitre: [{tactic_id: "TA0004", technique_id: "T1078"}]
+    alert: {title: "Cloud: Denied probes then admin grant"}
+    enabled: true
+
+  - id: 16913
+    level: 13
+    description: "Cloud — known TI-flagged IP active across cloud audit logs"
+    groups: [cloud, threatintel, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"(sourceIPAddress|callerIpAddress|callerIp|ipAddress)\":\\s*\"\\d+\\.\\d+\\.\\d+\\.\\d+\""}
+      enrich:
+        ti_source: "malicious_ips"
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071.001"}]
+    alert: {title: "Cloud: API call from TI-flagged IP"}
+    enabled: true
+
+  - id: 16914
+    level: 13
+    description: "Cloud — large number of new resources created in unfamiliar region/account (provisioning burst)"
+    groups: [cloud, provisioning_burst, cryptomining, abuse]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(RunInstances|virtualMachines/write|v1\\.compute\\.instances\\.insert|CreateFunction|managedClusters/write)"}
+    correlation:
+      window: "10m"
+      threshold: 10
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0040", technique_id: "T1496"}]
+    alert: {title: "Cloud: Resource provisioning burst"}
+    enabled: true
+
+  - id: 16915
+    level: 14
+    description: "Cloud — primary identity provider federation/SAML changed across providers (multi-cloud Golden SAML)"
+    groups: [cloud, federation, golden_saml, multi_cloud, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(Set federation settings on domain|SetIamPolicy.*samlAssertion|UPDATE_SAML_PROFILE|certificate)"}
+    correlation:
+      window: "60m"
+      threshold: 2
+      distinct: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1606.002"}]
+    alert: {title: "Cloud: Multi-provider federation changes"}
+    enabled: true
+
+  - id: 16916
+    level: 13
+    description: "Cloud — disabled MFA + privilege grant within 1h (compromise sequence)"
+    groups: [cloud, mfa, compromise, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(Add member to role|AttachUserPolicy|SetIamPolicy.*roles/owner)"}
+    correlation:
+      window: "60m"
+      threshold: 1
+      precondition_match:
+        regex: "(?i)(DeactivateMFADevice|Disable Strong Authentication|TURN_OFF_2_STEP_VERIFICATION)"
+        precondition_count: 1
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1556"}
+    alert: {title: "Cloud: MFA off + privilege grant"}
+    enabled: true
+
+  - id: 16917
+    level: 13
+    description: "Cloud — VPN/peering/interconnect created from new admin within first day of role grant (persistence pivot)"
+    groups: [cloud, persistence, lateral_movement]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(CreateVpcPeeringConnection|v1\\.compute\\.networks\\.addPeering|virtualNetworkPeerings/write|vpnTunnels/insert)"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1199"}]
+    alert: {title: "Cloud: Network peering created"}
+    enabled: true
+
+  - id: 16918
+    level: 12
+    description: "Cloud — admin action outside business hours (configurable baseline)"
+    groups: [cloud, time_anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\"(eventName|operationName|methodName)\":"}
+    enrich:
+      baseline: "principal.business_hours"
+    mitre: [{tactic_id: "TA0005", technique_id: "T1078"}]
+    alert: {title: "Cloud: Admin action off-hours"}
+    enabled: true
+
+  - id: 16919
+    level: 14
+    description: "Cloud — full kill chain in one principal: enumerate → escalate → persist → exfil within 1h"
+    groups: [cloud, kill_chain, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(GetObject|AccessSecretVersion|getSecret|GetSecretValue)"}
+    correlation:
+      window: "60m"
+      threshold: 1
+      precondition_match:
+        regex: "(?i)(AttachUserPolicy|SetIamPolicy.*roles/owner|Add member to role.*Global Administrator|CreateAccessKey|CreateServiceAccountKey|Add service principal credentials)"
+        precondition_count: 1
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1098"}
+    alert: {title: "Cloud: Full attack chain in single principal"}
+    enabled: true
