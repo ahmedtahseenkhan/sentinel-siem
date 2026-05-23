@@ -1,0 +1,432 @@
+# WatchTower — BITS / JEA / Other Windows Persistence Detection
+# Rule IDs: 17400-17429
+#
+# Sources:
+#   - Microsoft-Windows-Bits-Client/Operational (EventIDs 3, 4, 59-61)
+#   - Sysmon Event 1 with Image=bitsadmin.exe / svchost (-k netsvcs hosting BITS)
+#   - JEA registration events from PowerShell ScriptBlock logging
+#   - LSASS / WDigest / NetSh / AppCompat persistence mechanisms
+
+rules:
+  # ── BITS Job Creation / Transfer ──────────────────────────────────────
+  - id: 17400
+    level: 13
+    description: "BITS — bitsadmin /transfer downloading from HTTPS / HTTP"
+    groups: [bits, bitsadmin, download, ingress]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\bitsadmin\\.exe$"}
+        CommandLine: {regex: "(?i)/transfer\\s+\\S+\\s+(http|https)://"}
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1197"}
+    alert: {title: "BITS: bitsadmin /transfer download"}
+    enabled: true
+
+  - id: 17401
+    level: 14
+    description: "BITS — bitsadmin /SetNotifyCmdLine (post-transfer command execution)"
+    groups: [bits, bitsadmin, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\bitsadmin\\.exe$"}
+        CommandLine: {regex: "(?i)/SetNotifyCmdLine"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1197"}
+    alert: {title: "BITS: SetNotifyCmdLine (persistence via BITS job)"}
+    enabled: true
+
+  - id: 17402
+    level: 13
+    description: "BITS — Start-BitsTransfer in PowerShell (script variant of T1197)"
+    groups: [bits, powershell_bits, ingress]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Start-BitsTransfer\\s+.*-Source\\s+(http|https)://"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1197"}]
+    alert: {title: "BITS: Start-BitsTransfer from URL"}
+    enabled: true
+
+  - id: 17403
+    level: 13
+    description: "BITS — Bits-Client Operational job created (event 59)"
+    groups: [bits, job_create, baseline]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 59}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1197"}]
+    alert: {title: "BITS: job created (event 59)"}
+    enabled: true
+
+  - id: 17404
+    level: 13
+    description: "BITS — job created with URL pointing outside org TI list"
+    groups: [bits, suspicious_url, ingress]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 59}
+        message: {regex: "(?i)https?://"}
+      enrich:
+        ti_source: "malicious_domains"
+    mitre: [{tactic_id: "TA0011", technique_id: "T1197"}]
+    alert: {title: "BITS: job to TI-flagged URL"}
+    enabled: true
+
+  - id: 17405
+    level: 13
+    description: "BITS — job created by non-typical process (not Windows Update / browser)"
+    groups: [bits, anomaly, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 3}
+        message: {regex: "(?i)CallerProcessName=.*\\\\(cmd|powershell|wscript|cscript|mshta|regsvr32|rundll32)\\.exe$"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1197"}]
+    alert: {title: "BITS: job from suspicious caller process"}
+    enabled: true
+
+  - id: 17406
+    level: 13
+    description: "BITS — job error / job state transition to ERROR (review)"
+    groups: [bits, errors]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {regex: "^(4|5|60|61)$"}
+    correlation:
+      window: "10m"
+      threshold: 5
+    mitre: [{tactic_id: "TA0011", technique_id: "T1197"}]
+    alert: {title: "BITS: error burst"}
+    enabled: true
+
+  # ── JEA — Just Enough Administration ──────────────────────────────────
+  - id: 17407
+    level: 13
+    description: "JEA — Register-PSSessionConfiguration creating constrained endpoint (review)"
+    groups: [jea, pssession_config, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Register-PSSessionConfiguration"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1543"}
+    alert: {title: "JEA: Register-PSSessionConfiguration"}
+    enabled: true
+
+  - id: 17408
+    level: 14
+    description: "JEA — Set-PSSessionConfiguration with -RunAsCredential (privilege delegation)"
+    groups: [jea, runas_credential, privilege_escalation, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Register|Set)-PSSessionConfiguration.*-RunAsCredential"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1543"}]
+    alert: {title: "JEA: -RunAsCredential session config"}
+    enabled: true
+
+  - id: 17409
+    level: 13
+    description: "JEA — New-PSRoleCapabilityFile (defining new admin capability)"
+    groups: [jea, role_capability, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)New-PSRoleCapabilityFile|New-PSSessionConfigurationFile"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543"}]
+    alert: {title: "JEA: capability/session config file created"}
+    enabled: true
+
+  - id: 17410
+    level: 14
+    description: "JEA — Disable-PSRemoting or Set-PSSessionConfiguration removal (cover-up)"
+    groups: [jea, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Disable-PSRemoting|Unregister-PSSessionConfiguration)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "JEA: PSRemoting / session config removed"}
+    enabled: true
+
+  # ── WSMan / WinRM Persistence ─────────────────────────────────────────
+  - id: 17411
+    level: 13
+    description: "WinRM — Enable-PSRemoting / Set-WSManQuickConfig executed"
+    groups: [winrm, remoting, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Enable-PSRemoting|Set-WSManQuickConfig|winrm\\s+quickconfig)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1021.006"}]
+    alert: {title: "WinRM: PSRemoting enabled"}
+    enabled: true
+
+  - id: 17412
+    level: 14
+    description: "WinRM — TrustedHosts set to '*' (relaxed remoting trust)"
+    groups: [winrm, trusted_hosts, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)WSMan:\\\\localhost\\\\Client\\\\TrustedHosts.*\\*"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "WinRM: TrustedHosts set to '*'"}
+    enabled: true
+
+  # ── WDigest Cleartext Credential Enable (T1003.001 helper) ────────────
+  - id: 17413
+    level: 14
+    description: "Credentials — WDigest UseLogonCredential enabled in registry (plaintext creds)"
+    groups: [credential_access, wdigest, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\WDigest\\\\UseLogonCredential$"}
+        Details: {regex: "(?i)(DWORD \\(0x00000001\\)|1)"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1003.001"}
+    alert: {title: "Credentials: WDigest UseLogonCredential=1"}
+    enabled: true
+
+  - id: 17414
+    level: 14
+    description: "Credentials — Restricted Admin mode disabled (allow PtH)"
+    groups: [credential_access, restricted_admin, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Control\\\\Lsa\\\\DisableRestrictedAdmin$"}
+        Details: {regex: "(?i)(DWORD \\(0x00000001\\)|1)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1550.002"}]
+    alert: {title: "Credentials: DisableRestrictedAdmin=1"}
+    enabled: true
+
+  # ── NetSh Helper DLL / Firewall Tamper ───────────────────────────────
+  - id: 17415
+    level: 14
+    description: "NetSh — helper DLL registered (T1546.007 persistence)"
+    groups: [netsh, helper_dll, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\netsh\\.exe$"}
+        CommandLine: {regex: "(?i)\\s(add|set)\\s+helper\\s"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1546.007"}
+    alert: {title: "NetSh: helper DLL registration"}
+    enabled: true
+
+  - id: 17416
+    level: 13
+    description: "NetSh — firewall set/add to allow program (rule weakening)"
+    groups: [netsh, firewall, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\netsh\\.exe$"}
+        CommandLine: {regex: "(?i)advfirewall.*\\s(add|set)\\s+rule"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.004"}]
+    alert: {title: "NetSh: firewall rule add/set"}
+    enabled: true
+
+  - id: 17417
+    level: 14
+    description: "NetSh — firewall fully disabled"
+    groups: [netsh, firewall, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\netsh\\.exe$"}
+        CommandLine: {regex: "(?i)advfirewall\\s+set\\s+allprofiles\\s+state\\s+off"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.004"}
+    alert: {title: "NetSh: All firewall profiles disabled"}
+    enabled: true
+
+  # ── AppCompat Shim Persistence (T1546.011) ────────────────────────────
+  - id: 17418
+    level: 14
+    description: "Persistence — sdbinst.exe installing application shim (T1546.011)"
+    groups: [appcompat_shim, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\sdbinst\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1546.011"}
+    alert: {title: "AppCompat: sdbinst.exe shim install"}
+    enabled: true
+
+  - id: 17419
+    level: 13
+    description: "Registry — AppCompat InstalledSDB key written"
+    groups: [appcompat_shim, registry, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 12}
+        TargetObject: {regex: "(?i)\\\\AppCompatFlags\\\\InstalledSDB\\\\"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.011"}]
+    alert: {title: "AppCompat: InstalledSDB registry write"}
+    enabled: true
+
+  # ── Screensaver / Authentication Package Persistence ─────────────────
+  - id: 17420
+    level: 13
+    description: "Registry — screensaver scrnsave.exe replaced (T1546.002)"
+    groups: [screensaver, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Control Panel\\\\Desktop\\\\SCRNSAVE\\.EXE$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.002"}]
+    alert: {title: "Persistence: Screensaver path changed"}
+    enabled: true
+
+  - id: 17421
+    level: 14
+    description: "Registry — Authentication Packages added (LSASS auth-package persistence T1547.002)"
+    groups: [auth_package, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Lsa\\\\Authentication Packages$"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1547.002"}
+    alert: {title: "Persistence: Authentication Packages modified"}
+    enabled: true
+
+  - id: 17422
+    level: 14
+    description: "Registry — Notification Packages added (LSA password-filter T1556.002)"
+    groups: [notification_package, persistence, credential_access, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Lsa\\\\Notification Packages$"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1556.002"}
+    alert: {title: "Persistence: Notification Packages modified"}
+    enabled: true
+
+  - id: 17423
+    level: 14
+    description: "Registry — Security Support Provider added (T1547.005)"
+    groups: [ssp, lsass, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Lsa\\\\Security Packages$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1547.005"}]
+    alert: {title: "Persistence: Security Packages (SSP) modified"}
+    enabled: true
+
+  # ── Office add-in / Outlook startup persistence ──────────────────────
+  - id: 17424
+    level: 13
+    description: "Office — add-in DLL/registry registered for Word/Excel"
+    groups: [office_addin, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Office\\\\.*\\\\Addins\\\\"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1137.006"}]
+    alert: {title: "Office: Add-in registered"}
+    enabled: true
+
+  - id: 17425
+    level: 13
+    description: "Outlook — VbaProject.OTM modified (macro store persistence)"
+    groups: [outlook, vba, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\Outlook\\\\VbaProject\\.OTM$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1137.001"}]
+    alert: {title: "Outlook: VbaProject.OTM modified"}
+    enabled: true
+
+  - id: 17426
+    level: 13
+    description: "Office — Template (Normal.dotm / Personal.xlsb) modified (template injection)"
+    groups: [office_template, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\(Word|Excel)\\\\(Normal\\.dotm|Personal\\.xlsb)$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1137.001"}]
+    alert: {title: "Office: Normal.dotm / Personal.xlsb modified"}
+    enabled: true
+
+  # ── Print Spooler / PrintNightmare ────────────────────────────────────
+  - id: 17427
+    level: 14
+    description: "Print Spooler — DLL loaded from non-system path (PrintNightmare suspect)"
+    groups: [print_spooler, printnightmare, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 7}
+        Image: {regex: "(?i)\\\\spoolsv\\.exe$"}
+        ImageLoaded: {regex: "(?i)\\\\(Temp|AppData|Users\\\\Public)\\\\.*\\.dll$"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1068"}
+    alert: {title: "PrintNightmare: spoolsv loaded DLL from non-system path"}
+    enabled: true
+
+  # ── Logon Script Persistence ──────────────────────────────────────────
+  - id: 17428
+    level: 13
+    description: "Persistence — UserInitMprLogonScript registry value set (T1037.001)"
+    groups: [logon_script, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Environment\\\\UserInitMprLogonScript$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1037.001"}]
+    alert: {title: "Persistence: UserInitMprLogonScript set"}
+    enabled: true
+
+  # ── GPO logon script persistence ──────────────────────────────────────
+  - id: 17429
+    level: 13
+    description: "Persistence — GPO logon script SCRIPTS\\Logon directory modified"
+    groups: [gpo_logon_script, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\Group Policy\\\\Scripts\\\\Logon\\\\.*\\.(bat|cmd|ps1|vbs|js)$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1037.003"}]
+    alert: {title: "Persistence: GPO Logon script written"}
+    enabled: true

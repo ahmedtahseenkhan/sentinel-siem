@@ -1,0 +1,1393 @@
+# WatchTower — Sysmon Deep Coverage
+# Rule IDs: 17000-17099
+#
+# Comprehensive Sysmon event detection across every event ID (1-29).
+# Source: log.eventlog channel "Microsoft-Windows-Sysmon/Operational"
+# Field names normalised by WatchNode (see eventlog_windows.go).
+
+rules:
+  # ── Event 1: ProcessCreate ────────────────────────────────────────────
+  - id: 17000
+    level: 14
+    description: "Sysmon — LSASS access by non-system process (credential dumping)"
+    groups: [sysmon, credential_dumping, lsass, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 10}
+        TargetImage: {regex: "(?i)\\\\lsass\\.exe$"}
+        GrantedAccess: {regex: "(?i)0x(1010|143A|1438|1FFFFF)"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1003.001"}
+    alert: {title: "Sysmon: LSASS process access (credential dump)"}
+    enabled: true
+
+  - id: 17001
+    level: 14
+    description: "Sysmon — process created with rundll32 + comsvcs.dll (LSASS dump method)"
+    groups: [sysmon, credential_dumping, comsvcs, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\rundll32\\.exe$"}
+        CommandLine: {regex: "(?i)comsvcs\\.dll.*MiniDump"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1003.001"}]
+    alert: {title: "Sysmon: rundll32 comsvcs.dll MiniDump"}
+    enabled: true
+
+  - id: 17002
+    level: 13
+    description: "Sysmon — process tree: Office app spawning shell"
+    groups: [sysmon, macro_execution, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\(winword|excel|powerpnt|outlook|msaccess|mspub|onenote|visio)\\.exe$"}
+        Image: {regex: "(?i)\\\\(cmd|powershell|wscript|cscript|mshta|rundll32|regsvr32|certutil|bitsadmin|wmic)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1566.001"}
+    alert: {title: "Sysmon: Office app spawned shell/script"}
+    enabled: true
+
+  - id: 17003
+    level: 14
+    description: "Sysmon — process injection: explorer.exe writing to remote process"
+    groups: [sysmon, process_injection, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 8}
+        SourceImage: {regex: "(?i)\\\\(explorer|svchost|lsass)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1055"}
+    alert: {title: "Sysmon: CreateRemoteThread from system process"}
+    enabled: true
+
+  - id: 17004
+    level: 13
+    description: "Sysmon — execution from suspicious path (Users\\Public, Temp, AppData\\Roaming)"
+    groups: [sysmon, suspicious_path, execution]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(Users\\\\Public|Temp|AppData\\\\Roaming|Downloads|ProgramData)\\\\.*\\.(exe|scr|bat|com|ps1|vbs|js|hta)$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1059"}]
+    alert: {title: "Sysmon: execution from suspicious path"}
+    enabled: true
+
+  - id: 17005
+    level: 13
+    description: "Sysmon — process with double extension (file.pdf.exe)"
+    groups: [sysmon, evasion, masquerading]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\[^\\\\]+\\.(pdf|doc|docx|xls|xlsx|ppt|pptx|jpg|png|txt|zip|rar)\\.(exe|scr|com|bat|cmd|ps1|vbs|js)$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1036.007"}]
+    alert: {title: "Sysmon: Double extension executable"}
+    enabled: true
+
+  - id: 17006
+    level: 12
+    description: "Sysmon — process with UNICODE right-to-left override in name (masquerade)"
+    groups: [sysmon, evasion, masquerading]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "\\u202E"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1036.002"}]
+    alert: {title: "Sysmon: RTLO unicode in process name"}
+    enabled: true
+
+  - id: 17007
+    level: 13
+    description: "Sysmon — known LOLBin executed (certutil/bitsadmin/regsvr32/mshta/msbuild)"
+    groups: [sysmon, lolbin, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(certutil|bitsadmin|regsvr32|mshta|msbuild|installutil|cmstp|odbcconf|presentationhost|xwizard)\\.exe$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218"}]
+    alert: {title: "Sysmon: LOLBin executed"}
+    enabled: true
+
+  - id: 17008
+    level: 14
+    description: "Sysmon — certutil downloading file from URL"
+    groups: [sysmon, certutil, download, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\certutil\\.exe$"}
+        CommandLine: {regex: "(?i)(-urlcache|-split|-f).*https?://"}
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1105"}
+    alert: {title: "Sysmon: certutil download pattern"}
+    enabled: true
+
+  - id: 17009
+    level: 14
+    description: "Sysmon — bitsadmin transfer of suspicious file"
+    groups: [sysmon, bitsadmin, download, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\bitsadmin\\.exe$"}
+        CommandLine: {regex: "(?i)/transfer.*https?://"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1197"}]
+    alert: {title: "Sysmon: bitsadmin /transfer"}
+    enabled: true
+
+  - id: 17010
+    level: 14
+    description: "Sysmon — regsvr32 with /i:http (Squiblydoo bypass)"
+    groups: [sysmon, regsvr32, squiblydoo, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\regsvr32\\.exe$"}
+        CommandLine: {regex: "(?i)/i:https?://"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218.010"}]
+    alert: {title: "Sysmon: regsvr32 Squiblydoo (/i:http)"}
+    enabled: true
+
+  - id: 17011
+    level: 14
+    description: "Sysmon — mshta executing HTA from URL"
+    groups: [sysmon, mshta, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\mshta\\.exe$"}
+        CommandLine: {regex: "(?i)https?://|vbscript:|javascript:"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218.005"}]
+    alert: {title: "Sysmon: mshta executing remote HTA"}
+    enabled: true
+
+  - id: 17012
+    level: 14
+    description: "Sysmon — msbuild executing inline task (build-bypass execution)"
+    groups: [sysmon, msbuild, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\msbuild\\.exe$"}
+        CommandLine: {regex: "(?i)\\.(xml|csproj|sln|vbproj)\\s|inline"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1127.001"}]
+    alert: {title: "Sysmon: msbuild execution of project file"}
+    enabled: true
+
+  - id: 17013
+    level: 13
+    description: "Sysmon — InstallUtil.exe used for proxy execution"
+    groups: [sysmon, installutil, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\installutil\\.exe$"}
+        CommandLine: {regex: "(?i)/logfile=|/u\\s|/logToConsole=false"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218.004"}]
+    alert: {title: "Sysmon: InstallUtil proxy execution"}
+    enabled: true
+
+  - id: 17014
+    level: 14
+    description: "Sysmon — wmic process call create (lateral movement / execution)"
+    groups: [sysmon, wmic, lateral_movement, execution]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\wmic\\.exe$"}
+        CommandLine: {regex: "(?i)process\\s+call\\s+create"}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1047"}
+    alert: {title: "Sysmon: wmic process call create"}
+    enabled: true
+
+  - id: 17015
+    level: 14
+    description: "Sysmon — PsExec / paexec / smbexec lateral execution"
+    groups: [sysmon, psexec, lateral_movement, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(psexec|paexec|psexesvc|smbexec)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1021.002"}
+    alert: {title: "Sysmon: PsExec-family executed"}
+    enabled: true
+
+  - id: 17016
+    level: 14
+    description: "Sysmon — Cobalt Strike named pipe pattern (\\\\.\\pipe\\msagent_*)"
+    groups: [sysmon, cobalt_strike, c2, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 17}
+        PipeName: {regex: "(?i)\\\\msagent_[0-9a-f]{2}|\\\\status_[0-9a-f]{2}|\\\\postex_[0-9a-f]{4}"}
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1071"}
+    alert: {title: "Sysmon: Cobalt Strike named pipe"}
+    enabled: true
+
+  - id: 17017
+    level: 13
+    description: "Sysmon — process with renamed system binary (e.g. svchost.exe in non-System32)"
+    groups: [sysmon, masquerading, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        OriginalFileName: {regex: "(?i)^(svchost|csrss|lsass|explorer|winlogon|services|wininit)\\.exe$"}
+        Image: {regex: "(?i)^(?!c:\\\\windows\\\\(system32|syswow64))"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1036.005"}]
+    alert: {title: "Sysmon: System binary in non-System32 path"}
+    enabled: true
+
+  - id: 17018
+    level: 12
+    description: "Sysmon — high-entropy random-looking process name"
+    groups: [sysmon, malware, randomized_name]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\[a-z0-9]{10,16}\\.exe$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1036"}]
+    alert: {title: "Sysmon: Random-named binary executed"}
+    enabled: true
+
+  - id: 17019
+    level: 13
+    description: "Sysmon — service binary executed by SYSTEM from temp / non-standard location"
+    groups: [sysmon, service_abuse, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\services\\.exe$"}
+        Image: {regex: "(?i)\\\\(Temp|AppData|Users\\\\Public|ProgramData)\\\\"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543.003"}]
+    alert: {title: "Sysmon: services.exe launched binary from suspicious path"}
+    enabled: true
+
+  - id: 17020
+    level: 13
+    description: "Sysmon — child of svchost.exe is not on whitelist"
+    groups: [sysmon, svchost_anomaly, masquerading]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\svchost\\.exe$"}
+        Image: {regex: "(?i)\\\\(cmd|powershell|wscript|cscript)\\.exe$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1036.004"}]
+    alert: {title: "Sysmon: Unusual child of svchost.exe"}
+    enabled: true
+
+  - id: 17021
+    level: 13
+    description: "Sysmon — net.exe / net1.exe domain / group enumeration"
+    groups: [sysmon, net_enum, recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\net1?\\.exe$"}
+        CommandLine: {regex: "(?i)\\b(group|user|localgroup|view|share|use|session|accounts)\\b"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1087.002"}]
+    alert: {title: "Sysmon: net.exe enumeration"}
+    enabled: true
+
+  - id: 17022
+    level: 13
+    description: "Sysmon — nltest.exe domain enumeration"
+    groups: [sysmon, nltest, recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\nltest\\.exe$"}
+        CommandLine: {regex: "(?i)/(domain_trusts|dclist|trusted_domains|all_trusts)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1482"}]
+    alert: {title: "Sysmon: nltest domain enumeration"}
+    enabled: true
+
+  - id: 17023
+    level: 13
+    description: "Sysmon — whoami /priv or /groups (privilege/group recon)"
+    groups: [sysmon, whoami, recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\whoami\\.exe$"}
+        CommandLine: {regex: "(?i)/(priv|groups|all)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1033"}]
+    alert: {title: "Sysmon: whoami privilege recon"}
+    enabled: true
+
+  - id: 17024
+    level: 12
+    description: "Sysmon — quser / qwinsta (session enumeration)"
+    groups: [sysmon, session_enum, recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(quser|qwinsta|query)\\.exe$"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1033"}]
+    alert: {title: "Sysmon: session enumeration tool"}
+    enabled: true
+
+  - id: 17025
+    level: 13
+    description: "Sysmon — tasklist /svc /v (process & service recon)"
+    groups: [sysmon, tasklist, recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\tasklist\\.exe$"}
+        CommandLine: {regex: "(?i)/(svc|v|m|s\\s)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1057"}]
+    alert: {title: "Sysmon: tasklist verbose enumeration"}
+    enabled: true
+
+  - id: 17026
+    level: 13
+    description: "Sysmon — ipconfig /all + route + arp (network recon burst)"
+    groups: [sysmon, network_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(ipconfig|route|arp|netstat|tracert|ping)\\.exe$"}
+    correlation:
+      window: "2m"
+      threshold: 5
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1016"}]
+    alert: {title: "Sysmon: Network recon command burst"}
+    enabled: true
+
+  - id: 17027
+    level: 13
+    description: "Sysmon — net.exe use \\\\<host>\\ipc$ (lateral SMB)"
+    groups: [sysmon, smb_share, lateral_movement]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\net1?\\.exe$"}
+        CommandLine: {regex: "(?i)use\\s+\\\\\\\\\\S+\\\\(ipc\\$|admin\\$|c\\$)"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1021.002"}]
+    alert: {title: "Sysmon: net use to admin/c/ipc share"}
+    enabled: true
+
+  - id: 17028
+    level: 14
+    description: "Sysmon — Mimikatz signature in commandline (sekurlsa::logonpasswords)"
+    groups: [sysmon, mimikatz, credential_dumping, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)(sekurlsa::logonpasswords|sekurlsa::pth|kerberos::golden|kerberos::ptt|crypto::|misc::skeleton|lsadump::)"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1003"}
+    alert: {title: "Sysmon: Mimikatz module in commandline"}
+    enabled: true
+
+  - id: 17029
+    level: 13
+    description: "Sysmon — vssadmin delete shadows (anti-recovery / ransomware)"
+    groups: [sysmon, vssadmin, ransomware, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\vssadmin\\.exe$"}
+        CommandLine: {regex: "(?i)delete\\s+shadows"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1490"}]
+    alert: {title: "Sysmon: vssadmin delete shadows"}
+    enabled: true
+
+  - id: 17030
+    level: 13
+    description: "Sysmon — wbadmin delete catalog / systemstatebackup (anti-recovery)"
+    groups: [sysmon, backup_destruction, ransomware]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\wbadmin\\.exe$"}
+        CommandLine: {regex: "(?i)delete\\s+(catalog|systemstatebackup|backup)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1490"}]
+    alert: {title: "Sysmon: wbadmin delete backup"}
+    enabled: true
+
+  - id: 17031
+    level: 13
+    description: "Sysmon — bcdedit disabling recovery (boot config tampering)"
+    groups: [sysmon, bcdedit, ransomware, anti_recovery]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\bcdedit\\.exe$"}
+        CommandLine: {regex: "(?i)(recoveryenabled\\s+no|bootstatuspolicy\\s+ignoreallfailures)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1490"}]
+    alert: {title: "Sysmon: bcdedit disabling recovery"}
+    enabled: true
+
+  - id: 17032
+    level: 13
+    description: "Sysmon — wevtutil cl (clear Windows Event Log)"
+    groups: [sysmon, log_tampering, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\wevtutil\\.exe$"}
+        CommandLine: {regex: "(?i)\\bcl\\b"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1070.001"}
+    alert: {title: "Sysmon: wevtutil clear log"}
+    enabled: true
+
+  - id: 17033
+    level: 13
+    description: "Sysmon — fsutil usn deletejournal (anti-forensics)"
+    groups: [sysmon, fsutil, anti_forensics]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\fsutil\\.exe$"}
+        CommandLine: {regex: "(?i)usn\\s+deletejournal"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070"}]
+    alert: {title: "Sysmon: fsutil USN journal deleted"}
+    enabled: true
+
+  - id: 17034
+    level: 13
+    description: "Sysmon — reg.exe modification of Run keys (persistence)"
+    groups: [sysmon, registry, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\reg\\.exe$"}
+        CommandLine: {regex: "(?i)(add|set).*\\\\CurrentVersion\\\\(Run|RunOnce|RunOnceEx)\\\\?"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1547.001"}
+    alert: {title: "Sysmon: Run key registry persistence via reg.exe"}
+    enabled: true
+
+  - id: 17035
+    level: 14
+    description: "Sysmon — reg.exe SAM/SYSTEM/SECURITY hive export (creds offline)"
+    groups: [sysmon, hive_export, credential_dumping, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\reg\\.exe$"}
+        CommandLine: {regex: "(?i)\\b(save|export)\\b.*hk(lm|cu)?\\\\(sam|system|security)"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1003.002"}
+    alert: {title: "Sysmon: reg save SAM/SYSTEM/SECURITY hive"}
+    enabled: true
+
+  - id: 17036
+    level: 13
+    description: "Sysmon — schtasks /create (scheduled task persistence)"
+    groups: [sysmon, schtasks, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\schtasks\\.exe$"}
+        CommandLine: {regex: "(?i)/create"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1053.005"}]
+    alert: {title: "Sysmon: schtasks /create"}
+    enabled: true
+
+  - id: 17037
+    level: 13
+    description: "Sysmon — sc.exe create / config service (persistence)"
+    groups: [sysmon, sc_exe, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\sc\\.exe$"}
+        CommandLine: {regex: "(?i)\\s(create|config|failure)\\s"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543.003"}]
+    alert: {title: "Sysmon: sc.exe service modification"}
+    enabled: true
+
+  - id: 17038
+    level: 13
+    description: "Sysmon — net.exe localgroup administrators add (privilege escalation)"
+    groups: [sysmon, local_group, privilege_escalation]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\net1?\\.exe$"}
+        CommandLine: {regex: "(?i)localgroup.*administrators.*\\b/add\\b"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "Sysmon: User added to local Administrators"}
+    enabled: true
+
+  - id: 17039
+    level: 13
+    description: "Sysmon — process executing with -encodedcommand (PowerShell)"
+    groups: [sysmon, powershell, encoded, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\powershell(_ise)?\\.exe$"}
+        CommandLine: {regex: "(?i)\\s-e(nc(odedcommand)?)?\\s+[A-Za-z0-9+/=]{30,}"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1059.001"}
+    alert: {title: "Sysmon: PowerShell -EncodedCommand"}
+    enabled: true
+
+  - id: 17040
+    level: 13
+    description: "Sysmon — PowerShell with -nop -w hidden -exec bypass (classic stager pattern)"
+    groups: [sysmon, powershell, evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\powershell(_ise)?\\.exe$"}
+        CommandLine: {regex: "(?i)-n(o)?p(rofile)?\\s.*-w(in)?\\s+hidden|-exec(utionpolicy)?\\s+bypass"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1059.001"}]
+    alert: {title: "Sysmon: PowerShell -nop -w hidden -exec bypass"}
+    enabled: true
+
+  - id: 17041
+    level: 14
+    description: "Sysmon — PowerShell IEX (DownloadString) — fileless stager"
+    groups: [sysmon, powershell, downloadstring, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "(?i)(iex|invoke-expression).*(downloadstring|net\\.webclient|invoke-webrequest)"}
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1105"}
+    alert: {title: "Sysmon: PowerShell IEX downloadstring"}
+    enabled: true
+
+  - id: 17042
+    level: 13
+    description: "Sysmon — odbcconf used for proxy execution"
+    groups: [sysmon, odbcconf, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\odbcconf\\.exe$"}
+        CommandLine: {regex: "(?i)regsvr|configdsn"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218"}]
+    alert: {title: "Sysmon: odbcconf proxy execution"}
+    enabled: true
+
+  - id: 17043
+    level: 13
+    description: "Sysmon — cmstp.exe with INF (UAC bypass / proxy exec)"
+    groups: [sysmon, cmstp, uac_bypass]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\cmstp\\.exe$"}
+        CommandLine: {regex: "(?i)\\.inf"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218.003"}]
+    alert: {title: "Sysmon: cmstp UAC bypass / proxy exec"}
+    enabled: true
+
+  # ── Event 2: FileCreateTime (timestomping) ────────────────────────────
+  - id: 17044
+    level: 13
+    description: "Sysmon — timestomping detected (FileCreateTime in System32)"
+    groups: [sysmon, timestomp, anti_forensics, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 2}
+        TargetFilename: {regex: "(?i)\\\\(System32|SysWOW64|Windows)\\\\"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1070.006"}
+    alert: {title: "Sysmon: FileCreateTime changed in System32"}
+    enabled: true
+
+  # ── Event 3: Network Connection ───────────────────────────────────────
+  - id: 17045
+    level: 13
+    description: "Sysmon — outbound to RFC1918 from cmd/powershell (lateral movement)"
+    groups: [sysmon, network, lateral_movement]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 3}
+        Image: {regex: "(?i)\\\\(cmd|powershell|wscript|cscript)\\.exe$"}
+        DestinationIp: {regex: "^(10\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.)"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1021"}]
+    alert: {title: "Sysmon: Shell outbound to internal IP"}
+    enabled: true
+
+  - id: 17046
+    level: 13
+    description: "Sysmon — outbound from System32 binary to external IP on uncommon port"
+    groups: [sysmon, network, c2_suspect]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 3}
+        DestinationPort: {regex: "^(4444|4445|6666|8443|9001|9002|9999|31337|50050)$"}
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1571"}
+    alert: {title: "Sysmon: outbound to known C2 port"}
+    enabled: true
+
+  - id: 17047
+    level: 13
+    description: "Sysmon — outbound SMB (445) to external IP (exfil / lateral)"
+    groups: [sysmon, smb, lateral_movement]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 3}
+        DestinationPort: {equals: 445}
+        DestinationIp: {regex: "^(?!10\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.|127\\.|169\\.254\\.)"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071"}]
+    alert: {title: "Sysmon: external SMB connection"}
+    enabled: true
+
+  - id: 17048
+    level: 13
+    description: "Sysmon — DNS query to long-host (>50 char) — tunneling indicator"
+    groups: [sysmon, dns, tunneling]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 22}
+        QueryName: {regex: "(?i)^[a-z0-9\\-]{50,}\\."}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071.004"}]
+    alert: {title: "Sysmon: DNS query with long subdomain"}
+    enabled: true
+
+  - id: 17049
+    level: 13
+    description: "Sysmon — DNS query to TI-flagged malicious domain"
+    groups: [sysmon, dns, threatintel, c2]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 22}
+      enrich:
+        ti_source: "malicious_domains"
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071.004"}]
+    alert: {title: "Sysmon: DNS to TI-flagged domain"}
+    enabled: true
+
+  - id: 17050
+    level: 12
+    description: "Sysmon — DNS query to dynamic DNS provider"
+    groups: [sysmon, dns, ddns, c2_suspect]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 22}
+        QueryName: {regex: "(?i)\\.(no-ip|duckdns|dyndns|hopto|3322|sytes|zapto|myftp|servehttp)\\."}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1568"}]
+    alert: {title: "Sysmon: DNS query to dynamic DNS"}
+    enabled: true
+
+  # ── Event 6: Driver Loaded ────────────────────────────────────────────
+  - id: 17051
+    level: 14
+    description: "Sysmon — unsigned driver loaded"
+    groups: [sysmon, driver, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 6}
+        Signed: {equals: "false"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1014"}
+    alert: {title: "Sysmon: Unsigned driver loaded"}
+    enabled: true
+
+  - id: 17052
+    level: 14
+    description: "Sysmon — vulnerable driver loaded (BYOVD attack pattern)"
+    groups: [sysmon, byovd, driver, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 6}
+        ImageLoaded: {regex: "(?i)\\\\(rwdrv|gdrv|atillk64|asrdrv|process_hacker_driver|procexp|wnbios)\\.sys$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1014"}]
+    alert: {title: "Sysmon: Vulnerable driver loaded (BYOVD)"}
+    enabled: true
+
+  # ── Event 7: Image Loaded ─────────────────────────────────────────────
+  - id: 17053
+    level: 13
+    description: "Sysmon — DLL loaded from temp / users\\public / appdata (DLL hijack / sideload)"
+    groups: [sysmon, dll_load, hijack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 7}
+        ImageLoaded: {regex: "(?i)\\\\(Temp|Users\\\\Public|AppData|ProgramData)\\\\.*\\.dll$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1574.001"}]
+    alert: {title: "Sysmon: DLL loaded from temp/user path"}
+    enabled: true
+
+  - id: 17054
+    level: 13
+    description: "Sysmon — AMSI / ETW DLL unsigned / patched"
+    groups: [sysmon, amsi_bypass, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 7}
+        ImageLoaded: {regex: "(?i)\\\\(amsi|clr\\.dll|ntdll\\.dll)$"}
+        Signed: {equals: "false"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Sysmon: Unsigned AMSI/CLR/NTDLL"}
+    enabled: true
+
+  # ── Event 11: FileCreate ──────────────────────────────────────────────
+  - id: 17055
+    level: 13
+    description: "Sysmon — executable created in startup folder (persistence)"
+    groups: [sysmon, file_create, startup_persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\Start Menu\\\\Programs\\\\Startup\\\\.*\\.(exe|bat|cmd|vbs|ps1|lnk|js|hta)$"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1547.001"}
+    alert: {title: "Sysmon: Executable in Startup folder"}
+    enabled: true
+
+  - id: 17056
+    level: 13
+    description: "Sysmon — file with double extension (e.g. invoice.pdf.exe) created"
+    groups: [sysmon, file_create, masquerading, malware_drop]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\.(pdf|doc|xls|ppt|jpg|png|txt|zip|rar)\\.(exe|scr|com|bat|cmd|ps1|vbs|js|hta)$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1036.007"}]
+    alert: {title: "Sysmon: Double-extension file created"}
+    enabled: true
+
+  - id: 17057
+    level: 13
+    description: "Sysmon — file created with hidden + system attributes (anti-forensic)"
+    groups: [sysmon, file_create, anti_forensics]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\\\$Recycle\\.Bin\\\\|\\\\System Volume Information\\\\"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1564.001"}]
+    alert: {title: "Sysmon: File in $Recycle.Bin / SVI"}
+    enabled: true
+
+  - id: 17058
+    level: 13
+    description: "Sysmon — ransomware extension created (.lockbit/.encrypt/.crypto/etc.)"
+    groups: [sysmon, ransomware, file_encryption, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\.(lockbit|conti|locky|wannacry|crypto|encrypted|encrypt|locked|ryuk|maze|sodin|sodinokibi|netwalker|babuk|hive)$"}
+    mitre:
+      - {tactic_id: "TA0040", technique_id: "T1486"}
+    alert: {title: "Sysmon: Ransomware extension file created"}
+    enabled: true
+
+  - id: 17059
+    level: 13
+    description: "Sysmon — ransom note name created (README / DECRYPT / HOW-TO)"
+    groups: [sysmon, ransomware, ransom_note, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\(README|HOW.?TO.?(DECRYPT|RESTORE)|DECRYPT.?INSTRUCTIONS|YOUR.?FILES.?ARE|RESTORE.?MY.?FILES)\\.(txt|hta|html)$"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1486"}]
+    alert: {title: "Sysmon: Ransom note filename created"}
+    enabled: true
+
+  - id: 17060
+    level: 12
+    description: "Sysmon — many files created within short window (potential mass-encrypt)"
+    groups: [sysmon, file_create_burst, ransomware]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+    correlation:
+      window: "1m"
+      threshold: 200
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0040", technique_id: "T1486"}]
+    alert: {title: "Sysmon: File-create burst (ransomware suspect)"}
+    enabled: true
+
+  # ── Event 12-14: RegistryEvent ────────────────────────────────────────
+  - id: 17061
+    level: 13
+    description: "Sysmon — registry RunOnce/Run key value set"
+    groups: [sysmon, registry, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\CurrentVersion\\\\Run(Once|OnceEx)?\\\\"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1547.001"}]
+    alert: {title: "Sysmon: Registry Run key value set"}
+    enabled: true
+
+  - id: 17062
+    level: 13
+    description: "Sysmon — Image File Execution Options Debugger added (persistence)"
+    groups: [sysmon, registry, ifeo, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Image File Execution Options\\\\.*\\\\Debugger$"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1546.012"}
+    alert: {title: "Sysmon: IFEO Debugger registered"}
+    enabled: true
+
+  - id: 17063
+    level: 13
+    description: "Sysmon — Winlogon Shell / Userinit modified"
+    groups: [sysmon, registry, winlogon, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Winlogon\\\\(Shell|Userinit|Notify|TaskMan)$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1547.004"}]
+    alert: {title: "Sysmon: Winlogon registry persistence"}
+    enabled: true
+
+  - id: 17064
+    level: 14
+    description: "Sysmon — AppInit_DLLs modified (DLL load on every GUI process)"
+    groups: [sysmon, registry, appinit, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Windows\\\\AppInit_DLLs$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.010"}]
+    alert: {title: "Sysmon: AppInit_DLLs modified"}
+    enabled: true
+
+  - id: 17065
+    level: 13
+    description: "Sysmon — LSA Security Provider added (potential LSASS module)"
+    groups: [sysmon, registry, lsa, credential_access]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Control\\\\(Lsa|SecurityProviders)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1547.005"}]
+    alert: {title: "Sysmon: LSA Security Provider modified"}
+    enabled: true
+
+  - id: 17066
+    level: 13
+    description: "Sysmon — Office VBA macro AccessVBOM set (macros trust pivot)"
+    groups: [sysmon, registry, office_macro, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Office\\\\\\d+\\\\.*\\\\Security\\\\(AccessVBOM|VBAWarnings)$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Sysmon: Office macro security setting changed"}
+    enabled: true
+
+  - id: 17067
+    level: 13
+    description: "Sysmon — Service ImagePath modified (service hijack)"
+    groups: [sysmon, registry, service_hijack, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Services\\\\[^\\\\]+\\\\ImagePath$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543.003"}]
+    alert: {title: "Sysmon: Service ImagePath registry change"}
+    enabled: true
+
+  - id: 17068
+    level: 14
+    description: "Sysmon — UAC EnableLUA / ConsentPromptBehavior disabled"
+    groups: [sysmon, registry, uac_bypass, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\System\\\\(EnableLUA|ConsentPromptBehaviorAdmin)$"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1548.002"}
+    alert: {title: "Sysmon: UAC EnableLUA / consent prompt disabled"}
+    enabled: true
+
+  - id: 17069
+    level: 13
+    description: "Sysmon — Windows Defender real-time protection disabled via registry"
+    groups: [sysmon, registry, defender_disable, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Windows Defender\\\\.*\\\\Disable(AntiSpyware|RealtimeMonitoring|BehaviorMonitoring|OnAccessProtection|ScanOnRealtimeEnable)$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Sysmon: Defender disabled via registry"}
+    enabled: true
+
+  - id: 17070
+    level: 13
+    description: "Sysmon — Print Processor / Print Monitor registry persistence"
+    groups: [sysmon, registry, print_processor, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Print\\\\(Monitors|Environments\\\\.*\\\\Print Processors)\\\\"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1547.012"}]
+    alert: {title: "Sysmon: Print Processor/Monitor registry change"}
+    enabled: true
+
+  - id: 17071
+    level: 13
+    description: "Sysmon — COM hijack (CLSID InprocServer32 changed)"
+    groups: [sysmon, registry, com_hijack, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\CLSID\\\\\\{[0-9A-F\\-]+\\}\\\\InprocServer32\\\\?"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.015"}]
+    alert: {title: "Sysmon: COM CLSID InprocServer32 modified"}
+    enabled: true
+
+  - id: 17072
+    level: 13
+    description: "Sysmon — Outlook Home Page / WebView (T1137.004 persistence)"
+    groups: [sysmon, registry, outlook, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\Outlook\\\\WebView\\\\(Inbox|Calendar|Notes)\\\\URL$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1137.004"}]
+    alert: {title: "Sysmon: Outlook WebView URL set"}
+    enabled: true
+
+  # ── Event 17/18: Pipe Create/Connect ──────────────────────────────────
+  - id: 17073
+    level: 13
+    description: "Sysmon — pipe created with PSEXESVC pattern"
+    groups: [sysmon, pipe, psexec]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 17}
+        PipeName: {regex: "(?i)\\\\PSEXESVC|\\\\paexec|\\\\remcomsvc|\\\\csexec"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1021.002"}]
+    alert: {title: "Sysmon: PsExec-family pipe created"}
+    enabled: true
+
+  - id: 17074
+    level: 13
+    description: "Sysmon — pipe matching Empire / Posh-SecMod / SharpHound pattern"
+    groups: [sysmon, pipe, c2_named_pipe]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 17}
+        PipeName: {regex: "(?i)\\\\(empire|poshsec|sharphound|seatbelt|invoke)"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071"}]
+    alert: {title: "Sysmon: Offensive tool pipe name"}
+    enabled: true
+
+  # ── Event 19/20/21: WMI ───────────────────────────────────────────────
+  - id: 17075
+    level: 14
+    description: "Sysmon — WMI persistent event filter registered"
+    groups: [sysmon, wmi, event_subscription, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 19}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1546.003"}
+    alert: {title: "Sysmon: WMI EventFilter registered"}
+    enabled: true
+
+  - id: 17076
+    level: 14
+    description: "Sysmon — WMI persistent event consumer registered"
+    groups: [sysmon, wmi, event_subscription, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 20}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.003"}]
+    alert: {title: "Sysmon: WMI EventConsumer registered"}
+    enabled: true
+
+  - id: 17077
+    level: 14
+    description: "Sysmon — WMI consumer bound to filter (T1546.003)"
+    groups: [sysmon, wmi, event_subscription, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 21}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.003"}]
+    alert: {title: "Sysmon: WMI consumer bound to filter"}
+    enabled: true
+
+  # ── Event 23: FileDelete ──────────────────────────────────────────────
+  - id: 17078
+    level: 13
+    description: "Sysmon — shadow copy deleted (file 23 / ransomware anti-recovery)"
+    groups: [sysmon, file_delete, ransomware]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 23}
+        TargetFilename: {regex: "(?i)\\\\System Volume Information\\\\"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1490"}]
+    alert: {title: "Sysmon: SVI shadow copy file deleted"}
+    enabled: true
+
+  - id: 17079
+    level: 13
+    description: "Sysmon — eventlog .evtx file deleted (anti-forensic)"
+    groups: [sysmon, file_delete, evtx_delete, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 23}
+        TargetFilename: {regex: "(?i)\\\\winevt\\\\Logs\\\\.*\\.evtx$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070.001"}]
+    alert: {title: "Sysmon: .evtx log file deleted"}
+    enabled: true
+
+  - id: 17080
+    level: 13
+    description: "Sysmon — agent binary / config deleted (self-defense disable)"
+    groups: [sysmon, file_delete, agent_tamper]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 23}
+        TargetFilename: {regex: "(?i)\\\\Program Files\\\\SentinelAgent\\\\"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Sysmon: SentinelAgent files deleted"}
+    enabled: true
+
+  # ── Event 25: ProcessTampering ────────────────────────────────────────
+  - id: 17081
+    level: 14
+    description: "Sysmon — process image tampered after start (hollow / image-replace)"
+    groups: [sysmon, process_tamper, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 25}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1055.012"}
+    alert: {title: "Sysmon: ProcessTampering detected"}
+    enabled: true
+
+  # ── Event 26: FileDeleteDetected ──────────────────────────────────────
+  - id: 17082
+    level: 13
+    description: "Sysmon — mass file delete burst (impact / ransomware-prep)"
+    groups: [sysmon, file_delete, ransomware, impact]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 26}
+    correlation:
+      window: "1m"
+      threshold: 100
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "Sysmon: Mass file-delete burst"}
+    enabled: true
+
+  # ── Event 27/28: FileBlock ────────────────────────────────────────────
+  - id: 17083
+    level: 12
+    description: "Sysmon — file block executable triggered"
+    groups: [sysmon, file_block]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 27}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1140"}]
+    alert: {title: "Sysmon: FileBlockExecutable triggered"}
+    enabled: true
+
+  - id: 17084
+    level: 12
+    description: "Sysmon — file block shredding triggered (anti-forensics intent)"
+    groups: [sysmon, file_block, anti_forensics]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 28}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070.004"}]
+    alert: {title: "Sysmon: FileBlockShredding triggered"}
+    enabled: true
+
+  # ── Event 24: Clipboard ───────────────────────────────────────────────
+  - id: 17085
+    level: 12
+    description: "Sysmon — clipboard change captured (clipper malware)"
+    groups: [sysmon, clipboard, malware]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 24}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1115"}]
+    alert: {title: "Sysmon: Clipboard change captured"}
+    enabled: true
+
+  # ── Event 29: FileExecutableDetected ──────────────────────────────────
+  - id: 17086
+    level: 13
+    description: "Sysmon — executable downloaded to disk via browser/email path"
+    groups: [sysmon, file_executable, ingress]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 29}
+        TargetFilename: {regex: "(?i)\\\\(Downloads|Outlook\\\\)\\\\.*\\.(exe|scr|com|bat|ps1|vbs|hta|js)$"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1105"}]
+    alert: {title: "Sysmon: Executable dropped into Downloads/Outlook path"}
+    enabled: true
+
+  # ── Misc anomalies & catch-alls ───────────────────────────────────────
+  - id: 17087
+    level: 13
+    description: "Sysmon — process with NULL or single-character User"
+    groups: [sysmon, anomaly]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        User: {regex: "^(-|[^\\w]|\\s)$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1036"}]
+    alert: {title: "Sysmon: Empty / single-char User on process create"}
+    enabled: true
+
+  - id: 17088
+    level: 13
+    description: "Sysmon — copy of ntdll.dll / kernel32.dll into user temp (unhook prep)"
+    groups: [sysmon, file_create, unhooking]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\(Temp|AppData)\\\\.*(ntdll|kernel32|kernelbase|ntoskrnl)\\.dll$"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "Sysmon: System DLL copied to user temp (unhook?)"}
+    enabled: true
+
+  - id: 17089
+    level: 13
+    description: "Sysmon — process opening file handle to multiple .docx/.pdf in quick succession (ransomware scan)"
+    groups: [sysmon, ransomware, scan_pattern]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+    correlation:
+      window: "1m"
+      threshold: 50
+      group_by: ["ProcessGuid"]
+    mitre: [{tactic_id: "TA0040", technique_id: "T1486"}]
+    alert: {title: "Sysmon: Heavy file enumeration by single process"}
+    enabled: true
+
+  - id: 17090
+    level: 13
+    description: "Sysmon — DLL loaded with no original-file-name (likely packed/repacked)"
+    groups: [sysmon, dll_load, packed]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 7}
+        OriginalFileName: {equals: "-"}
+        Signed: {equals: "false"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1027.002"}]
+    alert: {title: "Sysmon: Unsigned DLL with no OriginalFileName"}
+    enabled: true
+
+  - id: 17091
+    level: 13
+    description: "Sysmon — process executed via WMIC.exe XSL stylesheet (T1220)"
+    groups: [sysmon, wmic, xsl, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\wmic\\.exe$"}
+        CommandLine: {regex: "(?i)/format:.*\\.xsl"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1220"}]
+    alert: {title: "Sysmon: wmic /format XSL proxy execution"}
+    enabled: true
+
+  - id: 17092
+    level: 13
+    description: "Sysmon — Microsoft.Workflow.Compiler.exe used for code execution"
+    groups: [sysmon, defense_evasion, lolbas]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\Microsoft\\.Workflow\\.Compiler\\.exe$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1127"}]
+    alert: {title: "Sysmon: Workflow.Compiler.exe executed"}
+    enabled: true
+
+  - id: 17093
+    level: 14
+    description: "Sysmon — ngrok / chisel / frp tunneling tool executed"
+    groups: [sysmon, tunneling, c2, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(ngrok|chisel|frpc|frps|gost|httptunnel|nps)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1572"}
+    alert: {title: "Sysmon: Tunneling tool executed (ngrok/chisel/frp)"}
+    enabled: true
+
+  - id: 17094
+    level: 13
+    description: "Sysmon — common RAT/admin tool executed (anydesk/teamviewer/screenconnect)"
+    groups: [sysmon, rat, remote_access]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\(anydesk|teamviewer|connectwise|screenconnect|remotepc|splashtop|atera|gotoassist)\\.exe$"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1219"}]
+    alert: {title: "Sysmon: RMM / Remote-control tool executed"}
+    enabled: true
+
+  - id: 17095
+    level: 13
+    description: "Sysmon — process executed from removable media (T1091 transfer-via-removable)"
+    groups: [sysmon, removable_media, ingress]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)^[D-Z]:\\\\.*\\.(exe|scr|bat|ps1)$"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1091"}]
+    alert: {title: "Sysmon: Process executed from removable drive"}
+    enabled: true
+
+  - id: 17096
+    level: 13
+    description: "Sysmon — runas /netonly (impersonation for SMB/share)"
+    groups: [sysmon, runas, credential_use, impersonation]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\runas\\.exe$"}
+        CommandLine: {regex: "(?i)/netonly"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1134"}]
+    alert: {title: "Sysmon: runas /netonly"}
+    enabled: true
+
+  - id: 17097
+    level: 13
+    description: "Sysmon — wmic.exe spawning powershell (LOLBin chain)"
+    groups: [sysmon, wmic, powershell, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\wmic\\.exe$"}
+        Image: {regex: "(?i)\\\\powershell\\.exe$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218"}]
+    alert: {title: "Sysmon: wmic spawning powershell"}
+    enabled: true
+
+  - id: 17098
+    level: 13
+    description: "Sysmon — process executed with environment-variable obfuscation (% in CommandLine)"
+    groups: [sysmon, obfuscation, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        CommandLine: {regex: "%[^%]+:~[\\-\\d]+,[\\-\\d]+%"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1027"}]
+    alert: {title: "Sysmon: Environment-variable substring obfuscation"}
+    enabled: true
+
+  - id: 17099
+    level: 13
+    description: "Sysmon — DLL search-order hijack candidate (DLL written near exe outside System32)"
+    groups: [sysmon, dll_hijack, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\Program Files( \\(x86\\))?\\\\.*\\\\(wininet|version|crypt32|shell32|kernel32|advapi32|user32|cryptui)\\.dll$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1574.001"}]
+    alert: {title: "Sysmon: System DLL written next to app binary (hijack)"}
+    enabled: true

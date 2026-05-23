@@ -1,0 +1,423 @@
+# WatchTower — WMI Attack Detection
+# Rule IDs: 17200-17229
+#
+# Sources:
+#   - Microsoft-Windows-WMI-Activity/Operational (EventIDs 5857-5861, 11)
+#   - Sysmon EventIDs 19/20/21 (WMI filter/consumer/binding)
+#   - Sysmon Event 1 with Image=wmic.exe
+
+rules:
+  - id: 17200
+    level: 13
+    description: "WMI — wmic.exe spawned from Office app (macro chain)"
+    groups: [wmi, wmic, office_chain, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\(winword|excel|powerpnt|outlook|onenote|visio)\\.exe$"}
+        Image: {regex: "(?i)\\\\wmic\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1566.001"}
+    alert: {title: "WMI: wmic spawned by Office app"}
+    enabled: true
+
+  - id: 17201
+    level: 14
+    description: "WMI — wmic process call create /node:<remote> (remote execution)"
+    groups: [wmi, wmic, lateral_movement, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\wmic\\.exe$"}
+        CommandLine: {regex: "(?i)/node:\\S+\\s+process\\s+call\\s+create"}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1047"}
+    alert: {title: "WMI: wmic remote process create"}
+    enabled: true
+
+  - id: 17202
+    level: 14
+    description: "WMI — wmic /format:.xsl (XSL stylesheet proxy execution)"
+    groups: [wmi, wmic, xsl, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\wmic\\.exe$"}
+        CommandLine: {regex: "(?i)/format:\\S+\\.xsl"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1220"}
+    alert: {title: "WMI: wmic /format XSL"}
+    enabled: true
+
+  - id: 17203
+    level: 13
+    description: "WMI — wmic shadowcopy delete (anti-recovery)"
+    groups: [wmi, wmic, ransomware, anti_recovery]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\wmic\\.exe$"}
+        CommandLine: {regex: "(?i)shadowcopy\\s+delete"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1490"}]
+    alert: {title: "WMI: wmic shadowcopy delete"}
+    enabled: true
+
+  - id: 17204
+    level: 13
+    description: "WMI — wmic service / process / startup enumeration (recon)"
+    groups: [wmi, wmic, recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\wmic\\.exe$"}
+        CommandLine: {regex: "(?i)\\s(service|process|startup|useraccount|qfe|os|computersystem|product)\\s"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1057"}]
+    alert: {title: "WMI: wmic recon command"}
+    enabled: true
+
+  # ── WMI Event Subscription Persistence (Sysmon 19/20/21) ──────────────
+  - id: 17205
+    level: 14
+    description: "WMI — EventFilter created with __InstanceModificationEvent (commonly malicious)"
+    groups: [wmi, event_subscription, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 19}
+        Query: {regex: "(?i)__InstanceModificationEvent.*Win32_LocalTime|TargetInstance ISA 'Win32_PerfFormattedData"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1546.003"}
+    alert: {title: "WMI: Suspicious EventFilter created"}
+    enabled: true
+
+  - id: 17206
+    level: 14
+    description: "WMI — CommandLineEventConsumer or ActiveScriptEventConsumer registered (persistence)"
+    groups: [wmi, event_consumer, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 20}
+        Type: {regex: "(?i)(CommandLineEventConsumer|ActiveScriptEventConsumer)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.003"}]
+    alert: {title: "WMI: ActiveScript/CommandLine EventConsumer created"}
+    enabled: true
+
+  - id: 17207
+    level: 14
+    description: "WMI — Filter/Consumer binding registered (completes persistence chain)"
+    groups: [wmi, event_subscription, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 21}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.003"}]
+    alert: {title: "WMI: Consumer-Filter binding (persistence active)"}
+    enabled: true
+
+  # ── WMI-Activity Operational (EventID 5857-5861) ──────────────────────
+  - id: 17208
+    level: 13
+    description: "WMI-Activity — provider loaded from suspicious path"
+    groups: [wmi, wmi_provider, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 5857}
+        message: {regex: "(?i)\\\\(Temp|AppData|Users\\\\Public|ProgramData)\\\\"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1546.003"}]
+    alert: {title: "WMI: provider loaded from suspicious path"}
+    enabled: true
+
+  - id: 17209
+    level: 13
+    description: "WMI-Activity — permanent subscription registered (5861)"
+    groups: [wmi, permanent_subscription, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 5861}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.003"}]
+    alert: {title: "WMI-Activity: Permanent subscription"}
+    enabled: true
+
+  - id: 17210
+    level: 12
+    description: "WMI-Activity — temporary subscription registered (5860)"
+    groups: [wmi, temp_subscription]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 5860}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1047"}]
+    alert: {title: "WMI-Activity: Temporary subscription"}
+    enabled: true
+
+  - id: 17211
+    level: 13
+    description: "WMI-Activity — query error (5858) — possible probe / blocked query"
+    groups: [wmi, wmi_error, recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 5858}
+    correlation:
+      window: "5m"
+      threshold: 20
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1047"}]
+    alert: {title: "WMI-Activity: query error burst"}
+    enabled: true
+
+  # ── WMI Cmdlets in PowerShell (cross-link to 5100-powershell_deep) ────
+  - id: 17212
+    level: 13
+    description: "WMI — Get-WmiObject / Get-CimInstance against remote computer"
+    groups: [wmi, ps_wmi, lateral_movement, recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Get-WmiObject|Get-CimInstance|Invoke-WmiMethod|Invoke-CimMethod).*-ComputerName"}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1047"}
+    alert: {title: "WMI: PowerShell WMI/CIM remote query"}
+    enabled: true
+
+  - id: 17213
+    level: 13
+    description: "WMI — query for Win32_ShadowCopy (VSS enumeration via WMI)"
+    groups: [wmi, vss_enum, credential_dumping]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Get-WmiObject|Get-CimInstance).*Win32_ShadowCopy"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1003.003"}]
+    alert: {title: "WMI: Win32_ShadowCopy query"}
+    enabled: true
+
+  - id: 17214
+    level: 13
+    description: "WMI — query for Win32_Service (service recon for hijack)"
+    groups: [wmi, service_enum, recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Get-WmiObject|Get-CimInstance|wmic.*service)\\s.*(Win32_Service|/service)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1007"}]
+    alert: {title: "WMI: Win32_Service enumeration"}
+    enabled: true
+
+  - id: 17215
+    level: 13
+    description: "WMI — query for Win32_StartupCommand / startup auto-run"
+    groups: [wmi, startup_enum, recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Get-WmiObject|Get-CimInstance).*Win32_StartupCommand"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1547"}]
+    alert: {title: "WMI: Startup command enumeration"}
+    enabled: true
+
+  - id: 17216
+    level: 13
+    description: "WMI — query for Win32_QuickFixEngineering / patch level (vuln recon)"
+    groups: [wmi, patch_recon, vulnerability_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Get-WmiObject|Get-CimInstance|wmic).*Win32_QuickFixEngineering"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1082"}]
+    alert: {title: "WMI: QuickFixEngineering enumeration"}
+    enabled: true
+
+  - id: 17217
+    level: 13
+    description: "WMI — query for Win32_Product (installed software inventory)"
+    groups: [wmi, software_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Get-WmiObject|Get-CimInstance).*Win32_Product"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1518"}]
+    alert: {title: "WMI: Win32_Product enumeration"}
+    enabled: true
+
+  - id: 17218
+    level: 13
+    description: "WMI — query for Win32_LogicalDisk (storage inventory)"
+    groups: [wmi, disk_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Get-WmiObject|Get-CimInstance).*Win32_LogicalDisk"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1082"}]
+    alert: {title: "WMI: Disk enumeration"}
+    enabled: true
+
+  - id: 17219
+    level: 14
+    description: "WMI — invocation of Win32_Process.Create on remote host"
+    groups: [wmi, remote_exec, lateral_movement, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Win32_Process.*Create\\(.*\\).*-ComputerName"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1047"}]
+    alert: {title: "WMI: Win32_Process.Create remote"}
+    enabled: true
+
+  # ── DCOM Lateral via WMI ──────────────────────────────────────────────
+  - id: 17220
+    level: 14
+    description: "WMI/DCOM — DCOM application on remote host invoked (MMC20.Application etc.)"
+    groups: [wmi, dcom, lateral_movement, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)\\[System\\.Activator\\]::CreateInstance\\(\\[Type\\]::GetTypeFromProgID\\(['\"]MMC20\\.Application"}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1021.003"}
+    alert: {title: "WMI: DCOM MMC20 lateral exec"}
+    enabled: true
+
+  # ── Repository Tampering ──────────────────────────────────────────────
+  - id: 17221
+    level: 14
+    description: "WMI — WMI repository file write (CIM repository tamper)"
+    groups: [wmi, repository_tamper, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\System32\\\\wbem\\\\Repository\\\\"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.003"}]
+    alert: {title: "WMI: Repository file modified"}
+    enabled: true
+
+  # ── Suspicious Namespaces ─────────────────────────────────────────────
+  - id: 17222
+    level: 13
+    description: "WMI — query in non-default namespace (root\\subscription / root\\default abuse)"
+    groups: [wmi, namespace, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)-Namespace\\s+root\\\\(subscription|default)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.003"}]
+    alert: {title: "WMI: query into root\\subscription namespace"}
+    enabled: true
+
+  # ── DefenderTamperWMI Indicators ──────────────────────────────────────
+  - id: 17223
+    level: 14
+    description: "WMI — Set-MpPreference invoked via WMI/CIM context"
+    groups: [wmi, defender_tamper, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Set-MpPreference|MSFT_MpPreference).*Disable.*Realtime"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "WMI: Defender tamper via CIM"}
+    enabled: true
+
+  # ── Suspicious arg combos ─────────────────────────────────────────────
+  - id: 17224
+    level: 13
+    description: "WMI — wmic.exe with /node + /user + /password (cred-supplied lateral)"
+    groups: [wmi, wmic, lateral_movement, credential_use]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\wmic\\.exe$"}
+        CommandLine: {regex: "(?i)/node:.*?/user:.*?/password:"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1078"}]
+    alert: {title: "WMI: wmic lateral with creds"}
+    enabled: true
+
+  - id: 17225
+    level: 13
+    description: "WMI — query against Win32_PnPEntity (USB / device recon)"
+    groups: [wmi, device_recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Win32_PnPEntity|Win32_DiskDrive|Win32_USBHub"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1120"}]
+    alert: {title: "WMI: PnP / USB enumeration"}
+    enabled: true
+
+  # ── Notable Threat-Actor TTPs ─────────────────────────────────────────
+  - id: 17226
+    level: 14
+    description: "WMI — APT-style Win32_Process.Create with PowerShell stager"
+    groups: [wmi, apt_ttp, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Win32_Process.*\\(['\"]powershell.*-(enc|w hidden|nop)"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1047"}]
+    alert: {title: "WMI: APT stager via Win32_Process"}
+    enabled: true
+
+  - id: 17227
+    level: 13
+    description: "WMI — wmiprvse.exe spawned shell child (post-exploit indicator)"
+    groups: [wmi, wmiprvse_child, post_exploit]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\wmiprvse\\.exe$"}
+        Image: {regex: "(?i)\\\\(cmd|powershell|cscript|wscript|mshta|regsvr32|certutil)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1047"}
+    alert: {title: "WMI: wmiprvse.exe spawned shell"}
+    enabled: true
+
+  - id: 17228
+    level: 13
+    description: "WMI — provider host (WmiPrvSE.exe) loading unsigned DLL"
+    groups: [wmi, dll_load, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 7}
+        Image: {regex: "(?i)\\\\wmiprvse\\.exe$"}
+        Signed: {equals: "false"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1574.002"}]
+    alert: {title: "WMI: WmiPrvSE loaded unsigned DLL"}
+    enabled: true
+
+  - id: 17229
+    level: 13
+    description: "WMI — operational eventlog disabled / cleared (cover-up)"
+    groups: [wmi, log_tamper, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1102}
+        message: {regex: "(?i)WMI-Activity/Operational"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070.001"}]
+    alert: {title: "WMI: WMI-Activity log cleared"}
+    enabled: true

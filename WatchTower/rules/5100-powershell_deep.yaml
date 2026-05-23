@@ -1,0 +1,827 @@
+# WatchTower — PowerShell Deep Detection
+# Rule IDs: 17100-17159
+#
+# Sources:
+#   - Microsoft-Windows-PowerShell/Operational (EventID 4103/4104/4105/4106)
+#   - Windows PowerShell channel (EventID 400/600/800)
+#   - Sysmon Event 1 ProcessCreate with Image=powershell.exe (cross-link)
+
+rules:
+  # ── Script Block Logging — Common malicious patterns ──────────────────
+  - id: 17100
+    level: 14
+    description: "PowerShell — Invoke-Mimikatz module loaded"
+    groups: [powershell, mimikatz, credential_dumping, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Invoke-Mimikatz|Invoke-DCSync|Invoke-Kerberoast|Invoke-SharpHound|Get-DomainComputer|Get-NetUser|PowerView)"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1003"}
+    alert: {title: "PowerShell: PowerSploit/Empire module loaded"}
+    enabled: true
+
+  - id: 17101
+    level: 14
+    description: "PowerShell — Mimikatz function names in script (PtH, golden ticket)"
+    groups: [powershell, mimikatz, credential_dumping, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(sekurlsa::|kerberos::golden|lsadump::dcsync|crypto::cng|misc::skeleton)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1003.001"}]
+    alert: {title: "PowerShell: Mimikatz function reference"}
+    enabled: true
+
+  - id: 17102
+    level: 14
+    description: "PowerShell — Empire framework signature (Invoke-Empire / Get-EmpireAgent)"
+    groups: [powershell, empire, c2, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Invoke-Empire|Get-EmpireAgent|powershell-empire|EmpireService)"}
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1059.001"}
+    alert: {title: "PowerShell: Empire signature in script"}
+    enabled: true
+
+  - id: 17103
+    level: 14
+    description: "PowerShell — Cobalt Strike Beacon stager pattern"
+    groups: [powershell, cobalt_strike, c2, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(\\$DoIt|\\$bytes\\s*=\\s*\\[System\\.Convert\\]::FromBase64String.*Invoke|VirtualAlloc.*kernel32|Set-MpPreference.*-DisableRealtimeMonitoring)"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059.001"}]
+    alert: {title: "PowerShell: Cobalt Strike stager pattern"}
+    enabled: true
+
+  - id: 17104
+    level: 14
+    description: "PowerShell — AMSI bypass attempt (AMSI patching keywords)"
+    groups: [powershell, amsi_bypass, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(AmsiUtils|amsiInitFailed|System\\.Management\\.Automation\\.AmsiUtils|Bypass\\.AMSI|\\[Ref\\]\\.Assembly\\.GetType\\('System\\.Management\\.Automation\\.AmsiUtils')"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "PowerShell: AMSI bypass pattern"}
+    enabled: true
+
+  - id: 17105
+    level: 14
+    description: "PowerShell — ETW provider disabled / patched at runtime"
+    groups: [powershell, etw_disable, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(EtwEventWrite|EventLogPolicy|ScriptBlockLogging.*EnableScriptBlockLogging.*0|System\\.Reflection\\.Emit.*MethodInfo)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.006"}]
+    alert: {title: "PowerShell: ETW disable / Script Block Logging tamper"}
+    enabled: true
+
+  - id: 17106
+    level: 13
+    description: "PowerShell — Base64-encoded script block content (large encoded blob)"
+    groups: [powershell, encoded, obfuscation]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "[A-Za-z0-9+/=]{500,}"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1027"}]
+    alert: {title: "PowerShell: Large base64 blob in script block"}
+    enabled: true
+
+  - id: 17107
+    level: 14
+    description: "PowerShell — IEX (DownloadString) / IRM stager"
+    groups: [powershell, downloadstring, ingress, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(IEX|Invoke-Expression).*(DownloadString|DownloadFile|Invoke-WebRequest|Invoke-RestMethod|IRM\\s|IWR\\s|Net\\.WebClient)"}
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1105"}
+    alert: {title: "PowerShell: IEX DownloadString stager"}
+    enabled: true
+
+  - id: 17108
+    level: 14
+    description: "PowerShell — reflective PE / DLL load via .NET"
+    groups: [powershell, reflective_load, code_injection, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(\\[Reflection\\.Assembly\\]::Load|\\[System\\.Reflection\\.Assembly\\]::Load|VirtualAlloc.*kernel32|MemoryStream.*Convert\\.FromBase64String.*Load)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1620"}]
+    alert: {title: "PowerShell: Reflective Assembly load"}
+    enabled: true
+
+  - id: 17109
+    level: 13
+    description: "PowerShell — Add-Type with custom C# / Win32 API (inline native code)"
+    groups: [powershell, add_type, code_injection]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Add-Type\\s+.*MemberDefinition.*(DllImport|VirtualAlloc|CreateRemoteThread|WriteProcessMemory)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1055"}]
+    alert: {title: "PowerShell: Add-Type with Win32 API"}
+    enabled: true
+
+  - id: 17110
+    level: 13
+    description: "PowerShell — System.Management.Automation reflection (PSReadLine history target / module hijack)"
+    groups: [powershell, reflection, credential_access]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Get-PSReadlineOption|HistorySavePath|ConsoleHost_history\\.txt"}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1552.001"}]
+    alert: {title: "PowerShell: PSReadline history file accessed"}
+    enabled: true
+
+  # ── Defender Tampering ────────────────────────────────────────────────
+  - id: 17111
+    level: 14
+    description: "PowerShell — Set-MpPreference disabling Defender realtime / scan / signature update"
+    groups: [powershell, defender_disable, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Set-MpPreference\\s.*-Disable(Realtime|Behavior|Block|IOAV|ScriptScanning|ScanOnAccess|Privacy|IntrusionPreventionSystem)Monitoring"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "PowerShell: Defender Set-MpPreference disable"}
+    enabled: true
+
+  - id: 17112
+    level: 14
+    description: "PowerShell — Add-MpPreference Exclusion (path/extension/process bypass)"
+    groups: [powershell, defender_exclusion, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Add-MpPreference\\s.*-Exclusion(Path|Process|Extension|IpAddress)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "PowerShell: Defender Add-MpPreference exclusion"}
+    enabled: true
+
+  - id: 17113
+    level: 13
+    description: "PowerShell — Uninstall-WindowsFeature Windows-Defender"
+    groups: [powershell, defender_uninstall, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Uninstall-WindowsFeature.*Windows-Defender|Remove-WindowsFeature.*Windows-Defender"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "PowerShell: Defender uninstall"}
+    enabled: true
+
+  # ── PowerShell Process Anomalies (EventID 400/600/800 + Sysmon-linked) ─
+  - id: 17114
+    level: 13
+    description: "PowerShell — execution policy bypass at start"
+    groups: [powershell, exec_policy, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 400}
+        message: {regex: "(?i)HostName=ConsoleHost.*EngineState=Available"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "PowerShell: ConsoleHost engine started"}
+    enabled: true
+
+  - id: 17115
+    level: 13
+    description: "PowerShell — pwsh.exe (cross-platform PS) used on Windows"
+    groups: [powershell, pwsh]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\pwsh\\.exe$"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059.001"}]
+    alert: {title: "PowerShell: pwsh.exe executed"}
+    enabled: true
+
+  - id: 17116
+    level: 14
+    description: "PowerShell — PowerShell v2 invocation (downgrade to bypass logging)"
+    groups: [powershell, downgrade, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\powershell\\.exe$"}
+        CommandLine: {regex: "(?i)-version\\s+2"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "PowerShell: -version 2 downgrade"}
+    enabled: true
+
+  - id: 17117
+    level: 13
+    description: "PowerShell — non-interactive flag with hidden window (stager)"
+    groups: [powershell, evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\powershell\\.exe$"}
+        CommandLine: {regex: "(?i)-noni|-noninteractive"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1059.001"}]
+    alert: {title: "PowerShell: NonInteractive flag"}
+    enabled: true
+
+  # ── Remoting / Lateral ────────────────────────────────────────────────
+  - id: 17118
+    level: 13
+    description: "PowerShell — Enter-PSSession / New-PSSession to remote host (lateral)"
+    groups: [powershell, remoting, lateral_movement]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Enter-PSSession|New-PSSession|Invoke-Command\\s+.*-ComputerName)"}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1021.006"}
+    alert: {title: "PowerShell: PSRemoting to remote host"}
+    enabled: true
+
+  - id: 17119
+    level: 13
+    description: "PowerShell — Invoke-WmiMethod / Invoke-CimMethod (WMI exec — lateral)"
+    groups: [powershell, wmi, lateral_movement]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Invoke-WmiMethod|Invoke-CimMethod).*-ComputerName"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1047"}]
+    alert: {title: "PowerShell: Invoke-Wmi/CimMethod remote"}
+    enabled: true
+
+  # ── Persistence via PowerShell Profiles / Tasks ───────────────────────
+  - id: 17120
+    level: 13
+    description: "PowerShell — script writing to PowerShell profile (persistence)"
+    groups: [powershell, profile_persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Microsoft\\.PowerShell_profile\\.ps1|profile\\.ps1\\s*-Value|\\$PROFILE"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546.013"}]
+    alert: {title: "PowerShell: profile.ps1 written"}
+    enabled: true
+
+  - id: 17121
+    level: 13
+    description: "PowerShell — Register-ScheduledTask via cmdlet (persistence)"
+    groups: [powershell, scheduled_task, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Register-ScheduledTask"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1053.005"}]
+    alert: {title: "PowerShell: Register-ScheduledTask"}
+    enabled: true
+
+  - id: 17122
+    level: 13
+    description: "PowerShell — New-Service via cmdlet (service persistence)"
+    groups: [powershell, service, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)New-Service\\s"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543.003"}]
+    alert: {title: "PowerShell: New-Service"}
+    enabled: true
+
+  # ── Discovery / Recon Cmdlets ─────────────────────────────────────────
+  - id: 17123
+    level: 13
+    description: "PowerShell — Active Directory enumeration cmdlets (Get-AD*)"
+    groups: [powershell, ad_recon, discovery]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Get-ADUser|Get-ADComputer|Get-ADGroupMember|Get-ADDomain|Get-ADForest|Get-ADTrust"}
+    mitre:
+      - {tactic_id: "TA0007", technique_id: "T1087.002"}
+    alert: {title: "PowerShell: AD enumeration cmdlets"}
+    enabled: true
+
+  - id: 17124
+    level: 12
+    description: "PowerShell — Get-Process / Get-Service on remote host (recon)"
+    groups: [powershell, recon, remote_query]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Get-Process|Get-Service).*-ComputerName"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1057"}]
+    alert: {title: "PowerShell: Remote process/service query"}
+    enabled: true
+
+  - id: 17125
+    level: 13
+    description: "PowerShell — Net-LogonInformation / token enumeration"
+    groups: [powershell, token_recon, credential_access]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(WindowsIdentity|GetCurrent\\(\\)|TokenInformationClass|TokenPrivileges)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1134"}]
+    alert: {title: "PowerShell: Token / identity recon"}
+    enabled: true
+
+  - id: 17126
+    level: 13
+    description: "PowerShell — BloodHound SharpHound collection in script"
+    groups: [powershell, bloodhound, recon, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(SharpHound|Invoke-BloodHound|CollectionMethod=)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1087.002"}]
+    alert: {title: "PowerShell: BloodHound/SharpHound usage"}
+    enabled: true
+
+  - id: 17127
+    level: 13
+    description: "PowerShell — PowerView / Active Directory recon module"
+    groups: [powershell, powerview, recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Get-DomainComputer|Get-DomainUser|Get-DomainGroupMember|Get-NetUser|Get-NetGroup|Get-NetSession|Find-DomainShare)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1087.002"}]
+    alert: {title: "PowerShell: PowerView function used"}
+    enabled: true
+
+  # ── Credential Access ─────────────────────────────────────────────────
+  - id: 17128
+    level: 14
+    description: "PowerShell — Out-MiniDump or comsvcs MiniDump (LSASS dump alt)"
+    groups: [powershell, lsass_dump, credential_dumping, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Out-Minidump|MiniDumpWriteDump|comsvcs\\.dll.*#?24)"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1003.001"}
+    alert: {title: "PowerShell: MiniDump LSASS pattern"}
+    enabled: true
+
+  - id: 17129
+    level: 14
+    description: "PowerShell — DPAPI / Get-Credential / SecureString harvesting"
+    groups: [powershell, dpapi, credential_access, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(ProtectedData\\.Unprotect|ConvertFrom-SecureString|Get-Credential.*-Username|SecureString.*\\$cred)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1555.004"}]
+    alert: {title: "PowerShell: DPAPI / SecureString manipulation"}
+    enabled: true
+
+  - id: 17130
+    level: 13
+    description: "PowerShell — Get-WmiObject Win32_ShadowCopy (VSS via WMI)"
+    groups: [powershell, vss_wmi, credential_dumping]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Get-WmiObject.*Win32_ShadowCopy|Get-CimInstance.*Win32_ShadowCopy"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1003.003"}]
+    alert: {title: "PowerShell: Shadow copy enumeration via WMI"}
+    enabled: true
+
+  - id: 17131
+    level: 13
+    description: "PowerShell — vaultcmd / Get-Vault / browser cred harvesting hint"
+    groups: [powershell, credential_harvest]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(VaultCli\\.dll|VaultEnumerateVaults|Logins\\.json|Login\\sData|Cookies\\.db|Web Data)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1555.003"}]
+    alert: {title: "PowerShell: Vault / browser-credential file access"}
+    enabled: true
+
+  # ── Exfiltration & C2 ─────────────────────────────────────────────────
+  - id: 17132
+    level: 13
+    description: "PowerShell — large outbound POST via Invoke-WebRequest (exfil)"
+    groups: [powershell, exfiltration]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Invoke-WebRequest.*-Method\\s+POST.*-(Body|InFile)"}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1041"}
+    alert: {title: "PowerShell: POST upload via IWR"}
+    enabled: true
+
+  - id: 17133
+    level: 13
+    description: "PowerShell — sending email with attachment via Send-MailMessage (exfil)"
+    groups: [powershell, exfiltration, email]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Send-MailMessage.*-Attachments"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1048.003"}]
+    alert: {title: "PowerShell: Send-MailMessage with attachment"}
+    enabled: true
+
+  - id: 17134
+    level: 13
+    description: "PowerShell — Compress-Archive of many files (staging for exfil)"
+    groups: [powershell, exfiltration, staging]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Compress-Archive.*-Path.*-DestinationPath"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1560"}]
+    alert: {title: "PowerShell: Compress-Archive (staging)"}
+    enabled: true
+
+  - id: 17135
+    level: 13
+    description: "PowerShell — TCP socket created (raw socket / C2 channel)"
+    groups: [powershell, raw_socket, c2]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(System\\.Net\\.Sockets\\.TcpClient|TcpListener|Socket\\.Send|Socket\\.Receive)"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1095"}]
+    alert: {title: "PowerShell: raw TCP socket reference"}
+    enabled: true
+
+  - id: 17136
+    level: 13
+    description: "PowerShell — direct memory write to another process"
+    groups: [powershell, process_injection, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(WriteProcessMemory|VirtualAllocEx|CreateRemoteThread|OpenProcess.*PROCESS_VM)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1055"}]
+    alert: {title: "PowerShell: Process injection API references"}
+    enabled: true
+
+  # ── Obfuscation ───────────────────────────────────────────────────────
+  - id: 17137
+    level: 13
+    description: "PowerShell — string concatenation obfuscation (heavy +/-^ chains)"
+    groups: [powershell, obfuscation]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(\\\"[a-z]\\\"\\+){6,}|\\[char\\]\\d+\\+\\[char\\]\\d+\\+\\[char\\]\\d+\\+\\[char\\]\\d+"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1027.010"}]
+    alert: {title: "PowerShell: Heavy concat / [char] obfuscation"}
+    enabled: true
+
+  - id: 17138
+    level: 13
+    description: "PowerShell — split / -join byte arrays (decoder pattern)"
+    groups: [powershell, obfuscation, decoder]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)-bxor\\s|-bor\\s|\\.split\\(['\"]\\s?['\"]\\).*\\| % \\{\\s*\\[byte\\]\\(\\[convert\\]::ToInt"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1027"}]
+    alert: {title: "PowerShell: byte-xor / split-byte decoder"}
+    enabled: true
+
+  - id: 17139
+    level: 13
+    description: "PowerShell — Invoke-Obfuscation Invoke-Token signature"
+    groups: [powershell, obfuscation, invoke_obfuscation]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Invoke-(Obfuscation|TOKEN|STRING|AST|COMPRESS|LAUNCHER))"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1027"}]
+    alert: {title: "PowerShell: Invoke-Obfuscation pattern"}
+    enabled: true
+
+  - id: 17140
+    level: 13
+    description: "PowerShell — backtick escape obfuscation (i`e`x type fragmentation)"
+    groups: [powershell, obfuscation]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "([a-z]`[a-z]`[a-z]|[a-z]`[a-z]\\s*-[a-z]`[a-z])"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1027"}]
+    alert: {title: "PowerShell: backtick fragmentation"}
+    enabled: true
+
+  # ── Constrained Language Mode Bypass ──────────────────────────────────
+  - id: 17141
+    level: 13
+    description: "PowerShell — Set-ExecutionPolicy or language-mode change"
+    groups: [powershell, clm_bypass, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(LanguageMode\\s*=\\s*['\"]?(FullLanguage|RestrictedLanguage)|Set-ExecutionPolicy\\s+Unrestricted|Set-ExecutionPolicy\\s+Bypass)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "PowerShell: Language mode / execution policy change"}
+    enabled: true
+
+  - id: 17142
+    level: 13
+    description: "PowerShell — runspace constrained-language bypass (System.Management.Automation)"
+    groups: [powershell, clm_bypass, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)\\[Runspace\\]\\.CreateRunspacePool|\\[System\\.Management\\.Automation\\.Runspaces\\.RunspaceFactory\\]"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "PowerShell: Runspace pool manipulation"}
+    enabled: true
+
+  # ── Code Signing / Trust Bypass ───────────────────────────────────────
+  - id: 17143
+    level: 13
+    description: "PowerShell — trust certificate added (Root store import)"
+    groups: [powershell, certificate_trust, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Import-Certificate.*-CertStoreLocation.*Root|Import-PfxCertificate.*-CertStoreLocation.*Root"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1553.004"}]
+    alert: {title: "PowerShell: Root cert imported"}
+    enabled: true
+
+  # ── Remote File Drops via PS ──────────────────────────────────────────
+  - id: 17144
+    level: 13
+    description: "PowerShell — Invoke-WebRequest -OutFile (download to disk)"
+    groups: [powershell, file_download, ingress]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Invoke-WebRequest.*-OutFile"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1105"}]
+    alert: {title: "PowerShell: IWR -OutFile download"}
+    enabled: true
+
+  - id: 17145
+    level: 13
+    description: "PowerShell — Start-BitsTransfer to download (BITS PS variant)"
+    groups: [powershell, bits, download]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Start-BitsTransfer"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1197"}]
+    alert: {title: "PowerShell: Start-BitsTransfer"}
+    enabled: true
+
+  # ── Suspicious COM Object Use ─────────────────────────────────────────
+  - id: 17146
+    level: 13
+    description: "PowerShell — COM object instantiation of common malicious targets"
+    groups: [powershell, com_object, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)New-Object\\s+-ComObject\\s+(Outlook\\.Application|Shell\\.Application|Wscript\\.Shell|InternetExplorer\\.Application|Excel\\.Application|Word\\.Application|Schedule\\.Service|MMC20\\.Application)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1559.001"}
+    alert: {title: "PowerShell: Sensitive COM object"}
+    enabled: true
+
+  - id: 17147
+    level: 14
+    description: "PowerShell — MMC20.Application LaunchTask (lateral via DCOM)"
+    groups: [powershell, dcom, lateral_movement, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)MMC20\\.Application.*ExecuteShellCommand|ShellWindows\\.\\.\\.Windows\\(\\).*Document\\.Application"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1021.003"}]
+    alert: {title: "PowerShell: DCOM lateral execution"}
+    enabled: true
+
+  # ── PowerShell Class / Inline C# ──────────────────────────────────────
+  - id: 17148
+    level: 13
+    description: "PowerShell — class definition with [DllImport] attribute (Win32 P/Invoke)"
+    groups: [powershell, pinvoke, code_injection]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)\\[DllImport\\(['\"](kernel32|user32|advapi32|ntdll)\\.dll"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1055"}]
+    alert: {title: "PowerShell: DllImport P/Invoke definition"}
+    enabled: true
+
+  # ── PowerShell Script Block Logging Disabled ──────────────────────────
+  - id: 17149
+    level: 14
+    description: "PowerShell — ScriptBlockLogging registry value disabled"
+    groups: [powershell, log_tamper, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\PowerShell\\\\ScriptBlockLogging\\\\EnableScriptBlockLogging$"}
+        Details: {regex: "0|DWORD \\(0x00000000\\)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.006"}
+    alert: {title: "PowerShell: ScriptBlockLogging disabled"}
+    enabled: true
+
+  - id: 17150
+    level: 14
+    description: "PowerShell — ModuleLogging disabled via registry"
+    groups: [powershell, log_tamper, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\PowerShell\\\\ModuleLogging\\\\EnableModuleLogging$"}
+        Details: {regex: "0|DWORD \\(0x00000000\\)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.006"}]
+    alert: {title: "PowerShell: ModuleLogging disabled"}
+    enabled: true
+
+  - id: 17151
+    level: 14
+    description: "PowerShell — Transcription disabled via registry"
+    groups: [powershell, log_tamper, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 13}
+        TargetObject: {regex: "(?i)\\\\PowerShell\\\\Transcription\\\\EnableTranscripting$"}
+        Details: {regex: "0|DWORD \\(0x00000000\\)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.006"}]
+    alert: {title: "PowerShell: Transcription disabled"}
+    enabled: true
+
+  # ── Suspicious history / clear ────────────────────────────────────────
+  - id: 17152
+    level: 13
+    description: "PowerShell — Clear-History / clearing readline buffer"
+    groups: [powershell, history_clear, anti_forensics]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Clear-History|Set-PSReadlineOption\\s+-HistorySaveStyle\\s+SaveNothing|Remove-Item.*ConsoleHost_history\\.txt)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1070.003"}
+    alert: {title: "PowerShell: history clear"}
+    enabled: true
+
+  # ── Constrained Endpoint / JEA ────────────────────────────────────────
+  - id: 17153
+    level: 13
+    description: "PowerShell — JEA endpoint configuration registered (potential persistence/escalation)"
+    groups: [powershell, jea, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(Register-PSSessionConfiguration|New-PSRoleCapabilityFile|Set-PSSessionConfiguration.*-RunAsCredential)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543"}]
+    alert: {title: "PowerShell: JEA session config registered"}
+    enabled: true
+
+  # ── PowerShell-via-LOLBin chains ──────────────────────────────────────
+  - id: 17154
+    level: 14
+    description: "PowerShell — execution chained from Office macro context (Sysmon-cross)"
+    groups: [powershell, office_chain, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        ParentImage: {regex: "(?i)\\\\(winword|excel|powerpnt|outlook)\\.exe$"}
+        Image: {regex: "(?i)\\\\powershell\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1566.001"}
+    alert: {title: "PowerShell: spawned from Office app"}
+    enabled: true
+
+  - id: 17155
+    level: 13
+    description: "PowerShell — Net.WebClient hexcoded URL (hex-encoded C2)"
+    groups: [powershell, encoded_url, c2]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "Net\\.WebClient.*0x[0-9a-fA-F]{20,}"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1027"}]
+    alert: {title: "PowerShell: hex-encoded URL in script"}
+    enabled: true
+
+  # ── PowerShell V5 — script block fragmentation (split scripts) ────────
+  - id: 17156
+    level: 12
+    description: "PowerShell — script block split across many fragments (event 4104 part X of Y)"
+    groups: [powershell, fragmentation, evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Creating Scriptblock text \\([2-9]\\d* of \\d+\\)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1027"}]
+    alert: {title: "PowerShell: Large multi-part script block"}
+    enabled: true
+
+  - id: 17157
+    level: 13
+    description: "PowerShell — Get-Acl / Set-Acl on sensitive registry / file (ACL backdoor)"
+    groups: [powershell, acl_change, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Set-Acl\\s+.*-Path.*(HKLM|HKCU|System32|SAM|Lsa)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "PowerShell: Set-Acl on sensitive path"}
+    enabled: true
+
+  - id: 17158
+    level: 13
+    description: "PowerShell — Get-NetTCPConnection / Get-NetUDPEndpoint for network recon"
+    groups: [powershell, recon, network]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Get-NetTCPConnection|Get-NetUDPEndpoint|Get-NetAdapter|Get-DnsClientServerAddress"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1049"}]
+    alert: {title: "PowerShell: Network recon cmdlets"}
+    enabled: true
+
+  - id: 17159
+    level: 14
+    description: "PowerShell — encoded `IEX` invocation observed in script block (high-confidence stager)"
+    groups: [powershell, stager, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)(\\$\\([\\s\\S]*FromBase64String[\\s\\S]*\\)\\s*\\|\\s*iex|sIEX|\\.GetString\\(\\[Convert\\]::FromBase64String)"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1059.001"}
+    alert: {title: "PowerShell: Base64-decoded IEX stager"}
+    enabled: true

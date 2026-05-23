@@ -1,0 +1,428 @@
+# WatchTower — Scheduled Task Detection
+# Rule IDs: 17300-17329
+#
+# Sources:
+#   - Microsoft-Windows-TaskScheduler/Operational (EventIDs 106, 140, 141, 200, 201, 4698-4702)
+#   - Security eventlog (4698=created, 4699=deleted, 4700=enabled, 4701=disabled, 4702=updated)
+#   - Sysmon Event 1 with Image=schtasks.exe
+
+rules:
+  # ── Creation via schtasks.exe (Sysmon) ────────────────────────────────
+  - id: 17300
+    level: 13
+    description: "ScheduledTask — schtasks /create from suspicious parent (Office / shell)"
+    groups: [scheduled_task, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\schtasks\\.exe$"}
+        CommandLine: {regex: "(?i)/create"}
+        ParentImage: {regex: "(?i)\\\\(winword|excel|powerpnt|outlook|cmd|powershell|wscript|cscript|mshta)\\.exe$"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1053.005"}
+    alert: {title: "ScheduledTask: schtasks /create from suspicious parent"}
+    enabled: true
+
+  - id: 17301
+    level: 13
+    description: "ScheduledTask — schtasks /create with /sc onlogon or onstart (boot persistence)"
+    groups: [scheduled_task, boot_persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\schtasks\\.exe$"}
+        CommandLine: {regex: "(?i)/create.*/sc\\s+(onlogon|onstart|onidle|onsessionchange|oneventid)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1053.005"}]
+    alert: {title: "ScheduledTask: trigger=onlogon/onstart"}
+    enabled: true
+
+  - id: 17302
+    level: 14
+    description: "ScheduledTask — schtasks /create on remote host (/s) — lateral movement"
+    groups: [scheduled_task, lateral_movement, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\schtasks\\.exe$"}
+        CommandLine: {regex: "(?i)/create.*/s\\s+\\S+"}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1053.005"}
+    alert: {title: "ScheduledTask: schtasks /create on remote host"}
+    enabled: true
+
+  - id: 17303
+    level: 13
+    description: "ScheduledTask — schtasks /change to modify existing task (hijack)"
+    groups: [scheduled_task, task_hijack, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\schtasks\\.exe$"}
+        CommandLine: {regex: "(?i)/change"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1053.005"}]
+    alert: {title: "ScheduledTask: schtasks /change"}
+    enabled: true
+
+  - id: 17304
+    level: 13
+    description: "ScheduledTask — schtasks /run /tn — manual invoke (post-create execution)"
+    groups: [scheduled_task, execution]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\schtasks\\.exe$"}
+        CommandLine: {regex: "(?i)/run\\s+/tn\\s"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1053.005"}]
+    alert: {title: "ScheduledTask: schtasks /run"}
+    enabled: true
+
+  - id: 17305
+    level: 13
+    description: "ScheduledTask — schtasks task action runs PowerShell encoded command"
+    groups: [scheduled_task, powershell, encoded, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\schtasks\\.exe$"}
+        CommandLine: {regex: "(?i)/create.*/tr\\s+\\S*powershell.*-(enc|encodedcommand)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1053.005"}]
+    alert: {title: "ScheduledTask: PowerShell encoded task action"}
+    enabled: true
+
+  - id: 17306
+    level: 14
+    description: "ScheduledTask — schtasks task action runs binary from temp / user path"
+    groups: [scheduled_task, suspicious_action, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\schtasks\\.exe$"}
+        CommandLine: {regex: "(?i)/create.*/tr\\s+['\"]?[A-Za-z]:\\\\(Temp|AppData|Users\\\\Public|ProgramData)\\\\"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1053.005"}
+    alert: {title: "ScheduledTask: task action targets temp/user path"}
+    enabled: true
+
+  - id: 17307
+    level: 13
+    description: "ScheduledTask — schtasks creating task running as SYSTEM"
+    groups: [scheduled_task, run_as_system, privilege_escalation]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\schtasks\\.exe$"}
+        CommandLine: {regex: "(?i)/create.*/ru\\s+(\"?(NT AUTHORITY\\\\\\)?SYSTEM\"?|\"?System\"?)"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1053.005"}]
+    alert: {title: "ScheduledTask: /ru SYSTEM"}
+    enabled: true
+
+  # ── Security Eventlog 4698-4702 ───────────────────────────────────────
+  - id: 17308
+    level: 13
+    description: "ScheduledTask — task created (event 4698) — review TaskContent"
+    groups: [scheduled_task, persistence, audit]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4698}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1053.005"}]
+    alert: {title: "ScheduledTask: created (eventlog 4698)"}
+    enabled: true
+
+  - id: 17309
+    level: 14
+    description: "ScheduledTask — TaskContent contains powershell -enc or rundll32 (review)"
+    groups: [scheduled_task, suspicious_action, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4698}
+        TaskContent: {regex: "(?i)(powershell.*-(enc|encodedcommand)|rundll32.*\\.dll,\\w+|mshta.*https?://|wscript.*\\.vbs|certutil.*-urlcache)"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1053.005"}
+    alert: {title: "ScheduledTask: TaskContent has suspicious action"}
+    enabled: true
+
+  - id: 17310
+    level: 13
+    description: "ScheduledTask — task updated (event 4702) by non-admin / unexpected actor"
+    groups: [scheduled_task, modification, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4702}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1053.005"}]
+    alert: {title: "ScheduledTask: updated (4702)"}
+    enabled: true
+
+  - id: 17311
+    level: 13
+    description: "ScheduledTask — task deleted (event 4699) — cover-up suspect"
+    groups: [scheduled_task, deletion, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4699}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070"}]
+    alert: {title: "ScheduledTask: deleted (4699)"}
+    enabled: true
+
+  - id: 17312
+    level: 11
+    description: "ScheduledTask — task enabled (4700)"
+    groups: [scheduled_task, state_change]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4700}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1053.005"}]
+    alert: {title: "ScheduledTask: enabled (4700)"}
+    enabled: true
+
+  - id: 17313
+    level: 11
+    description: "ScheduledTask — task disabled (4701) — security task disable suspect"
+    groups: [scheduled_task, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4701}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "ScheduledTask: disabled (4701)"}
+    enabled: true
+
+  # ── TaskScheduler/Operational ─────────────────────────────────────────
+  - id: 17314
+    level: 11
+    description: "TaskScheduler Operational — task triggered (EventID 100/106)"
+    groups: [scheduled_task, trigger, baseline]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 106}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1053.005"}]
+    alert: {title: "TaskScheduler: task triggered"}
+    enabled: true
+
+  - id: 17315
+    level: 11
+    description: "TaskScheduler Operational — task action started (EventID 200)"
+    groups: [scheduled_task, action_started]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 200}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1053.005"}]
+    alert: {title: "TaskScheduler: action started (200)"}
+    enabled: true
+
+  - id: 17316
+    level: 13
+    description: "TaskScheduler — task launched a process from temp / user path"
+    groups: [scheduled_task, action, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 200}
+        message: {regex: "(?i)\\\\(Temp|AppData|Users\\\\Public|ProgramData)\\\\.*\\.(exe|ps1|bat|vbs|js)"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1053.005"}]
+    alert: {title: "TaskScheduler: action runs from temp/user path"}
+    enabled: true
+
+  - id: 17317
+    level: 13
+    description: "TaskScheduler — Operational log cleared (eventlog 104 for TaskScheduler/Operational)"
+    groups: [scheduled_task, log_tamper, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 104}
+        message: {regex: "(?i)TaskScheduler/Operational"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1070.001"}
+    alert: {title: "TaskScheduler: Operational log cleared"}
+    enabled: true
+
+  # ── File-system writes to task XML store ──────────────────────────────
+  - id: 17318
+    level: 13
+    description: "Filesystem — new task XML written under C:\\Windows\\System32\\Tasks (persistence)"
+    groups: [scheduled_task, file_create, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 11}
+        TargetFilename: {regex: "(?i)\\\\System32\\\\Tasks\\\\"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1053.005"}
+    alert: {title: "ScheduledTask: System32\\Tasks XML written"}
+    enabled: true
+
+  - id: 17319
+    level: 13
+    description: "Registry — TaskCache subkey created (parallel to Tasks XML)"
+    groups: [scheduled_task, registry, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 12}
+        TargetObject: {regex: "(?i)\\\\Schedule\\\\TaskCache\\\\Tree\\\\"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1053.005"}]
+    alert: {title: "ScheduledTask: TaskCache registry created"}
+    enabled: true
+
+  # ── at.exe (legacy) ───────────────────────────────────────────────────
+  - id: 17320
+    level: 13
+    description: "ScheduledTask — at.exe used (legacy AT scheduler — deprecated)"
+    groups: [scheduled_task, at_legacy, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\at\\.exe$"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1053.001"}]
+    alert: {title: "ScheduledTask: at.exe used"}
+    enabled: true
+
+  # ── PowerShell-based task creation ────────────────────────────────────
+  - id: 17321
+    level: 13
+    description: "ScheduledTask — Register-ScheduledTask with -Action New-ScheduledTaskAction (PS)"
+    groups: [scheduled_task, powershell_task, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4104}
+        message: {regex: "(?i)Register-ScheduledTask|New-ScheduledTaskAction|New-ScheduledTaskTrigger|Set-ScheduledTask"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1053.005"}]
+    alert: {title: "ScheduledTask: PowerShell ScheduledTask cmdlet"}
+    enabled: true
+
+  # ── Named patterns of known malicious tasks ───────────────────────────
+  - id: 17322
+    level: 14
+    description: "ScheduledTask — known APT task naming (Microsoft\\Windows\\Updater, Microsoft\\Windows\\WindowsUpdater)"
+    groups: [scheduled_task, masquerade, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4698}
+        TaskName: {regex: "(?i)\\\\(Updater|WindowsUpdater|SystemCheck|MicrosoftEdgeUpdate|GoogleUpdate|WindowsTelemetry|OneDriveStandaloneUpdate)\\\\?$"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1036.004"}
+    alert: {title: "ScheduledTask: masquerade task name"}
+    enabled: true
+
+  - id: 17323
+    level: 13
+    description: "ScheduledTask — short random-looking task name"
+    groups: [scheduled_task, random_name, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4698}
+        TaskName: {regex: "(?i)\\\\[a-z0-9]{6,12}$"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1036"}]
+    alert: {title: "ScheduledTask: Random task name"}
+    enabled: true
+
+  # ── Remote task creation auth (Security 4624 + IpAddress + RPC) ───────
+  - id: 17324
+    level: 14
+    description: "ScheduledTask — task creation immediately preceded by network 4624 (remote schedule via SMB)"
+    groups: [scheduled_task, lateral_movement, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4698}
+    correlation:
+      window: "5m"
+      threshold: 1
+      precondition_match:
+        regex: "win_event_id.*4624.*LogonType.*3"
+        precondition_count: 1
+    mitre: [{tactic_id: "TA0008", technique_id: "T1053.005"}]
+    alert: {title: "ScheduledTask: created after network logon (lateral)"}
+    enabled: true
+
+  # ── Hidden / Stealth Task Attributes ──────────────────────────────────
+  - id: 17325
+    level: 14
+    description: "ScheduledTask — task XML written with <Hidden>true</Hidden>"
+    groups: [scheduled_task, hidden_task, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4698}
+        TaskContent: {regex: "(?i)<Hidden>true</Hidden>"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1564.001"}
+    alert: {title: "ScheduledTask: Hidden=true"}
+    enabled: true
+
+  - id: 17326
+    level: 13
+    description: "ScheduledTask — task with <RunLevel>HighestAvailable</RunLevel> (privilege use)"
+    groups: [scheduled_task, run_highest, privilege_escalation]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4698}
+        TaskContent: {regex: "(?i)<RunLevel>HighestAvailable</RunLevel>"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1053.005"}]
+    alert: {title: "ScheduledTask: RunLevel HighestAvailable"}
+    enabled: true
+
+  # ── Tasks under Microsoft\Windows triggering shell ───────────────────
+  - id: 17327
+    level: 14
+    description: "ScheduledTask — task under Microsoft\\Windows\\ namespace with shell action (LOTL persistence)"
+    groups: [scheduled_task, ms_namespace_abuse, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4698}
+        TaskName: {regex: "(?i)\\\\Microsoft\\\\Windows\\\\"}
+        TaskContent: {regex: "(?i)(cmd\\.exe|powershell\\.exe|wscript\\.exe|cscript\\.exe|mshta\\.exe|rundll32\\.exe)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1036.004"}]
+    alert: {title: "ScheduledTask: shell action under Microsoft\\Windows path"}
+    enabled: true
+
+  # ── Mass schedule events ─────────────────────────────────────────────
+  - id: 17328
+    level: 13
+    description: "ScheduledTask — many tasks created in short window (mass deployment / worm)"
+    groups: [scheduled_task, mass_create, worm_suspect]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4698}
+    correlation:
+      window: "5m"
+      threshold: 10
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0003", technique_id: "T1053.005"}]
+    alert: {title: "ScheduledTask: mass task creation"}
+    enabled: true
+
+  - id: 17329
+    level: 13
+    description: "ScheduledTask — XML written using msdt/wsmprovhost (LOLBin proxy)"
+    groups: [scheduled_task, lolbin_proxy, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4698}
+        TaskContent: {regex: "(?i)(msdt\\.exe|wsmprovhost\\.exe|forfiles\\.exe|cdb\\.exe)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218"}]
+    alert: {title: "ScheduledTask: action via LOLBin (msdt/forfiles/etc.)"}
+    enabled: true
