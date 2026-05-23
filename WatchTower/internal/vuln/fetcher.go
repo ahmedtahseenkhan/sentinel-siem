@@ -66,10 +66,7 @@ func (f *Fetcher) FetchNVD(feed FeedSource) ([]Vulnerability, error) {
 
 	var vulns []Vulnerability
 	for _, item := range nvdFeed.CVEItems {
-		v := convertNVDItem(item)
-		if v.CVEID != "" {
-			vulns = append(vulns, v)
-		}
+		vulns = append(vulns, convertNVDItem(item)...)
 	}
 	f.logger.Info("NVD feed parsed",
 		zap.String("feed", feed.Name),
@@ -143,6 +140,12 @@ type NVDCVEItem struct {
 				BaseSeverity string  `json:"baseSeverity"`
 			} `json:"cvssV3"`
 		} `json:"baseMetricV3"`
+		BaseMetricV2 struct {
+			CVSSV2 struct {
+				BaseScore float64 `json:"baseScore"`
+			} `json:"cvssV2"`
+			Severity string `json:"severity"`
+		} `json:"baseMetricV2"`
 	} `json:"impact"`
 	Configurations struct {
 		Nodes []struct {
@@ -152,37 +155,94 @@ type NVDCVEItem struct {
 				VersionEndIncluding   string `json:"versionEndIncluding,omitempty"`
 				VersionEndExcluding   string `json:"versionEndExcluding,omitempty"`
 				VersionStartIncluding string `json:"versionStartIncluding,omitempty"`
+				VersionStartExcluding string `json:"versionStartExcluding,omitempty"`
 			} `json:"cpe_match"`
 		} `json:"nodes"`
 	} `json:"configurations"`
 }
 
-func convertNVDItem(item NVDCVEItem) Vulnerability {
-	v := Vulnerability{
-		CVEID:     item.CVE.CVEDataMeta.ID,
-		CVSSScore: item.Impact.BaseMetricV3.CVSSV3.BaseScore,
-		Severity:  item.Impact.BaseMetricV3.CVSSV3.BaseSeverity,
+// convertNVDItem produces one or more Vulnerability rows from a single NVD
+// CVE entry. It now:
+//   - emits one row per vulnerable CPE match (so different version ranges
+//     for the same CVE no longer overwrite each other),
+//   - captures vendor for disambiguation,
+//   - captures range start/end with inclusivity,
+//   - falls back to CVSSv2 when v3 is absent (most pre-2016 CVEs).
+//
+// Returns a slice; the caller flattens.
+func convertNVDItem(item NVDCVEItem) []Vulnerability {
+	id := item.CVE.CVEDataMeta.ID
+	if id == "" {
+		return nil
 	}
+
+	desc := ""
 	if len(item.CVE.Description.DescriptionData) > 0 {
-		v.Description = item.CVE.Description.DescriptionData[0].Value
+		desc = item.CVE.Description.DescriptionData[0].Value
 	}
-	// Extract package info from CPE
+
+	score := item.Impact.BaseMetricV3.CVSSV3.BaseScore
+	sev := item.Impact.BaseMetricV3.CVSSV3.BaseSeverity
+	if score == 0 {
+		score = item.Impact.BaseMetricV2.CVSSV2.BaseScore
+		sev = item.Impact.BaseMetricV2.Severity
+	}
+
+	var out []Vulnerability
 	for _, node := range item.Configurations.Nodes {
 		for _, match := range node.CPEMatch {
-			if match.Vulnerable {
-				parts := parseCPE(match.CPE23URI)
-				if parts.Product != "" {
-					v.PackageName = parts.Product
-					v.AffectedMax = match.VersionEndIncluding
-					if v.AffectedMax == "" {
-						v.AffectedMax = match.VersionEndExcluding
-					}
-					v.FixedVersion = match.VersionEndExcluding
-				}
+			if !match.Vulnerable {
+				continue
 			}
+			parts := parseCPE(match.CPE23URI)
+			if parts.Product == "" {
+				continue
+			}
+			v := Vulnerability{
+				CVEID:       id,
+				Vendor:      parts.Vendor,
+				PackageName: parts.Product,
+				Severity:    sev,
+				Description: desc,
+				CVSSScore:   score,
+			}
+
+			// Lower bound.
+			switch {
+			case match.VersionStartIncluding != "":
+				v.AffectedMin = match.VersionStartIncluding
+				v.MinInclusive = true
+			case match.VersionStartExcluding != "":
+				v.AffectedMin = match.VersionStartExcluding
+				v.MinInclusive = false
+			}
+
+			// Upper bound.
+			switch {
+			case match.VersionEndIncluding != "":
+				v.AffectedMax = match.VersionEndIncluding
+				v.MaxInclusive = true
+			case match.VersionEndExcluding != "":
+				v.AffectedMax = match.VersionEndExcluding
+				v.MaxInclusive = false
+				// Excluding upper bound = fix version.
+				v.FixedVersion = match.VersionEndExcluding
+			}
+
+			// If no range was given but the CPE pinned a single version,
+			// use it as both bounds inclusive (avoids matching everything).
+			if v.AffectedMin == "" && v.AffectedMax == "" && parts.Version != "" &&
+				parts.Version != "*" && parts.Version != "-" {
+				v.AffectedMin = parts.Version
+				v.MinInclusive = true
+				v.AffectedMax = parts.Version
+				v.MaxInclusive = true
+			}
+
+			out = append(out, v)
 		}
 	}
-	return v
+	return out
 }
 
 type cpeParts struct {

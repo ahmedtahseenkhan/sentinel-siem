@@ -3,6 +3,7 @@ package vuln
 import (
 	"encoding/json"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -10,11 +11,19 @@ import (
 )
 
 // Vulnerability represents a single known vulnerability.
+//
+// The Vendor field disambiguates products with the same name across vendors
+// (apache:tomcat vs eclipse:tomcat). AffectedMin* captures the start of the
+// version range so a CVE on >=2.0 <3.0 no longer false-positives on 1.x.
 type Vulnerability struct {
 	CVEID        string  `json:"cve_id"`
+	Vendor       string  `json:"vendor,omitempty"`
 	PackageName  string  `json:"package_name"`
-	AffectedMax  string  `json:"affected_max_version"`
-	FixedVersion string  `json:"fixed_version"`
+	AffectedMin  string  `json:"affected_min_version,omitempty"`
+	MinInclusive bool    `json:"min_inclusive,omitempty"`
+	AffectedMax  string  `json:"affected_max_version,omitempty"`
+	MaxInclusive bool    `json:"max_inclusive,omitempty"`
+	FixedVersion string  `json:"fixed_version,omitempty"`
 	Severity     string  `json:"severity"`
 	Description  string  `json:"description"`
 	CVSSScore    float64 `json:"cvss_score"`
@@ -94,17 +103,23 @@ func (d *Database) Update(feedURL string) error {
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	// Merge: add new CVEs, update existing
+	// Merge by composite key (CVE, vendor, product, range). Necessary because
+	// one CVE can now span multiple CPE matches, each a distinct row; keying
+	// on CVEID alone would collapse them.
+	key := func(v Vulnerability) string {
+		return v.CVEID + "|" + v.Vendor + "|" + v.PackageName + "|" + v.AffectedMin + "|" + v.AffectedMax
+	}
 	existing := make(map[string]int)
 	for i, v := range d.vulns {
-		existing[v.CVEID] = i
+		existing[key(v)] = i
 	}
 	for _, v := range allVulns {
-		if idx, ok := existing[v.CVEID]; ok {
+		k := key(v)
+		if idx, ok := existing[k]; ok {
 			d.vulns[idx] = v
 		} else {
 			d.vulns = append(d.vulns, v)
-			existing[v.CVEID] = len(d.vulns) - 1
+			existing[k] = len(d.vulns) - 1
 		}
 	}
 	d.rebuildIndex()
@@ -116,7 +131,16 @@ func (d *Database) Update(feedURL string) error {
 }
 
 // Match finds vulnerabilities for a given package name and version.
+// MatchVendor is the preferred entry point when the vendor is known; this
+// thin wrapper preserves the prior signature for callers that only have the
+// product name.
 func (d *Database) Match(packageName, version string) []Vulnerability {
+	return d.MatchVendor("", packageName, version)
+}
+
+// MatchVendor scopes the lookup to a specific vendor when known. Empty
+// vendor means "match any vendor for this product name" (legacy behavior).
+func (d *Database) MatchVendor(vendor, packageName, version string) []Vulnerability {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
@@ -124,11 +148,30 @@ func (d *Database) Match(packageName, version string) []Vulnerability {
 	var matches []Vulnerability
 	for _, idx := range indices {
 		v := d.vulns[idx]
-		if v.AffectedMax != "" && compareVersions(version, v.AffectedMax) > 0 {
-			continue // version is newer than affected max
+
+		// Vendor disambiguation: only enforce when both sides specify one.
+		if vendor != "" && v.Vendor != "" &&
+			!strings.EqualFold(vendor, v.Vendor) {
+			continue
 		}
+
+		// Lower bound: skip when installed version is below the affected range.
+		if v.AffectedMin != "" {
+			cmp := compareVersions(version, v.AffectedMin)
+			if cmp < 0 || (cmp == 0 && !v.MinInclusive) {
+				continue
+			}
+		}
+		// Upper bound: skip when installed version is above the affected range.
+		if v.AffectedMax != "" {
+			cmp := compareVersions(version, v.AffectedMax)
+			if cmp > 0 || (cmp == 0 && !v.MaxInclusive) {
+				continue
+			}
+		}
+		// Fix already applied?
 		if v.FixedVersion != "" && compareVersions(version, v.FixedVersion) >= 0 {
-			continue // version is at or above fix
+			continue
 		}
 		matches = append(matches, v)
 	}
@@ -158,43 +201,135 @@ func (d *Database) rebuildIndex() {
 	}
 }
 
-// compareVersions is a simple version comparison.
-// Returns -1 if a < b, 0 if a == b, 1 if a > b.
+// compareVersions returns -1/0/+1 for a < b / a == b / a > b using a
+// dpkg/rpm-compatible algorithm:
+//   - Optional epoch prefix "N:" (dpkg). Missing epoch = 0.
+//   - Compare upstream version up to the last '-' (rpm release suffix).
+//   - Within each segment, alternate runs of digits and non-digits, comparing
+//     digits numerically (leading zeros ignored) and non-digits
+//     lexicographically with the special rule that '~' (tilde) sorts before
+//     anything including end-of-string, used by Debian/Ubuntu for pre-release.
+//   - Finally compare release suffix the same way.
+//
+// This replaces a naive split-on-dot parser that broke on dpkg epochs
+// ("1:2.4.18"), rpm releases ("2.4.18-1.el8"), and pre-release tags
+// ("1.0.0~rc1"), causing real CVEs to be missed.
 func compareVersions(a, b string) int {
-	aParts := strings.Split(a, ".")
-	bParts := strings.Split(b, ".")
-
-	maxLen := len(aParts)
-	if len(bParts) > maxLen {
-		maxLen = len(bParts)
+	epA, upA, relA := splitVersion(a)
+	epB, upB, relB := splitVersion(b)
+	if c := compareInt(epA, epB); c != 0 {
+		return c
 	}
+	if c := compareVersionString(upA, upB); c != 0 {
+		return c
+	}
+	return compareVersionString(relA, relB)
+}
 
-	for i := 0; i < maxLen; i++ {
-		var aNum, bNum int
-		if i < len(aParts) {
-			aNum = parseVersionPart(aParts[i])
+// splitVersion parses an optional "N:" epoch and an optional "-release" suffix.
+func splitVersion(v string) (epoch int, upstream, release string) {
+	if i := strings.IndexByte(v, ':'); i > 0 {
+		if n, err := strconv.Atoi(v[:i]); err == nil {
+			epoch = n
+			v = v[i+1:]
 		}
-		if i < len(bParts) {
-			bNum = parseVersionPart(bParts[i])
+	}
+	if j := strings.LastIndexByte(v, '-'); j >= 0 {
+		upstream = v[:j]
+		release = v[j+1:]
+		return
+	}
+	upstream = v
+	return
+}
+
+func compareInt(a, b int) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// compareVersionString implements the per-character dpkg algorithm.
+func compareVersionString(a, b string) int {
+	for {
+		// Compare non-digit prefix (lexicographic, with '~' < empty < anything).
+		ai, bi := 0, 0
+		for ai < len(a) && !isDigit(a[ai]) {
+			ai++
 		}
-		if aNum < bNum {
-			return -1
+		for bi < len(b) && !isDigit(b[bi]) {
+			bi++
 		}
-		if aNum > bNum {
-			return 1
+		if c := compareNonDigit(a[:ai], b[:bi]); c != 0 {
+			return c
+		}
+		a, b = a[ai:], b[bi:]
+
+		// Compare digit run numerically.
+		ai, bi = 0, 0
+		for ai < len(a) && isDigit(a[ai]) {
+			ai++
+		}
+		for bi < len(b) && isDigit(b[bi]) {
+			bi++
+		}
+		if c := compareDigits(a[:ai], b[:bi]); c != 0 {
+			return c
+		}
+		a, b = a[ai:], b[bi:]
+
+		if a == "" && b == "" {
+			return 0
+		}
+	}
+}
+
+func compareNonDigit(a, b string) int {
+	for i := 0; i < len(a) || i < len(b); i++ {
+		var ca, cb byte
+		if i < len(a) {
+			ca = a[i]
+		}
+		if i < len(b) {
+			cb = b[i]
+		}
+		// '~' sorts before everything else, including absence.
+		oa := orderRank(ca)
+		ob := orderRank(cb)
+		if oa != ob {
+			return compareInt(oa, ob)
 		}
 	}
 	return 0
 }
 
-func parseVersionPart(s string) int {
-	n := 0
-	for _, c := range s {
-		if c >= '0' && c <= '9' {
-			n = n*10 + int(c-'0')
-		} else {
-			break
-		}
+// orderRank: '~' < end-of-string < letter < digit/other-symbol.
+// (Digits are handled separately as numeric runs.)
+func orderRank(c byte) int {
+	switch {
+	case c == 0:
+		return 1 // end-of-string
+	case c == '~':
+		return 0
+	case (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'):
+		return 2 + int(c)
+	default:
+		return 1000 + int(c)
 	}
-	return n
 }
+
+func compareDigits(a, b string) int {
+	a = strings.TrimLeft(a, "0")
+	b = strings.TrimLeft(b, "0")
+	if len(a) != len(b) {
+		return compareInt(len(a), len(b))
+	}
+	return strings.Compare(a, b)
+}
+
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }
