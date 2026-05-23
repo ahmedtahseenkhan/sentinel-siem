@@ -1,0 +1,520 @@
+# WatchTower — Microsoft SQL Server Audit Detection
+# Rule IDs: 15300-15339
+#
+# Sources expected:
+#   - SQL Server ERRORLOG  (C:\Program Files\Microsoft SQL Server\MSSQL*\MSSQL\Log\ERRORLOG)
+#     ingested via `type: file` with tag service=mssql
+#   - Windows Application eventlog (already collected by default)
+#     Provider: MSSQLSERVER
+#
+# Many SQL Server admin/dba events show up either in the SQL ERRORLOG file
+# or as Windows Application eventlog entries with Source=MSSQLSERVER. Both
+# paths are matched below.
+
+rules:
+  # ── Authentication ────────────────────────────────────────────────────
+  - id: 15300
+    level: 10
+    description: "MSSQL — login failure"
+    groups: [mssql, database, authentication]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Login failed for user '[^']+'"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1110.001"}
+    alert: {title: "MSSQL: Login failed"}
+    enabled: true
+
+  - id: 15301
+    level: 12
+    description: "MSSQL — repeated login failures (brute force)"
+    groups: [mssql, database, brute_force, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Login failed for user"}
+    correlation:
+      window: "5m"
+      threshold: 10
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "MSSQL: Brute force — repeated login failures"}
+    enabled: true
+
+  - id: 15302
+    level: 11
+    description: "MSSQL — login failed for sa (most common brute target)"
+    groups: [mssql, database, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Login failed for user 'sa'"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "MSSQL: Failed login for sa account"}
+    enabled: true
+
+  - id: 15303
+    level: 8
+    description: "MSSQL — successful login from new IP / unusual host"
+    groups: [mssql, database, authentication]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Login succeeded for user"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1078.002"}]
+    alert: {title: "MSSQL: Login succeeded (review session origin)"}
+    enabled: true
+
+  # ── Privilege Changes ─────────────────────────────────────────────────
+  - id: 15304
+    level: 12
+    description: "MSSQL — sysadmin role granted to login"
+    groups: [mssql, database, privilege_escalation, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(sp_addsrvrolemember|ALTER\\s+SERVER\\s+ROLE\\s+\\[?sysadmin\\]?\\s+ADD\\s+MEMBER)"}
+    mitre:
+      - {tactic_id: "TA0004", tactic_name: "Privilege Escalation", technique_id: "T1078"}
+    alert: {title: "MSSQL: sysadmin role granted"}
+    enabled: true
+
+  - id: 15305
+    level: 11
+    description: "MSSQL — db_owner role granted"
+    groups: [mssql, database, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(sp_addrolemember|ALTER\\s+ROLE\\s+\\[?db_owner\\]?\\s+ADD\\s+MEMBER)"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1078"}]
+    alert: {title: "MSSQL: db_owner role granted"}
+    enabled: true
+
+  - id: 15306
+    level: 11
+    description: "MSSQL — new login created"
+    groups: [mssql, database, account_creation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CREATE\\s+LOGIN\\s+"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1136"}]
+    alert: {title: "MSSQL: New login created"}
+    enabled: true
+
+  - id: 15307
+    level: 11
+    description: "MSSQL — login dropped"
+    groups: [mssql, database, account_manipulation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)DROP\\s+LOGIN\\s+"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1531"}]
+    alert: {title: "MSSQL: Login dropped"}
+    enabled: true
+
+  - id: 15308
+    level: 11
+    description: "MSSQL — login disabled"
+    groups: [mssql, database, account_manipulation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ALTER\\s+LOGIN\\s+\\S+\\s+DISABLE"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1531"}]
+    alert: {title: "MSSQL: Login disabled"}
+    enabled: true
+
+  - id: 15309
+    level: 11
+    description: "MSSQL — password changed"
+    groups: [mssql, database, account_manipulation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ALTER\\s+LOGIN\\s+.+WITH\\s+PASSWORD"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1098"}]
+    alert: {title: "MSSQL: Login password changed"}
+    enabled: true
+
+  # ── Dangerous Procedures (xp_*) ───────────────────────────────────────
+  - id: 15310
+    level: 14
+    description: "MSSQL — xp_cmdshell executed (OS command execution)"
+    groups: [mssql, database, command_execution, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)xp_cmdshell\\s"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1059"}
+    alert: {title: "MSSQL: xp_cmdshell invoked"}
+    enabled: true
+
+  - id: 15311
+    level: 13
+    description: "MSSQL — xp_cmdshell enabled via sp_configure"
+    groups: [mssql, database, command_execution, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sp_configure\\s*['\"]xp_cmdshell['\"]\\s*,\\s*1"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059"}]
+    alert: {title: "MSSQL: xp_cmdshell enabled"}
+    enabled: true
+
+  - id: 15312
+    level: 13
+    description: "MSSQL — Ole Automation procedures enabled (sp_OACreate path)"
+    groups: [mssql, database, command_execution]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sp_configure\\s*['\"]Ole Automation Procedures['\"]\\s*,\\s*1"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059"}]
+    alert: {title: "MSSQL: Ole Automation Procedures enabled"}
+    enabled: true
+
+  - id: 15313
+    level: 13
+    description: "MSSQL — CLR integration enabled (assembly load path)"
+    groups: [mssql, database, clr, code_execution]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sp_configure\\s*['\"]clr enabled['\"]\\s*,\\s*1"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059"}]
+    alert: {title: "MSSQL: CLR integration enabled"}
+    enabled: true
+
+  - id: 15314
+    level: 13
+    description: "MSSQL — CLR assembly created (SAFE/EXTERNAL/UNSAFE)"
+    groups: [mssql, database, clr, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CREATE\\s+ASSEMBLY\\s+"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505"}]
+    alert: {title: "MSSQL: CLR assembly created"}
+    enabled: true
+
+  - id: 15315
+    level: 12
+    description: "MSSQL — Trustworthy DB setting enabled"
+    groups: [mssql, database, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ALTER\\s+DATABASE\\s+\\S+\\s+SET\\s+TRUSTWORTHY\\s+ON"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1068"}]
+    alert: {title: "MSSQL: Trustworthy DB enabled"}
+    enabled: true
+
+  # ── Data Exfiltration / Backup ────────────────────────────────────────
+  - id: 15316
+    level: 13
+    description: "MSSQL — BACKUP DATABASE to network share / unusual path"
+    groups: [mssql, database, exfiltration, backup]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)BACKUP\\s+DATABASE.*TO\\s+(DISK|URL)\\s*=\\s*['\"]\\\\\\\\"}
+    mitre:
+      - {tactic_id: "TA0010", tactic_name: "Exfiltration", technique_id: "T1567"}
+    alert: {title: "MSSQL: BACKUP DATABASE to UNC share"}
+    enabled: true
+
+  - id: 15317
+    level: 13
+    description: "MSSQL — BULK INSERT / OPENROWSET from remote source"
+    groups: [mssql, database, data_movement]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(BULK\\s+INSERT|OPENROWSET\\s*\\(\\s*BULK)"}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1213"}]
+    alert: {title: "MSSQL: BULK data load from remote source"}
+    enabled: true
+
+  - id: 15318
+    level: 11
+    description: "MSSQL — large SELECT * — possible bulk extract"
+    groups: [mssql, database, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SELECT\\s+\\*\\s+FROM\\s+\\S+\\s*$"}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1005"}]
+    alert: {title: "MSSQL: SELECT * possible bulk extraction"}
+    enabled: true
+
+  # ── Linked Server / Cross-Server ──────────────────────────────────────
+  - id: 15319
+    level: 12
+    description: "MSSQL — linked server created"
+    groups: [mssql, database, linked_server, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(sp_addlinkedserver|EXEC\\s+sys\\.sp_addlinkedserver)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505"}]
+    alert: {title: "MSSQL: Linked server created"}
+    enabled: true
+
+  - id: 15320
+    level: 12
+    description: "MSSQL — EXECUTE AS to elevate cross-database privileges"
+    groups: [mssql, database, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)EXECUTE\\s+AS\\s+(LOGIN|USER)\\s*="}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1078"}]
+    alert: {title: "MSSQL: EXECUTE AS context switch"}
+    enabled: true
+
+  # ── Schema Tampering / Persistence (triggers, jobs) ───────────────────
+  - id: 15321
+    level: 11
+    description: "MSSQL — trigger created on system table"
+    groups: [mssql, database, persistence, trigger]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CREATE\\s+(OR\\s+ALTER\\s+)?TRIGGER\\s+"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505"}]
+    alert: {title: "MSSQL: Trigger created"}
+    enabled: true
+
+  - id: 15322
+    level: 11
+    description: "MSSQL — SQL Agent job created (scheduled persistence)"
+    groups: [mssql, database, persistence, scheduled_task]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(sp_add_job|sp_add_jobstep|sp_add_jobschedule)"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1053.005", technique_name: "Scheduled Task"}
+    alert: {title: "MSSQL: SQL Agent job created"}
+    enabled: true
+
+  - id: 15323
+    level: 12
+    description: "MSSQL — startup procedure registered (sp_procoption)"
+    groups: [mssql, database, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sp_procoption\\s+.*startup\\s*,\\s*['\"]?true"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546"}]
+    alert: {title: "MSSQL: Startup stored procedure registered"}
+    enabled: true
+
+  # ── Audit Tampering ───────────────────────────────────────────────────
+  - id: 15324
+    level: 13
+    description: "MSSQL — Server Audit disabled"
+    groups: [mssql, database, defense_evasion, audit_tampering]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ALTER\\s+SERVER\\s+AUDIT\\s+\\S+\\s+WITH\\s*\\(\\s*STATE\\s*=\\s*OFF"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.002", technique_name: "Disable Windows Event Logging"}
+    alert: {title: "MSSQL: Server audit disabled"}
+    enabled: true
+
+  - id: 15325
+    level: 13
+    description: "MSSQL — c2 audit mode toggled off"
+    groups: [mssql, database, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sp_configure\\s*['\"]c2 audit mode['\"]\\s*,\\s*0"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.002"}]
+    alert: {title: "MSSQL: c2 audit mode disabled"}
+    enabled: true
+
+  - id: 15326
+    level: 13
+    description: "MSSQL — server audit specification dropped"
+    groups: [mssql, database, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)DROP\\s+SERVER\\s+AUDIT(\\s+SPECIFICATION)?\\s+"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.002"}]
+    alert: {title: "MSSQL: Audit specification dropped"}
+    enabled: true
+
+  # ── Sensitive Server Configuration Changes ────────────────────────────
+  - id: 15327
+    level: 12
+    description: "MSSQL — server configuration changed (sp_configure)"
+    groups: [mssql, database, config_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sp_configure\\s+"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "MSSQL: sp_configure executed"}
+    enabled: true
+
+  - id: 15328
+    level: 12
+    description: "MSSQL — RECONFIGURE issued (applies sp_configure changes)"
+    groups: [mssql, database, config_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)^RECONFIGURE\\b"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "MSSQL: RECONFIGURE applied"}
+    enabled: true
+
+  # ── Encryption / TDE / Always Encrypted ───────────────────────────────
+  - id: 15329
+    level: 12
+    description: "MSSQL — TDE disabled on database"
+    groups: [mssql, database, defense_evasion, encryption]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ALTER\\s+DATABASE\\s+\\S+\\s+SET\\s+ENCRYPTION\\s+OFF"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1600"}]
+    alert: {title: "MSSQL: TDE disabled"}
+    enabled: true
+
+  - id: 15330
+    level: 12
+    description: "MSSQL — symmetric / asymmetric key dropped"
+    groups: [mssql, database, encryption]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)DROP\\s+(SYMMETRIC|ASYMMETRIC)\\s+KEY\\s+"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1600"}]
+    alert: {title: "MSSQL: Encryption key dropped"}
+    enabled: true
+
+  # ── DoS / Resource Abuse ──────────────────────────────────────────────
+  - id: 15331
+    level: 9
+    description: "MSSQL — deadlock detected"
+    groups: [mssql, database, dos, performance]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Transaction\\s+\\(Process ID \\d+\\)\\s+was\\s+deadlocked"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "MSSQL: Deadlock detected"}
+    enabled: true
+
+  - id: 15332
+    level: 8
+    description: "MSSQL — TempDB pressure / out-of-space"
+    groups: [mssql, database, performance]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(Could not allocate space for object|tempdb is full)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "MSSQL: Storage exhaustion"}
+    enabled: true
+
+  # ── Backup / Restore Anomalies ────────────────────────────────────────
+  - id: 15333
+    level: 11
+    description: "MSSQL — RESTORE DATABASE issued (possible overwrite)"
+    groups: [mssql, database, integrity, restore]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)RESTORE\\s+(DATABASE|LOG)\\s+"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "MSSQL: RESTORE DATABASE executed"}
+    enabled: true
+
+  - id: 15334
+    level: 11
+    description: "MSSQL — backup history table truncated"
+    groups: [mssql, database, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(TRUNCATE\\s+TABLE\\s+msdb\\.dbo\\.backupset|DELETE\\s+FROM\\s+msdb\\.dbo\\.backup)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070"}]
+    alert: {title: "MSSQL: Backup history cleared"}
+    enabled: true
+
+  # ── Network / Endpoint Changes ────────────────────────────────────────
+  - id: 15335
+    level: 12
+    description: "MSSQL — endpoint created (network listener change)"
+    groups: [mssql, database, persistence, network]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CREATE\\s+ENDPOINT\\s+"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505"}]
+    alert: {title: "MSSQL: Endpoint created"}
+    enabled: true
+
+  # ── Suspicious Errors ─────────────────────────────────────────────────
+  - id: 15336
+    level: 8
+    description: "MSSQL — SQL injection-related error pattern (msg 245/8114/207)"
+    groups: [mssql, database, sqli]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(Msg\\s+(245|8114|207)\\s*,|Conversion failed when converting|Invalid column name|incorrect syntax near)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "MSSQL: SQL error pattern (possible injection)"}
+    enabled: true
+
+  - id: 15337
+    level: 9
+    description: "MSSQL — failed login pattern from many hosts (spray)"
+    groups: [mssql, database, password_spray, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Login failed"}
+    correlation:
+      window: "15m"
+      threshold: 15
+      distinct: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.003"}]
+    alert: {title: "MSSQL: Password spray across hosts"}
+    enabled: true
+
+  - id: 15338
+    level: 9
+    description: "MSSQL — failed login because account is locked"
+    groups: [mssql, database, account_lockout]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Login failed for user.*Reason:.*locked out"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "MSSQL: Login failed — account locked"}
+    enabled: true
+
+  - id: 15339
+    level: 9
+    description: "MSSQL — login failed because password expired/must change"
+    groups: [mssql, database, account_management]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Login failed for user.*password (expired|must be changed)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1078"}]
+    alert: {title: "MSSQL: Login failed — password expired"}
+    enabled: true

@@ -1,0 +1,683 @@
+# WatchTower — Web Application Attack Detection (advanced)
+# Rule IDs: 15200-15259
+#
+# Extends 2600-web_application.yaml with deeper OWASP coverage:
+#   SQLi (error/blind/time/boolean/UNION/stacked/encoded), XSS (reflected/
+#   stored/DOM/CSP-bypass), RFI, LFI, SSRF, XXE, command injection, web
+#   shell, JNDI/Log4Shell, Spring4Shell, deserialization, auth bypass,
+#   path traversal, response splitting, HTTP smuggling, prototype pollution.
+#
+# These match against `log.file` lines tailed from access/error logs of:
+#   - IIS  (C:\inetpub\logs\LogFiles\W3SVC*\*.log)
+#   - Apache (/var/log/apache2/access.log, error.log)
+#   - Nginx  (/var/log/nginx/access.log, error.log)
+#   - Tomcat (catalina.out, localhost_access_log)
+
+rules:
+  # ── SQL Injection (deeper coverage) ───────────────────────────────────
+  - id: 15200
+    level: 12
+    description: "SQLi — stacked query"
+    groups: [web, owasp, sqli]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(;\\s*(drop|insert|update|delete|create|alter)\\s+(table|database|user|index))"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: SQLi — stacked query"}
+    enabled: true
+
+  - id: 15201
+    level: 12
+    description: "SQLi — error-based via XPATH/EXTRACTVALUE"
+    groups: [web, owasp, sqli]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(extractvalue\\s*\\(|updatexml\\s*\\()"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: SQLi — XPATH error-based extraction"}
+    enabled: true
+
+  - id: 15202
+    level: 12
+    description: "SQLi — OOB via DNS / SMB / load_file"
+    groups: [web, owasp, sqli, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(load_file\\s*\\(|into\\s+outfile|into\\s+dumpfile)"}
+    mitre:
+      - {tactic_id: "TA0010", tactic_name: "Exfiltration", technique_id: "T1041"}
+    alert: {title: "Web: SQLi out-of-band exfiltration attempt"}
+    enabled: true
+
+  - id: 15203
+    level: 11
+    description: "SQLi — hex/char encoded payload"
+    groups: [web, owasp, sqli, encoded]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(0x[0-9a-f]{20,}|char\\s*\\(\\s*\\d+\\s*(,\\s*\\d+\\s*){4,})"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: SQLi — encoded payload"}
+    enabled: true
+
+  - id: 15204
+    level: 10
+    description: "SQLi — comment-based bypass"
+    groups: [web, owasp, sqli]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(/\\*!|--\\s|#\\s|;%00)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: SQLi — comment-based bypass token"}
+    enabled: true
+
+  - id: 15205
+    level: 11
+    description: "SQLi — MSSQL xp_cmdshell exec"
+    groups: [web, owasp, sqli, mssql, command_execution]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(xp_cmdshell|sp_oacreate|sp_executesql)"}
+    mitre:
+      - {tactic_id: "TA0002", tactic_name: "Execution", technique_id: "T1059"}
+    alert: {title: "Web: SQLi — MSSQL command execution function"}
+    enabled: true
+
+  # ── XSS Variants ──────────────────────────────────────────────────────
+  - id: 15206
+    level: 10
+    description: "XSS — reflected event handler payload"
+    groups: [web, owasp, xss]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(on(error|load|click|mouseover|focus|submit|blur)\\s*=)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1059.007", technique_name: "JavaScript"}]
+    alert: {title: "Web: XSS — event handler in request"}
+    enabled: true
+
+  - id: 15207
+    level: 10
+    description: "XSS — script tag injection"
+    groups: [web, owasp, xss]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)<script[^>]*>|%3cscript|&#x3c;script"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1059.007"}]
+    alert: {title: "Web: XSS — script tag in request"}
+    enabled: true
+
+  - id: 15208
+    level: 10
+    description: "XSS — javascript: URI scheme"
+    groups: [web, owasp, xss]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(javascript|data|vbscript):"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1059.007"}]
+    alert: {title: "Web: XSS — script URI scheme"}
+    enabled: true
+
+  - id: 15209
+    level: 11
+    description: "XSS — iframe/object/embed injection"
+    groups: [web, owasp, xss, html_injection]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)<(iframe|object|embed|svg|math)[^>]*"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1059.007"}]
+    alert: {title: "Web: HTML injection — iframe/svg/object"}
+    enabled: true
+
+  - id: 15210
+    level: 11
+    description: "XSS — DOM sink in user input (document.cookie / innerHTML)"
+    groups: [web, owasp, xss, dom_xss]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(document\\.cookie|document\\.location|innerhtml|outerhtml)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1059.007"}]
+    alert: {title: "Web: DOM XSS sink reference in request"}
+    enabled: true
+
+  # ── Path Traversal / LFI ──────────────────────────────────────────────
+  - id: 15211
+    level: 11
+    description: "Path traversal — ../ sequence"
+    groups: [web, owasp, path_traversal, lfi]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(\\.\\./|\\.\\.\\\\|%2e%2e%2f|%252e%252e%252f|\\.\\.%2f)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1083", technique_name: "File and Directory Discovery"}]
+    alert: {title: "Web: Path traversal sequence"}
+    enabled: true
+
+  - id: 15212
+    level: 12
+    description: "LFI — common sensitive file targets"
+    groups: [web, owasp, lfi]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(/etc/passwd|/etc/shadow|/proc/self/environ|win\\.ini|boot\\.ini|\\\\windows\\\\system32\\\\config\\\\sam)"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1552.001", technique_name: "Credentials In Files"}
+    alert: {title: "Web: LFI to sensitive file"}
+    enabled: true
+
+  - id: 15213
+    level: 12
+    description: "LFI — PHP filter wrapper for source disclosure"
+    groups: [web, owasp, lfi, php]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)php://filter|php://input|expect://|data://"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1083"}]
+    alert: {title: "Web: PHP wrapper exploitation"}
+    enabled: true
+
+  # ── RFI ───────────────────────────────────────────────────────────────
+  - id: 15214
+    level: 13
+    description: "RFI — inclusion of remote URL"
+    groups: [web, owasp, rfi]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\\?[^=&]+=(https?|ftp)://[^&\\s]+\\.(txt|php|html|jpg|png|asp)\\??"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: RFI — remote URL inclusion"}
+    enabled: true
+
+  # ── SSRF ──────────────────────────────────────────────────────────────
+  - id: 15215
+    level: 12
+    description: "SSRF — internal/metadata target requested"
+    groups: [web, owasp, ssrf]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(169\\.254\\.169\\.254|metadata\\.google|metadata\\.azure|127\\.0\\.0\\.1|localhost|0\\.0\\.0\\.0)"}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1213", technique_name: "Data from Information Repositories"}]
+    alert: {title: "Web: SSRF — internal/cloud metadata target"}
+    enabled: true
+
+  - id: 15216
+    level: 11
+    description: "SSRF — gopher/file/dict scheme"
+    groups: [web, owasp, ssrf]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(gopher://|file://|dict://|ldap://|jar:)"}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1213"}]
+    alert: {title: "Web: SSRF — non-HTTP scheme"}
+    enabled: true
+
+  # ── XXE ───────────────────────────────────────────────────────────────
+  - id: 15217
+    level: 12
+    description: "XXE — external entity declaration in body"
+    groups: [web, owasp, xxe]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)<!entity\\s+\\S+\\s+system"}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1213"}]
+    alert: {title: "Web: XXE external entity"}
+    enabled: true
+
+  # ── Command Injection ─────────────────────────────────────────────────
+  - id: 15218
+    level: 13
+    description: "Command injection — shell metacharacters in parameters"
+    groups: [web, owasp, command_injection]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(\\|\\s*(nc|ncat|bash|sh|cmd|powershell|wget|curl)\\s|;\\s*(nc|ncat|bash|sh|cmd|powershell|wget|curl)\\s|`[^`]+`|\\$\\([^\\)]+\\))"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1059", technique_name: "Command and Scripting Interpreter"}
+    alert: {title: "Web: Command injection — shell call in parameter"}
+    enabled: true
+
+  - id: 15219
+    level: 13
+    description: "Command injection — common reverse shell payloads"
+    groups: [web, owasp, command_injection, reverse_shell]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(bash\\s+-i|sh\\s+-i|/dev/tcp/|mkfifo|nc\\s+-e|ncat\\s+-e|powershell.*-noni|powershell.*-enc\\s+)"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059"}]
+    alert: {title: "Web: Reverse shell payload in request"}
+    enabled: true
+
+  # ── Log4Shell / JNDI / Spring4Shell ───────────────────────────────────
+  - id: 15220
+    level: 14
+    description: "Log4Shell — JNDI lookup in request"
+    groups: [web, owasp, log4shell, jndi, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\\$\\{jndi:(ldap|rmi|dns|ldaps|nis|nds|corba|iiop)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "Web: Log4Shell JNDI lookup (CVE-2021-44228)"}
+    enabled: true
+
+  - id: 15221
+    level: 14
+    description: "Log4Shell — obfuscated JNDI variant"
+    groups: [web, owasp, log4shell, jndi, rce, evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(\\$\\{(\\$\\{|::|env:|sys:|lower:|upper:|jndi)[^}]*j[^}]*n[^}]*d[^}]*i)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: Log4Shell obfuscated payload"}
+    enabled: true
+
+  - id: 15222
+    level: 14
+    description: "Spring4Shell — Class.module.classLoader pattern"
+    groups: [web, owasp, spring4shell, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)class\\.module\\.classloader"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: Spring4Shell (CVE-2022-22965) payload"}
+    enabled: true
+
+  # ── Deserialization ───────────────────────────────────────────────────
+  - id: 15223
+    level: 13
+    description: "Java deserialization — magic bytes / rO0AB in parameter"
+    groups: [web, owasp, deserialization, java, rce]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(rO0AB|aced0005|YToyOnt|O:\\d+:\"\\w+\":\\d+:\\{)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: Java/PHP deserialization payload"}
+    enabled: true
+
+  - id: 15224
+    level: 13
+    description: "PHP deserialization — magic method gadget"
+    groups: [web, owasp, deserialization, php, rce]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(__destruct|__wakeup|__tostring|__call|__get)\\s*\\("}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: PHP deserialization gadget reference"}
+    enabled: true
+
+  # ── Web Shell Activity ────────────────────────────────────────────────
+  - id: 15225
+    level: 14
+    description: "Web shell access — common shell filenames"
+    groups: [web, web_shell, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/(c99|r57|wso|b374k|adminer|china_chopper|phpspy|shell|cmd|backdoor|x\\.php|alfa|webshell)\\.(php|asp|aspx|jsp|jspx)"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1505.003", technique_name: "Web Shell"}
+    alert: {title: "Web: Known web shell filename accessed"}
+    enabled: true
+
+  - id: 15226
+    level: 13
+    description: "Web shell upload — POST to writable directory"
+    groups: [web, web_shell, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)POST\\s+[^\\s]*/(uploads?|tmp|wp-content|images|public)[^\\s]*\\.(php|asp|aspx|jsp)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505.003"}]
+    alert: {title: "Web: Web shell upload suspect"}
+    enabled: true
+
+  - id: 15227
+    level: 13
+    description: "China Chopper / behinder — common parameter names"
+    groups: [web, web_shell, china_chopper]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\\?(\\w+=)?(@eval|@assert|@system|@exec|@shell_exec|@passthru)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505.003"}]
+    alert: {title: "Web: China Chopper-style payload pattern"}
+    enabled: true
+
+  # ── Auth Bypass / IDOR ────────────────────────────────────────────────
+  - id: 15228
+    level: 10
+    description: "Auth bypass — SQL injection in login form"
+    groups: [web, auth_bypass, sqli]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)login.*('|%27)\\s*(or|and)\\s+('?\\d+'?\\s*=\\s*'?\\d+'?|true|false)"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1078", technique_name: "Valid Accounts"}
+    alert: {title: "Web: Login form SQLi bypass attempt"}
+    enabled: true
+
+  - id: 15229
+    level: 10
+    description: "IDOR pattern — sequential ID brute force"
+    groups: [web, idor, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "GET\\s+/(api|admin|users|accounts|profile)/\\d+/"}
+    correlation:
+      window: "5m"
+      threshold: 30
+      group_by: ["IpAddress"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1083"}]
+    alert: {title: "Web: IDOR sequential ID enumeration"}
+    enabled: true
+
+  # ── HTTP Smuggling / Splitting ────────────────────────────────────────
+  - id: 15230
+    level: 12
+    description: "HTTP response splitting — CRLF in parameters"
+    groups: [web, http_smuggling, owasp]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(%0d%0a|%0d|%0a|\\r\\n)(Content-|Location:|Set-Cookie:)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: HTTP response splitting / smuggling"}
+    enabled: true
+
+  - id: 15231
+    level: 12
+    description: "HTTP request smuggling — conflicting Content-Length/Transfer-Encoding"
+    groups: [web, http_smuggling]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Transfer-Encoding:\\s*chunked.*Content-Length:|Content-Length:.*Transfer-Encoding:\\s*chunked"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: HTTP request smuggling (CL/TE conflict)"}
+    enabled: true
+
+  # ── Prototype Pollution / NoSQL ───────────────────────────────────────
+  - id: 15232
+    level: 11
+    description: "JS prototype pollution — __proto__ in body"
+    groups: [web, prototype_pollution, owasp]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(__proto__|constructor\\[\"prototype\"\\]|prototype\\[)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: Prototype pollution payload"}
+    enabled: true
+
+  - id: 15233
+    level: 11
+    description: "NoSQL injection — MongoDB operators in parameter"
+    groups: [web, nosqli, owasp, mongodb]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(\\$ne|\\$gt|\\$lt|\\$where|\\$regex|\\$or|\\$and|\\$nin)\\s*[:=]"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: NoSQL injection operator in request"}
+    enabled: true
+
+  # ── XML/SOAP ──────────────────────────────────────────────────────────
+  - id: 15234
+    level: 11
+    description: "XPath injection — quote/bracket pattern in XPath query"
+    groups: [web, xpath_injection, owasp]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(xpath|xmlquery).*('|%27)\\s*(or|and)\\s+"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: XPath injection"}
+    enabled: true
+
+  # ── Scanner Fingerprints ──────────────────────────────────────────────
+  - id: 15235
+    level: 9
+    description: "Web vulnerability scanner detected (sqlmap)"
+    groups: [web, scanner, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)User-Agent:.*sqlmap"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "Web: sqlmap scanner detected"}
+    enabled: true
+
+  - id: 15236
+    level: 9
+    description: "Web vulnerability scanner detected (Nikto / Acunetix / Nessus / Burp / OpenVAS)"
+    groups: [web, scanner, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)User-Agent:.*(nikto|acunetix|nessus|burpsuite|burpcollab|openvas|w3af|wpscan|gobuster|dirbuster|nmap|masscan|zgrab)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "Web: Vulnerability scanner User-Agent"}
+    enabled: true
+
+  - id: 15237
+    level: 10
+    description: "Burp Collaborator / Interactsh callback domain in payload"
+    groups: [web, scanner, oast, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(\\.burpcollaborator\\.net|\\.interact\\.sh|\\.oast\\.fun|\\.oastify\\.com)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "Web: OAST callback domain in request"}
+    enabled: true
+
+  # ── Authentication Anomalies ──────────────────────────────────────────
+  - id: 15238
+    level: 11
+    description: "Login brute force — many 401/403 from same IP"
+    groups: [web, brute_force, auth]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "\\s(401|403)\\s"}
+    correlation:
+      window: "5m"
+      threshold: 25
+      group_by: ["IpAddress"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "Web: HTTP auth brute force"}
+    enabled: true
+
+  - id: 15239
+    level: 11
+    description: "Credential stuffing — many 200 logins for distinct users from same IP"
+    groups: [web, credential_stuffing, auth]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "POST\\s+[^\\s]*/(login|signin|auth)"}
+    correlation:
+      window: "10m"
+      threshold: 20
+      group_by: ["IpAddress"]
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1110.004", technique_name: "Credential Stuffing"}
+    alert: {title: "Web: Credential stuffing pattern"}
+    enabled: true
+
+  # ── CMS / Specific App Vulns ──────────────────────────────────────────
+  - id: 15240
+    level: 12
+    description: "WordPress brute force — repeated wp-login POST"
+    groups: [web, wordpress, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "POST\\s+[^\\s]*wp-login\\.php"}
+    correlation:
+      window: "10m"
+      threshold: 15
+      group_by: ["IpAddress"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "Web: WordPress wp-login.php brute force"}
+    enabled: true
+
+  - id: 15241
+    level: 12
+    description: "WordPress xmlrpc.php abuse"
+    groups: [web, wordpress, xmlrpc, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "POST\\s+[^\\s]*xmlrpc\\.php"}
+    correlation:
+      window: "10m"
+      threshold: 10
+      group_by: ["IpAddress"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "Web: WordPress xmlrpc.php brute force"}
+    enabled: true
+
+  - id: 15242
+    level: 12
+    description: "Drupal SQLi (Drupalgeddon)"
+    groups: [web, drupal, sqli, cve]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)q=user/password.*name%5b"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: Drupalgeddon attack pattern (CVE-2014-3704)"}
+    enabled: true
+
+  - id: 15243
+    level: 13
+    description: "Joomla com_users SQLi"
+    groups: [web, joomla, sqli, cve]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)option=com_users.*(union|select|sleep)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: Joomla com_users SQLi"}
+    enabled: true
+
+  - id: 15244
+    level: 14
+    description: "ProxyLogon / ProxyShell exchange exploit pattern"
+    groups: [web, exchange, proxylogon, proxyshell, cve, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(autodiscover/autodiscover\\.json|powershell\\?X-Rps-CAT|/EWS/Exchange\\.asmx).*((@|%40)[^&\\s]+)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "Web: ProxyLogon/ProxyShell exploit pattern"}
+    enabled: true
+
+  - id: 15245
+    level: 14
+    description: "Confluence OGNL injection (CVE-2022-26134)"
+    groups: [web, confluence, ognl, cve, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\\$\\{?\\(?#?_memberAccess|new\\s+java\\.lang\\.Runtime"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: Confluence OGNL injection"}
+    enabled: true
+
+  # ── Suspicious Methods / Headers ──────────────────────────────────────
+  - id: 15246
+    level: 10
+    description: "WebDAV / PROPFIND method probing"
+    groups: [web, webdav, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(PROPFIND|PROPPATCH|MKCOL|COPY|MOVE)\\s+"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "Web: WebDAV method probing"}
+    enabled: true
+
+  - id: 15247
+    level: 9
+    description: "HTTP TRACE / TRACK method (XST vector)"
+    groups: [web, xst, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(TRACE|TRACK)\\s+"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "Web: TRACE/TRACK method (XST attempt)"}
+    enabled: true
+
+  - id: 15248
+    level: 11
+    description: "Suspicious Host header — bypass / IP spoof"
+    groups: [web, host_header_injection]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Host:\\s*(localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0|::1|\\[?::ffff:)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1078"}]
+    alert: {title: "Web: Host header injection / loopback abuse"}
+    enabled: true
+
+  # ── Error Codes / Disclosures ─────────────────────────────────────────
+  - id: 15249
+    level: 7
+    description: "HTTP 500 burst — possible application stress / payload abuse"
+    groups: [web, errors, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "\\s5\\d\\d\\s"}
+    correlation:
+      window: "1m"
+      threshold: 50
+      group_by: ["IpAddress"]
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "Web: 5xx error burst from single IP"}
+    enabled: true
+
+  - id: 15250
+    level: 6
+    description: "HTTP 404 fuzzing — many missing endpoints from one IP"
+    groups: [web, recon, fuzzing]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "\\s404\\s"}
+    correlation:
+      window: "2m"
+      threshold: 50
+      group_by: ["IpAddress"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "Web: 404 fuzzing burst"}
+    enabled: true

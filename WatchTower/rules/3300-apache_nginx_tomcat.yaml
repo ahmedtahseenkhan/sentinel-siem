@@ -1,0 +1,440 @@
+# WatchTower — Apache / Nginx / Tomcat Server-side Detection
+# Rule IDs: 15400-15439
+#
+# Targets log lines coming from:
+#   /var/log/apache2/{access,error}.log
+#   /var/log/nginx/{access,error}.log
+#   /var/log/tomcat*/{catalina.out,localhost_access_log.*.txt}
+#
+# These match server-side error/access patterns that complement the
+# attack-payload rules in 3100-web_application_advanced.yaml. Those rules
+# fire on the attacker's payload; these fire on the server's *response*
+# (error messages, config changes, segfaults) — useful for confirming a
+# request actually triggered something.
+
+rules:
+  # ── Apache config / control changes ───────────────────────────────────
+  - id: 15400
+    level: 11
+    description: "Apache — service stopped (possible defense evasion)"
+    groups: [apache, web_server, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)apache2?.*(caught SIGTERM|shutting down|graceful stop)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "Apache: Service stopped"}
+    enabled: true
+
+  - id: 15401
+    level: 11
+    description: "Apache — fatal config error / segfault"
+    groups: [apache, web_server, errors, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(child pid \\d+ exit signal (Segmentation fault|SIGSEGV)|Apache.*could not be started|configuration test failed)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "Apache: Process crash / config error"}
+    enabled: true
+
+  - id: 15402
+    level: 13
+    description: "Apache — .htaccess change observed in error log (rewrite/auth tampering)"
+    groups: [apache, web_server, persistence, htaccess]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(Invalid command|Order takes one argument|RewriteRule|RewriteEngine).*\\.htaccess"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1505"}
+    alert: {title: "Apache: .htaccess directive error (possible tampering)"}
+    enabled: true
+
+  - id: 15403
+    level: 11
+    description: "Apache — ModSecurity rule triggered"
+    groups: [apache, modsecurity, waf]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ModSecurity:\\s+(Access denied|Warning)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Apache: ModSecurity WAF triggered"}
+    enabled: true
+
+  - id: 15404
+    level: 13
+    description: "Apache — ModSecurity high-severity rule (critical block)"
+    groups: [apache, modsecurity, waf, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ModSecurity:.*\\[severity \"(CRITICAL|EMERGENCY)\"\\]"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Apache: ModSecurity CRITICAL rule blocked request"}
+    enabled: true
+
+  # ── Apache directory listing / sensitive file disclosure ──────────────
+  - id: 15405
+    level: 9
+    description: "Apache — directory listing returned (mod_autoindex)"
+    groups: [apache, web_server, information_disclosure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Index of /\\S*"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1083"}]
+    alert: {title: "Apache: Directory listing exposed"}
+    enabled: true
+
+  - id: 15406
+    level: 12
+    description: "Apache — request for .git/.svn/.env/backup file"
+    groups: [apache, web_server, recon, information_disclosure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)GET\\s+[^\\s]*/(\\.git|\\.svn|\\.env|\\.htaccess|\\.htpasswd|backup|\\.bak|\\.old|\\.sql|web\\.config)"}
+    mitre:
+      - {tactic_id: "TA0009", technique_id: "T1213"}
+    alert: {title: "Apache: Sensitive file/directory access attempt"}
+    enabled: true
+
+  # ── Nginx control / errors ────────────────────────────────────────────
+  - id: 15407
+    level: 11
+    description: "Nginx — worker process exited abnormally"
+    groups: [nginx, web_server, errors]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)nginx.*(worker process \\d+ exited (on signal|with code)|signal 11|core dumped)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "Nginx: Worker crash"}
+    enabled: true
+
+  - id: 15408
+    level: 10
+    description: "Nginx — upstream connection refused / unhealthy backend"
+    groups: [nginx, web_server, errors]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(upstream prematurely closed|connect\\(\\) failed.*Connection refused.*upstream|no live upstreams)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "Nginx: Upstream backend unreachable"}
+    enabled: true
+
+  - id: 15409
+    level: 11
+    description: "Nginx — large client request (possible buffer overflow probe)"
+    groups: [nginx, web_server, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(client intended to send too large body|request entity too large|client sent oversized line)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Nginx: Oversized request body / line"}
+    enabled: true
+
+  - id: 15410
+    level: 11
+    description: "Nginx — SSL handshake failure burst (possible scanning)"
+    groups: [nginx, web_server, tls, scanning]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SSL_do_handshake\\(\\) failed.*SSL alert"}
+    correlation:
+      window: "5m"
+      threshold: 20
+      group_by: ["IpAddress"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "Nginx: SSL handshake failure burst"}
+    enabled: true
+
+  # ── Generic web traffic anomalies ─────────────────────────────────────
+  - id: 15411
+    level: 9
+    description: "Web — abnormally long URI (possible buffer attack)"
+    groups: [web, attack, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "\\s\"[A-Z]+\\s\\S{2000,}\\s"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: Excessively long URI in request"}
+    enabled: true
+
+  - id: 15412
+    level: 11
+    description: "Web — request body bigger than 5MB (anomalous POST)"
+    groups: [web, exfiltration, upload]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "\\sPOST\\s[^\"]+\"\\s\\d{3}\\s([5-9]\\d{6}|\\d{8,})\\s"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1041"}]
+    alert: {title: "Web: Very large POST body"}
+    enabled: true
+
+  - id: 15413
+    level: 10
+    description: "Web — high rate from single IP (possible scrape/DoS)"
+    groups: [web, dos, scraping]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "\\s(GET|POST|HEAD)\\s"}
+    correlation:
+      window: "1m"
+      threshold: 200
+      group_by: ["IpAddress"]
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "Web: High request rate from single IP"}
+    enabled: true
+
+  # ── Tomcat / Java application server ──────────────────────────────────
+  - id: 15414
+    level: 14
+    description: "Tomcat — RCE via JSP web shell upload"
+    groups: [tomcat, web_shell, java, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)POST\\s+[^\\s]+\\.(jsp|jspx)\\?cmd="}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1505.003"}
+    alert: {title: "Tomcat: JSP web shell command parameter"}
+    enabled: true
+
+  - id: 15415
+    level: 13
+    description: "Tomcat — manager app brute force"
+    groups: [tomcat, brute_force, auth]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/manager/(html|text|jmxproxy)\\s+\\S+\\s+401"}
+    correlation:
+      window: "10m"
+      threshold: 10
+      group_by: ["IpAddress"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "Tomcat: manager app brute force"}
+    enabled: true
+
+  - id: 15416
+    level: 14
+    description: "Tomcat — WAR file deployed via manager (possible RCE persistence)"
+    groups: [tomcat, persistence, war_deployment, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(PUT|POST)\\s+/manager/[^\\s]*deploy\\?path="}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505"}]
+    alert: {title: "Tomcat: WAR deployment via manager"}
+    enabled: true
+
+  - id: 15417
+    level: 11
+    description: "Tomcat — OutOfMemoryError"
+    groups: [tomcat, java, performance, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)java\\.lang\\.OutOfMemoryError"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "Tomcat: OutOfMemoryError"}
+    enabled: true
+
+  - id: 15418
+    level: 11
+    description: "Tomcat — unhandled exception in stack trace"
+    groups: [tomcat, java, errors]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "Exception in thread|at\\s+(java|javax|org\\.apache|com\\.sun)\\.[\\w$.]+\\(.+\\.java:\\d+\\)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "Tomcat: Java stack trace observed"}
+    enabled: true
+
+  - id: 15419
+    level: 14
+    description: "Tomcat — Struts2 OGNL exploit pattern (CVE-2017-5638 / CVE-2018-11776)"
+    groups: [tomcat, struts2, ognl, cve, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Content-Type:\\s*%\\{\\(|%\\{\\(#_=|@@?(class|ognl)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Tomcat/Struts2: OGNL exploit pattern"}
+    enabled: true
+
+  - id: 15420
+    level: 13
+    description: "Tomcat — JNDI lookup in HTTP headers (Log4Shell against Java app)"
+    groups: [tomcat, java, log4shell, jndi, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\\$\\{jndi:(ldap|rmi|dns|ldaps)://"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Tomcat: JNDI lookup (Log4Shell)"}
+    enabled: true
+
+  # ── TLS / Certificate ─────────────────────────────────────────────────
+  - id: 15421
+    level: 10
+    description: "Web — expired SSL certificate observed in error log"
+    groups: [web, tls, certificate, misconfiguration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(certificate has expired|cert_has_expired|notAfter:.*expired)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1553"}]
+    alert: {title: "Web: SSL certificate expired"}
+    enabled: true
+
+  - id: 15422
+    level: 9
+    description: "Web — weak cipher (RC4 / DES / NULL / EXPORT) negotiated"
+    groups: [web, tls, weak_crypto, compliance]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(SSL.*(RC4|DES-CBC|NULL|EXPORT|MD5)|SSLv2|SSLv3)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1040"}]
+    alert: {title: "Web: Weak TLS cipher negotiated"}
+    enabled: true
+
+  - id: 15423
+    level: 11
+    description: "Web — TLS downgrade attempt observed"
+    groups: [web, tls, downgrade, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(TLS\\s+fallback\\s+SCSV|inappropriate fallback|tls\\.alert.*70)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1557"}]
+    alert: {title: "Web: TLS downgrade alert"}
+    enabled: true
+
+  # ── PHP-FPM / FastCGI ─────────────────────────────────────────────────
+  - id: 15424
+    level: 12
+    description: "PHP-FPM — segfault / signal 11 (memory corruption)"
+    groups: [web, php, errors]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(php-fpm.*signal\\s+11|php-fpm.*core dump|PHP Fatal error.*Segmentation)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "PHP-FPM: segfault / crash"}
+    enabled: true
+
+  - id: 15425
+    level: 11
+    description: "PHP — eval() or assert() usage logged"
+    groups: [web, php, code_execution, web_shell]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)PHP (Warning|Notice|Fatal error).*\\b(eval|assert|create_function)\\b"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059"}]
+    alert: {title: "PHP: eval/assert usage in error log"}
+    enabled: true
+
+  # ── Authentication on the web server ──────────────────────────────────
+  - id: 15426
+    level: 10
+    description: "Apache/Nginx — HTTP Basic auth failure"
+    groups: [web, auth, basic_auth]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(user .+ authentication failure|access denied for user|401 Unauthorized)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "Web: HTTP basic auth failure"}
+    enabled: true
+
+  - id: 15427
+    level: 12
+    description: "Apache/Nginx — basic auth brute force"
+    groups: [web, auth, basic_auth, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(user .+ authentication failure|access denied for user)"}
+    correlation:
+      window: "5m"
+      threshold: 15
+      group_by: ["IpAddress"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "Web: Basic auth brute force"}
+    enabled: true
+
+  # ── Reverse Proxy / Header Injection ──────────────────────────────────
+  - id: 15428
+    level: 12
+    description: "Web — X-Forwarded-For spoofing / suspicious value"
+    groups: [web, header_injection, evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)X-Forwarded-For:\\s*(localhost|127\\.0\\.0\\.1|::1|0\\.0\\.0\\.0|<script|';|\")"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1078"}]
+    alert: {title: "Web: Suspicious X-Forwarded-For"}
+    enabled: true
+
+  # ── Misc ──────────────────────────────────────────────────────────────
+  - id: 15429
+    level: 8
+    description: "Web — request from Tor exit node user agent"
+    groups: [web, anonymization, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)User-Agent:.*\\b(Tor|TorBrowser)\\b"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1090.003"}]
+    alert: {title: "Web: Tor browser user agent"}
+    enabled: true
+
+  - id: 15430
+    level: 11
+    description: "Web — suspicious automated tool User-Agent (curl/wget with payload)"
+    groups: [web, automation, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)User-Agent:\\s*(curl|Wget|libwww-perl|python-requests|Go-http-client|Java/\\d).*\\?.*(union|select|exec|system|cmd)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: CLI tool with attack payload in URL"}
+    enabled: true
+
+  - id: 15431
+    level: 14
+    description: "Web — known CVE exploit URL pattern (CVE-2024-3094 backdoor check / generic exploit DB strings)"
+    groups: [web, cve, exploit, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(/cgi-bin/\\.%2e/|/cgi-bin/luci|\\.well-known/acme-challenge/\\.\\.|/owncloud/data/\\.htaccess)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Web: Known CVE exploit URL pattern"}
+    enabled: true
+
+  - id: 15432
+    level: 10
+    description: "Apache/Nginx — config reload signaled (could be tamper-triggered)"
+    groups: [web, config_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(reload signaled|received SIGHUP|reload completed)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Web: server config reload"}
+    enabled: true

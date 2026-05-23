@@ -1,0 +1,746 @@
+# WatchTower — Active Directory Attack Detection
+# Rule IDs: 15100-15159
+#
+# Covers: Kerberoasting, AS-REP roasting, Golden Ticket, Silver Ticket,
+#          DCSync, DCShadow, Password Spray, AdminSDHolder abuse, Group
+#          Policy abuse, LDAP enumeration, ACL backdoors, Skeleton Key.
+#
+# Field expectations (emitted by WatchNode eventlog collector):
+#   win_event_id           — integer, the Windows Security event ID
+#   TargetUserName         — user being authenticated / acted upon
+#   SubjectUserName        — user performing the action
+#   ServiceName            — Kerberos SPN
+#   TicketEncryptionType   — Kerberos enc type (hex)
+#   TicketOptions          — Kerberos flags (hex)
+#   IpAddress              — source IP
+#   LogonType              — interactive=2, network=3, service=5, batch=4, etc.
+
+rules:
+  # ── Kerberoasting (T1558.003) ──────────────────────────────────────────
+  - id: 15100
+    level: 12
+    description: "Kerberoasting — TGS request with weak RC4 encryption"
+    groups: [windows, active_directory, kerberos, kerberoasting, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4769}
+        TicketEncryptionType: {contains: "0x17"}
+    mitre:
+      - {tactic_id: "TA0006", tactic_name: "Credential Access", technique_id: "T1558.003", technique_name: "Kerberoasting"}
+    alert:
+      title: "AD: Kerberoasting (RC4-HMAC) TGS request"
+    enabled: true
+
+  - id: 15101
+    level: 11
+    description: "Kerberoasting — many service tickets requested by single user"
+    groups: [windows, active_directory, kerberos, kerberoasting, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4769}
+    correlation:
+      window: "10m"
+      threshold: 20
+      group_by: ["TargetUserName"]
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1558.003"}
+    alert:
+      title: "AD: Possible Kerberoasting — many service tickets"
+    enabled: true
+
+  - id: 15102
+    level: 12
+    description: "Kerberoasting — service tickets requested for accounts with SPNs by non-admin"
+    groups: [windows, active_directory, kerberoasting, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4769}
+        ServiceName: {regex: ".*\\$$"}
+        TicketEncryptionType: {regex: "0x(17|18)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1558.003"}]
+    alert: {title: "AD: Kerberoasting against machine SPN"}
+    enabled: true
+
+  # ── AS-REP Roasting (T1558.004) ────────────────────────────────────────
+  - id: 15103
+    level: 12
+    description: "AS-REP Roasting — TGT request without pre-authentication"
+    groups: [windows, active_directory, kerberos, asrep_roasting, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4768}
+        PreAuthType: {equals: "0"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1558.004", technique_name: "AS-REP Roasting"}
+    alert: {title: "AD: AS-REP Roasting — no pre-auth TGT request"}
+    enabled: true
+
+  # ── Golden Ticket / Silver Ticket (T1558.001/T1558.002) ────────────────
+  - id: 15104
+    level: 14
+    description: "Golden Ticket suspect — TGT with anomalously long lifetime"
+    groups: [windows, active_directory, kerberos, golden_ticket, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4769}
+        TicketOptions: {contains: "0x40810000"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1558.001", technique_name: "Golden Ticket"}
+    alert: {title: "AD: Possible Golden Ticket — anomalous TGT options"}
+    enabled: true
+
+  - id: 15105
+    level: 14
+    description: "Golden Ticket suspect — TGS request without preceding TGT request"
+    groups: [windows, active_directory, kerberos, golden_ticket, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4769}
+        LogonGuid: {equals: "{00000000-0000-0000-0000-000000000000}"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1558.001"}]
+    alert: {title: "AD: Silver/Golden Ticket — null LogonGuid"}
+    enabled: true
+
+  - id: 15106
+    level: 13
+    description: "Mimikatz-style logon — TargetUserName mismatch with originating account"
+    groups: [windows, active_directory, kerberos, golden_ticket, mimikatz, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4624}
+        AuthenticationPackageName: {equals: "Kerberos"}
+        LogonType: {equals: "3"}
+        LmPackageName: {equals: "-"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1558"}]
+    alert: {title: "AD: Possible PTH/Overpass-the-hash via Kerberos"}
+    enabled: true
+
+  # ── DCSync (T1003.006) ─────────────────────────────────────────────────
+  - id: 15107
+    level: 14
+    description: "DCSync — directory replication request from non-DC account"
+    groups: [windows, active_directory, dcsync, credential_dumping, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4662}
+        Properties: {contains: "1131f6aa-9c07-11d1-f79f-00c04fc2dcd2"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1003.006", technique_name: "DCSync"}
+    alert: {title: "AD: DCSync — replication GUID accessed"}
+    enabled: true
+
+  - id: 15108
+    level: 14
+    description: "DCSync — DS-Replication-Get-Changes-All right granted/used"
+    groups: [windows, active_directory, dcsync, credential_dumping, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4662}
+        Properties: {contains: "1131f6ad-9c07-11d1-f79f-00c04fc2dcd2"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1003.006"}]
+    alert: {title: "AD: DCSync — DS-Replication-Get-Changes-All abused"}
+    enabled: true
+
+  # ── DCShadow (T1207) ───────────────────────────────────────────────────
+  - id: 15109
+    level: 14
+    description: "DCShadow — unauthorized DC registration in AD site"
+    groups: [windows, active_directory, dcshadow, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4742}
+        AllowedToDelegateTo: {exists: true}
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1207", technique_name: "Rogue Domain Controller"}
+    alert: {title: "AD: DCShadow — rogue DC registration suspect"}
+    enabled: true
+
+  # ── Password Spray (T1110.003) ─────────────────────────────────────────
+  - id: 15110
+    level: 11
+    description: "Password spray — failed logons from same source against many distinct users"
+    groups: [windows, active_directory, password_spray, brute_force, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4625}
+    correlation:
+      window: "10m"
+      threshold: 15
+      group_by: ["IpAddress"]
+      distinct: ["TargetUserName"]
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1110.003", technique_name: "Password Spraying"}
+    alert: {title: "AD: Password spray detected (≥15 users from 1 IP)"}
+    enabled: true
+
+  - id: 15111
+    level: 12
+    description: "Password spray — repeated failures across many users on same DC"
+    groups: [windows, active_directory, password_spray, brute_force, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4771}
+        Status: {equals: "0x18"}
+    correlation:
+      window: "15m"
+      threshold: 20
+      distinct: ["TargetUserName"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.003"}]
+    alert: {title: "AD: Kerberos pre-auth failures across many accounts"}
+    enabled: true
+
+  # ── Account Lockouts (T1110.001) ───────────────────────────────────────
+  - id: 15112
+    level: 9
+    description: "Account locked out — possible brute force or credential stuffing"
+    groups: [windows, active_directory, account_lockout, brute_force]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4740}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "AD: Account locked out"}
+    enabled: true
+
+  - id: 15113
+    level: 12
+    description: "Mass account lockouts — possible coordinated attack"
+    groups: [windows, active_directory, account_lockout, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4740}
+    correlation:
+      window: "10m"
+      threshold: 5
+      distinct: ["TargetUserName"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "AD: Mass account lockouts detected"}
+    enabled: true
+
+  # ── AdminSDHolder Abuse (T1098.007) ────────────────────────────────────
+  - id: 15114
+    level: 13
+    description: "AdminSDHolder modification — potential privilege persistence"
+    groups: [windows, active_directory, adminsdholder, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 5136}
+        ObjectDN: {contains: "CN=AdminSDHolder"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1098", technique_name: "Account Manipulation"}
+    alert: {title: "AD: AdminSDHolder object modified"}
+    enabled: true
+
+  # ── Domain Admin & Privileged Group Membership (T1098, T1078.002) ──────
+  - id: 15115
+    level: 13
+    description: "User added to Domain Admins group"
+    groups: [windows, active_directory, privilege_escalation, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4728}
+        GroupName: {contains: "Domain Admins"}
+    mitre:
+      - {tactic_id: "TA0004", tactic_name: "Privilege Escalation", technique_id: "T1098", technique_name: "Account Manipulation"}
+    alert: {title: "AD: User added to Domain Admins"}
+    enabled: true
+
+  - id: 15116
+    level: 13
+    description: "User added to Enterprise Admins group"
+    groups: [windows, active_directory, privilege_escalation, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4728}
+        GroupName: {contains: "Enterprise Admins"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "AD: User added to Enterprise Admins"}
+    enabled: true
+
+  - id: 15117
+    level: 12
+    description: "User added to Schema Admins group"
+    groups: [windows, active_directory, privilege_escalation, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4728}
+        GroupName: {contains: "Schema Admins"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "AD: User added to Schema Admins"}
+    enabled: true
+
+  - id: 15118
+    level: 11
+    description: "User added to a built-in privileged local group (Administrators / Backup Operators / etc.)"
+    groups: [windows, active_directory, privilege_escalation]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4732}
+        TargetSid: {regex: "^S-1-5-32-(544|547|548|549|551)$"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "AD: User added to built-in privileged group"}
+    enabled: true
+
+  # ── Group Policy Abuse (T1484.001) ─────────────────────────────────────
+  - id: 15119
+    level: 12
+    description: "Group Policy Object modified"
+    groups: [windows, active_directory, gpo, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 5136}
+        ObjectClass: {equals: "groupPolicyContainer"}
+    mitre:
+      - {tactic_id: "TA0008", tactic_name: "Lateral Movement", technique_id: "T1484.001", technique_name: "Group Policy Modification"}
+    alert: {title: "AD: GPO modified"}
+    enabled: true
+
+  - id: 15120
+    level: 13
+    description: "Group Policy Object deletion"
+    groups: [windows, active_directory, gpo, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 5141}
+        ObjectClass: {equals: "groupPolicyContainer"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1484.001"}]
+    alert: {title: "AD: GPO deleted"}
+    enabled: true
+
+  # ── LDAP / SAMR Reconnaissance (T1087.002, T1069.002) ──────────────────
+  - id: 15121
+    level: 8
+    description: "LDAP enumeration — large directory query from non-admin"
+    groups: [windows, active_directory, recon, discovery]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1644}
+    correlation:
+      window: "5m"
+      threshold: 50
+      group_by: ["SubjectUserName"]
+    mitre:
+      - {tactic_id: "TA0007", tactic_name: "Discovery", technique_id: "T1087.002", technique_name: "Domain Account"}
+    alert: {title: "AD: LDAP enumeration burst"}
+    enabled: true
+
+  - id: 15122
+    level: 9
+    description: "SAMR remote enumeration of domain users"
+    groups: [windows, active_directory, recon, samr, discovery]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4661}
+        ObjectName: {contains: "SAM_DOMAIN"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1087.002"}]
+    alert: {title: "AD: SAMR domain enumeration"}
+    enabled: true
+
+  # ── ACL Backdoors (T1098.001) ──────────────────────────────────────────
+  - id: 15123
+    level: 12
+    description: "Sensitive AD object DACL modified (potential ACL backdoor)"
+    groups: [windows, active_directory, acl_backdoor, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 5136}
+        AttributeLDAPDisplayName: {equals: "nTSecurityDescriptor"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1098.001", technique_name: "Additional Cloud Credentials"}
+    alert: {title: "AD: AD object security descriptor changed"}
+    enabled: true
+
+  # ── Skeleton Key / Authentication Backdoor (T1556.001) ─────────────────
+  - id: 15124
+    level: 14
+    description: "Skeleton Key — unusual LSASS module load on DC"
+    groups: [windows, active_directory, skeleton_key, credential_access, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 7}
+        Image: {contains: "lsass.exe"}
+        ImageLoaded: {regex: "(?i)\\\\(mimilib|skeleton).*\\.dll"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1556.001", technique_name: "Domain Controller Authentication"}
+    alert: {title: "AD: Skeleton Key DLL loaded into LSASS"}
+    enabled: true
+
+  # ── NTDS.dit theft (T1003.003) ─────────────────────────────────────────
+  - id: 15125
+    level: 14
+    description: "NTDS.dit access — possible credential database theft"
+    groups: [windows, active_directory, ntds, credential_dumping, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4663}
+        ObjectName: {regex: "(?i)\\\\ntds\\\\ntds\\.dit"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1003.003", technique_name: "NTDS"}
+    alert: {title: "AD: NTDS.dit accessed"}
+    enabled: true
+
+  - id: 15126
+    level: 14
+    description: "Volume Shadow Copy creation — possible NTDS extraction prep"
+    groups: [windows, active_directory, vss, credential_dumping]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 8222}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1003.003"}]
+    alert: {title: "AD: VSS shadow copy created on DC"}
+    enabled: true
+
+  # ── Service Ticket Renewal & Forwarding ────────────────────────────────
+  - id: 15127
+    level: 10
+    description: "Kerberos pre-auth failure flood — credential validation attack"
+    groups: [windows, active_directory, kerberos, brute_force]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4771}
+    correlation:
+      window: "5m"
+      threshold: 30
+      group_by: ["IpAddress"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "AD: Kerberos pre-auth failure burst"}
+    enabled: true
+
+  # ── Sensitive Privilege Use ────────────────────────────────────────────
+  - id: 15128
+    level: 11
+    description: "SeBackupPrivilege used by non-backup account"
+    groups: [windows, active_directory, privilege_abuse, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4673}
+        PrivilegeList: {contains: "SeBackupPrivilege"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1078.002"}]
+    alert: {title: "AD: SeBackupPrivilege used"}
+    enabled: true
+
+  - id: 15129
+    level: 12
+    description: "SeDebugPrivilege used — process memory access"
+    groups: [windows, active_directory, privilege_abuse, credential_access]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4673}
+        PrivilegeList: {contains: "SeDebugPrivilege"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1003"}]
+    alert: {title: "AD: SeDebugPrivilege used (possible credential dumping)"}
+    enabled: true
+
+  # ── Trust Relationship Changes (T1484.002) ─────────────────────────────
+  - id: 15130
+    level: 14
+    description: "Domain trust created"
+    groups: [windows, active_directory, trust_relationship, persistence, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4706}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1484.002", technique_name: "Domain Trust Modification"}
+    alert: {title: "AD: Domain trust created"}
+    enabled: true
+
+  - id: 15131
+    level: 13
+    description: "Domain trust modified"
+    groups: [windows, active_directory, trust_relationship, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4716}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1484.002"}]
+    alert: {title: "AD: Domain trust modified"}
+    enabled: true
+
+  - id: 15132
+    level: 13
+    description: "Domain trust removed"
+    groups: [windows, active_directory, trust_relationship]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4707}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1484.002"}]
+    alert: {title: "AD: Domain trust removed"}
+    enabled: true
+
+  # ── Computer Account Manipulation (T1098.001) ──────────────────────────
+  - id: 15133
+    level: 11
+    description: "Computer account created — possible rogue host enrollment"
+    groups: [windows, active_directory, computer_account]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4741}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "AD: Computer account created"}
+    enabled: true
+
+  - id: 15134
+    level: 12
+    description: "Computer account password change by non-machine principal (sAMAccountName spoof / nopac)"
+    groups: [windows, active_directory, samaccount_spoof, nopac, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4742}
+        SubjectUserName: {regex: "[^$]$"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1078.002", technique_name: "Domain Accounts"}
+    alert: {title: "AD: Suspect computer account modification by user principal"}
+    enabled: true
+
+  # ── Anonymous LDAP / Null Session ──────────────────────────────────────
+  - id: 15135
+    level: 10
+    description: "Anonymous LDAP bind to domain controller"
+    groups: [windows, active_directory, anonymous_access, recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 2887}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1087.002"}]
+    alert: {title: "AD: Anonymous LDAP bind"}
+    enabled: true
+
+  # ── DNS Admin / DnsAdmins abuse (T1574.002) ────────────────────────────
+  - id: 15136
+    level: 13
+    description: "User added to DnsAdmins — DLL hijack vector"
+    groups: [windows, active_directory, dnsadmins, privilege_escalation, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4728}
+        GroupName: {contains: "DnsAdmins"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1574.002", technique_name: "DLL Side-Loading"}
+    alert: {title: "AD: User added to DnsAdmins (DLL hijack vector)"}
+    enabled: true
+
+  # ── Audit Log Tampering (T1070.001) ────────────────────────────────────
+  - id: 15137
+    level: 14
+    description: "Security event log cleared on domain controller"
+    groups: [windows, active_directory, log_tampering, defense_evasion, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1102}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1070.001", technique_name: "Clear Windows Event Logs"}
+    alert: {title: "AD: Security event log cleared"}
+    enabled: true
+
+  - id: 15138
+    level: 13
+    description: "System event log cleared"
+    groups: [windows, active_directory, log_tampering, defense_evasion]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 104}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070.001"}]
+    alert: {title: "AD: System event log cleared"}
+    enabled: true
+
+  # ── Replication & Schema Changes ───────────────────────────────────────
+  - id: 15139
+    level: 12
+    description: "AD Schema attribute added/modified"
+    groups: [windows, active_directory, schema_change, persistence]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 5137}
+        ObjectClass: {regex: "(attributeSchema|classSchema)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "AD: Schema object created/modified"}
+    enabled: true
+
+  # ── Unconstrained Delegation Abuse (T1558.004 variant) ─────────────────
+  - id: 15140
+    level: 13
+    description: "Account configured with unconstrained delegation"
+    groups: [windows, active_directory, delegation, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4738}
+        UserAccountControl: {contains: "0x80000"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1078.002"}
+    alert: {title: "AD: Unconstrained delegation enabled on account"}
+    enabled: true
+
+  - id: 15141
+    level: 13
+    description: "Account configured with resource-based constrained delegation"
+    groups: [windows, active_directory, delegation, rbcd, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 5136}
+        AttributeLDAPDisplayName: {equals: "msDS-AllowedToActOnBehalfOfOtherIdentity"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1078.002"}]
+    alert: {title: "AD: RBCD attribute modified"}
+    enabled: true
+
+  # ── Suspicious Logon Patterns ──────────────────────────────────────────
+  - id: 15142
+    level: 11
+    description: "Logon with NULL session"
+    groups: [windows, active_directory, null_session, recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4624}
+        TargetUserName: {equals: "ANONYMOUS LOGON"}
+        LogonType: {equals: "3"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1078.002"}]
+    alert: {title: "AD: ANONYMOUS LOGON network session"}
+    enabled: true
+
+  - id: 15143
+    level: 12
+    description: "Service account performing interactive logon (uncommon)"
+    groups: [windows, active_directory, service_account_misuse]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4624}
+        LogonType: {equals: "2"}
+        TargetUserName: {regex: "(?i)^(svc[-_]|service[-_])"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078.002"}]
+    alert: {title: "AD: Interactive logon by service account"}
+    enabled: true
+
+  - id: 15144
+    level: 13
+    description: "Logon by disabled or locked account succeeded after re-enable"
+    groups: [windows, active_directory, account_manipulation]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4722}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098"}]
+    alert: {title: "AD: Disabled account re-enabled"}
+    enabled: true
+
+  # ── Sensitive Account Password Reset ───────────────────────────────────
+  - id: 15145
+    level: 12
+    description: "krbtgt account password reset — Golden Ticket invalidation OR setup"
+    groups: [windows, active_directory, krbtgt, golden_ticket]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4724}
+        TargetUserName: {equals: "krbtgt"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1098"}]
+    alert: {title: "AD: krbtgt password reset"}
+    enabled: true
+
+  - id: 15146
+    level: 12
+    description: "Administrator account password reset by another user"
+    groups: [windows, active_directory, password_reset, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4724}
+        TargetUserName: {regex: "(?i)^(administrator|admin)$"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1098"}]
+    alert: {title: "AD: Administrator password reset by another user"}
+    enabled: true
+
+  # ── Suspicious Process Patterns on DCs (T1559.001, T1003) ──────────────
+  - id: 15147
+    level: 14
+    description: "ntdsutil.exe executed — possible NTDS extraction"
+    groups: [windows, active_directory, ntds, credential_dumping, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\ntdsutil\\.exe$"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1003.003"}]
+    alert: {title: "AD: ntdsutil.exe executed"}
+    enabled: true
+
+  - id: 15148
+    level: 13
+    description: "vssadmin.exe create shadow on DC — likely NTDS theft prep"
+    groups: [windows, active_directory, vss, credential_dumping, attack]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 1}
+        Image: {regex: "(?i)\\\\vssadmin\\.exe$"}
+        CommandLine: {regex: "(?i)create\\s+shadow"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1003.003"}]
+    alert: {title: "AD: vssadmin create shadow on DC"}
+    enabled: true
+
+  # ── Kerberos Encryption Downgrade ──────────────────────────────────────
+  - id: 15149
+    level: 11
+    description: "Account configured to use only DES encryption (Kerberos downgrade)"
+    groups: [windows, active_directory, kerberos, downgrade]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4738}
+        UserAccountControl: {contains: "0x200000"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1558"}]
+    alert: {title: "AD: Account flagged for DES encryption (downgrade)"}
+    enabled: true
+
+  # ── Pre-Windows 2000 Compatible Access Group ───────────────────────────
+  - id: 15150
+    level: 12
+    description: "User added to Pre-Windows 2000 Compatible Access group (anon enumeration enabled)"
+    groups: [windows, active_directory, anonymous_access, recon]
+    match:
+      type: "log.eventlog"
+      fields:
+        win_event_id: {equals: 4728}
+        GroupName: {contains: "Pre-Windows 2000"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1087.002"}]
+    alert: {title: "AD: User added to Pre-Windows 2000 group"}
+    enabled: true
