@@ -1,0 +1,403 @@
+# WatchTower — F5 BIG-IP / TMOS Detection
+# Rule IDs: 18200-18229
+#
+# Sources: syslog from BIG-IP (LTM, ASM, AFM, APM). Tags include:
+#   tmos: (system)  asm: (WAF)  apm: (access policy)  afm: (firewall)
+#   ltm: (load balancer)
+
+rules:
+  # ── Authentication ────────────────────────────────────────────────────
+  - id: 18200
+    level: 13
+    description: "F5 BIG-IP — admin login failed (TMM / mgmt-ip)"
+    groups: [f5, bigip, admin_auth, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)BIG-IP.*sshd\\[\\d+\\]:\\s+Failed password for"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1110.001"}
+    alert: {title: "F5: admin login failed"}
+    enabled: true
+
+  - id: 18201
+    level: 13
+    description: "F5 BIG-IP — admin brute force burst"
+    groups: [f5, bigip, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)BIG-IP.*sshd.*Failed password"}
+    correlation:
+      window: "10m"
+      threshold: 10
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "F5: admin brute force"}
+    enabled: true
+
+  - id: 18202
+    level: 14
+    description: "F5 BIG-IP — admin user added"
+    groups: [f5, account_creation, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)create\\s+auth\\s+user\\s+\\S+"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1136"}
+    alert: {title: "F5: auth user created"}
+    enabled: true
+
+  - id: 18203
+    level: 14
+    description: "F5 BIG-IP — Administrator role granted to user"
+    groups: [f5, role_assignment, privilege_escalation, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)modify\\s+auth\\s+user.*partition-access.*role\\s+(admin|administrator)"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "F5: Administrator role granted"}
+    enabled: true
+
+  # ── CVEs ─────────────────────────────────────────────────────────────
+  - id: 18204
+    level: 14
+    description: "F5 BIG-IP — CVE-2020-5902 TMUI RCE pattern (.../..;/tmui/login.jsp)"
+    groups: [f5, cve_2020_5902, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/tmui/(login\\.jsp|locallb).*\\.\\.\\;/"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "F5: CVE-2020-5902 TMUI RCE pattern"}
+    enabled: true
+
+  - id: 18205
+    level: 14
+    description: "F5 BIG-IP — CVE-2022-1388 iControl REST auth bypass (X-F5-Auth-Token / Connection header)"
+    groups: [f5, cve_2022_1388, auth_bypass, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/mgmt/tm/util/(bash|cli/script).*Connection:\\s*(close|X-F5-Auth-Token)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "F5: CVE-2022-1388 iControl REST auth bypass"}
+    enabled: true
+
+  - id: 18206
+    level: 14
+    description: "F5 BIG-IP — CVE-2023-46747 Configuration Utility RCE pattern"
+    groups: [f5, cve_2023_46747, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/mgmt/tm/util/bash\\?(\\?+|.*Connection:\\s*(?i)X-F5-Auth-Token)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "F5: CVE-2023-46747 RCE pattern"}
+    enabled: true
+
+  - id: 18207
+    level: 14
+    description: "F5 BIG-IP — CVE-2024-39778 TMM crash pattern (DoS)"
+    groups: [f5, cve_2024_39778, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)tmm.*(SIGSEGV|core dumped|panic|assertion failed)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "F5: TMM crash (CVE-2024-39778)"}
+    enabled: true
+
+  # ── ASM / WAF ────────────────────────────────────────────────────────
+  - id: 18208
+    level: 14
+    description: "F5 ASM — critical-severity violation blocked"
+    groups: [f5, asm, waf, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ASM:.*severity=\\s*(Critical|Error)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "F5 ASM: critical violation"}
+    enabled: true
+
+  - id: 18209
+    level: 13
+    description: "F5 ASM — bot signature triggered"
+    groups: [f5, asm, bot]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ASM:.*bot.*(detected|signature)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "F5 ASM: bot detected"}
+    enabled: true
+
+  - id: 18210
+    level: 13
+    description: "F5 ASM — XSS / SQLi / RFI / LFI violation"
+    groups: [f5, asm, owasp]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ASM:.*(XSS|SQL Injection|Remote File Inclusion|Path Traversal)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "F5 ASM: OWASP violation"}
+    enabled: true
+
+  - id: 18211
+    level: 14
+    description: "F5 ASM — security policy switched to Transparent / Disabled (bypass)"
+    groups: [f5, asm, policy_disable, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ASM.*policy.*(enforcement_mode=transparent|disabled)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "F5 ASM: policy set to Transparent"}
+    enabled: true
+
+  # ── APM (Access Policy Manager) ──────────────────────────────────────
+  - id: 18212
+    level: 13
+    description: "F5 APM — VPN login failed"
+    groups: [f5, apm, vpn, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)APM.*Access policy result.*(LOGON_DENIED|Failed)"}
+    correlation:
+      window: "10m"
+      threshold: 10
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "F5 APM: VPN brute force"}
+    enabled: true
+
+  - id: 18213
+    level: 13
+    description: "F5 APM — login from new country / hosting ASN"
+    groups: [f5, apm, geo_anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)APM.*Access policy result.*LOGON_ALLOWED"}
+    enrich:
+      geoip: true
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078.004"}]
+    alert: {title: "F5 APM: login from new geo"}
+    enabled: true
+
+  - id: 18214
+    level: 13
+    description: "F5 APM — access policy modified"
+    groups: [f5, apm, config_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)apm\\s+(create|modify|delete)\\s+(policy|profile)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "F5 APM: access policy modified"}
+    enabled: true
+
+  # ── AFM (Firewall) ───────────────────────────────────────────────────
+  - id: 18215
+    level: 14
+    description: "F5 AFM — accept rule '0.0.0.0/0 to 0.0.0.0/0' added"
+    groups: [f5, afm, exposure, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)afm.*(rule|policy).*source.*0\\.0\\.0\\.0/0.*destination.*0\\.0\\.0\\.0/0.*action=accept"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.007"}
+    alert: {title: "F5 AFM: any-any-accept rule"}
+    enabled: true
+
+  - id: 18216
+    level: 13
+    description: "F5 AFM — deny rule burst (port scan against virtual server)"
+    groups: [f5, afm, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)afm.*action=(deny|drop)"}
+    correlation:
+      window: "5m"
+      threshold: 50
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "F5 AFM: deny burst"}
+    enabled: true
+
+  # ── LTM (Load Balancer) ──────────────────────────────────────────────
+  - id: 18217
+    level: 13
+    description: "F5 LTM — virtual server created/modified"
+    groups: [f5, ltm, config_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(create|modify)\\s+ltm\\s+virtual"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543"}]
+    alert: {title: "F5 LTM: virtual server change"}
+    enabled: true
+
+  - id: 18218
+    level: 13
+    description: "F5 LTM — iRule modified (potential traffic interception)"
+    groups: [f5, ltm, irule, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(create|modify)\\s+ltm\\s+rule"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1556"}]
+    alert: {title: "F5 LTM: iRule modified"}
+    enabled: true
+
+  - id: 18219
+    level: 14
+    description: "F5 LTM — iRule with HTTP::collect / log / HTTP::respond (potential credential capture)"
+    groups: [f5, ltm, irule_attack, credential_access, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)iRule.*HTTP::(collect|payload|respond).*(password|token|cookie)"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1056.003"}
+    alert: {title: "F5 LTM: suspicious iRule pattern"}
+    enabled: true
+
+  # ── SSL / TLS ────────────────────────────────────────────────────────
+  - id: 18220
+    level: 13
+    description: "F5 — SSL profile uses weak cipher (RC4/DES/NULL/EXPORT/SSLv3)"
+    groups: [f5, ssl_weak_cipher, hardening]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ssl.*(cipher.*RC4|DES-CBC|NULL|EXPORT|SSLv3|TLSv1\\.0)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1040"}]
+    alert: {title: "F5: weak SSL cipher configured"}
+    enabled: true
+
+  - id: 18221
+    level: 13
+    description: "F5 — certificate replaced on virtual server"
+    groups: [f5, certificate, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)modify\\s+ltm\\s+(profile|virtual)\\s+.*cert"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1556"}]
+    alert: {title: "F5: SSL cert replaced"}
+    enabled: true
+
+  # ── Config / Audit Tampering ─────────────────────────────────────────
+  - id: 18222
+    level: 14
+    description: "F5 — auditd / syslog daemon stopped"
+    groups: [f5, audit_tampering, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(auditd|syslog-ng).*(stopped|killed|terminated)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.008"}
+    alert: {title: "F5: audit/syslog daemon stopped"}
+    enabled: true
+
+  - id: 18223
+    level: 14
+    description: "F5 — UCS archive (config backup) downloaded externally"
+    groups: [f5, config_exfil, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/mgmt/shared/file-transfer/ucs-downloads/"}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1602.002"}
+    alert: {title: "F5: UCS backup downloaded"}
+    enabled: true
+
+  - id: 18224
+    level: 13
+    description: "F5 — bigpipe / tmsh save sys config (potential persistence)"
+    groups: [f5, config_save]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)tmsh\\s+save\\s+sys\\s+config"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1543"}]
+    alert: {title: "F5: config saved (tmsh save)"}
+    enabled: true
+
+  # ── DoS Vectors ──────────────────────────────────────────────────────
+  - id: 18225
+    level: 13
+    description: "F5 — DoS vector detected (TPS / pps / bps thresholds exceeded)"
+    groups: [f5, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)dos.*(vector|attack)\\s+(detected|started)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1498"}]
+    alert: {title: "F5: DoS vector detected"}
+    enabled: true
+
+  - id: 18226
+    level: 13
+    description: "F5 — IP reputation feed match (malicious IP)"
+    groups: [f5, threatintel]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ip.*intelligence.*(threat|malicious|blocked)"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071"}]
+    alert: {title: "F5: IP Intelligence match"}
+    enabled: true
+
+  # ── iControl / REST API ──────────────────────────────────────────────
+  - id: 18227
+    level: 14
+    description: "F5 — iControl REST POST to /mgmt/tm/util/bash (RCE pathway)"
+    groups: [f5, icontrol_rest, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)POST\\s+/mgmt/tm/util/bash"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "F5: iControl REST /util/bash"}
+    enabled: true
+
+  - id: 18228
+    level: 14
+    description: "F5 — iControl REST DELETE on /mgmt/tm/sys/syslog (audit tampering)"
+    groups: [f5, icontrol_rest, audit_tampering]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)DELETE\\s+/mgmt/tm/sys/syslog"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.008"}
+    alert: {title: "F5: iControl REST syslog DELETE"}
+    enabled: true
+
+  - id: 18229
+    level: 14
+    description: "F5 — iControl REST token from unexpected source"
+    groups: [f5, icontrol_rest, token_theft]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)POST\\s+/mgmt/shared/authn/login"}
+    enrich:
+      baseline: "f5.api_ip"
+    mitre: [{tactic_id: "TA0006", technique_id: "T1528"}]
+    alert: {title: "F5: iControl login from new IP"}
+    enabled: true

@@ -1,0 +1,667 @@
+# WatchTower — Palo Alto Networks Detection
+# Rule IDs: 18000-18049
+#
+# Sources: syslog from PAN-OS firewalls. Log types: TRAFFIC, THREAT,
+# CONFIG, SYSTEM, HIP-MATCH, GLOBALPROTECT, USERID, AUTHENTICATION, URL,
+# WILDFIRE, FILE, DATA. Comma-separated format with Type at position 4.
+
+rules:
+  # ── Configuration Changes ─────────────────────────────────────────────
+  - id: 18000
+    level: 13
+    description: "PAN — config change committed (CONFIG log)"
+    groups: [palo_alto, config_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),CONFIG,.*,(commit|edit|delete|move|rename),"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "PAN: config committed"}
+    enabled: true
+
+  - id: 18001
+    level: 14
+    description: "PAN — security policy 'permit any any' added"
+    groups: [palo_alto, policy, exposure, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CONFIG.*security.*rules.*action.*allow.*source.*any.*destination.*any.*service.*any"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.007"}
+    alert: {title: "PAN: any-any-any allow rule added"}
+    enabled: true
+
+  - id: 18002
+    level: 14
+    description: "PAN — admin account created"
+    groups: [palo_alto, account_creation, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CONFIG.*mgt-config.*users.*name="}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1136"}
+    alert: {title: "PAN: admin user created"}
+    enabled: true
+
+  - id: 18003
+    level: 14
+    description: "PAN — superuser role assigned"
+    groups: [palo_alto, role_assignment, privilege_escalation, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CONFIG.*role.*superuser"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "PAN: superuser role granted"}
+    enabled: true
+
+  - id: 18004
+    level: 13
+    description: "PAN — security profile cleared from rule (IPS/AV bypass)"
+    groups: [palo_alto, profile_disable, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CONFIG.*profile-setting.*(group|none|removed)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "PAN: security profile cleared"}
+    enabled: true
+
+  - id: 18005
+    level: 14
+    description: "PAN — Threat Prevention profile disabled / set to 'allow'"
+    groups: [palo_alto, ips_disable, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)anti-(virus|spyware)|vulnerability.*action.*(allow|alert|default)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "PAN: threat-prevention action weakened"}
+    enabled: true
+
+  # ── Authentication ───────────────────────────────────────────────────
+  - id: 18006
+    level: 13
+    description: "PAN — admin GUI/CLI login failed"
+    groups: [palo_alto, auth, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SYSTEM.*authentication.*failed|auth.*failure"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "PAN: admin login failed"}
+    enabled: true
+
+  - id: 18007
+    level: 13
+    description: "PAN — admin login brute force burst"
+    groups: [palo_alto, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SYSTEM.*authentication.*failed"}
+    correlation:
+      window: "10m"
+      threshold: 10
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "PAN: admin brute force"}
+    enabled: true
+
+  - id: 18008
+    level: 13
+    description: "PAN — GlobalProtect VPN login from new geo / hosting ASN"
+    groups: [palo_alto, gp_vpn, geo_anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)GLOBALPROTECT.*login.*success"}
+    enrich:
+      geoip: true
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078.004"}]
+    alert: {title: "PAN: GP VPN login from new geo"}
+    enabled: true
+
+  - id: 18009
+    level: 13
+    description: "PAN — GlobalProtect login failure burst (VPN brute force)"
+    groups: [palo_alto, gp_vpn, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)GLOBALPROTECT.*login.*fail"}
+    correlation:
+      window: "10m"
+      threshold: 15
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "PAN: GlobalProtect brute force"}
+    enabled: true
+
+  - id: 18010
+    level: 14
+    description: "PAN — GlobalProtect portal CVE-2024-3400 (command injection) signature"
+    groups: [palo_alto, gp_vpn, cve_2024_3400, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(global-protect/portal/css|sessid=.*\\$\\(|SESSID.*command_injection)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "PAN: CVE-2024-3400 GlobalProtect command injection"}
+    enabled: true
+
+  - id: 18011
+    level: 14
+    description: "PAN — GlobalProtect / PAN-OS web UI login from internet (CVE-2024-0012 risk)"
+    groups: [palo_alto, mgmt_internet, exposure, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SYSTEM.*authentication.*succeeded.*from\\s+\\d+\\.\\d+\\.\\d+\\.\\d+"}
+      enrich:
+        baseline: "pan.mgmt_ip"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "PAN: mgmt login from non-allowlisted IP"}
+    enabled: true
+
+  # ── Threat Logs (THREAT type) ────────────────────────────────────────
+  - id: 18012
+    level: 14
+    description: "PAN — vulnerability exploit blocked (critical severity)"
+    groups: [palo_alto, threat, vuln_exploit, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),THREAT,vulnerability,.*,(critical|high),"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "PAN: critical vulnerability exploit"}
+    enabled: true
+
+  - id: 18013
+    level: 14
+    description: "PAN — spyware / C2 traffic detected"
+    groups: [palo_alto, threat, c2, spyware]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),THREAT,spyware,.*,(critical|high),"}
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1071"}
+    alert: {title: "PAN: spyware/C2 traffic"}
+    enabled: true
+
+  - id: 18014
+    level: 14
+    description: "PAN — virus / file blocked by Anti-Virus"
+    groups: [palo_alto, threat, antivirus, malware]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),THREAT,virus,"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1204.002"}
+    alert: {title: "PAN: virus blocked"}
+    enabled: true
+
+  - id: 18015
+    level: 13
+    description: "PAN — DNS Security suspicious / DGA detection"
+    groups: [palo_alto, dns_security, dga, c2]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),THREAT,(dns|dns-security),.*(suspicious|dga|c2|command-and-control)"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1568.002"}]
+    alert: {title: "PAN: DNS Security DGA / C2"}
+    enabled: true
+
+  - id: 18016
+    level: 13
+    description: "PAN — file rejected by WildFire (malicious verdict)"
+    groups: [palo_alto, wildfire, malware]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),WILDFIRE,.*verdict.*(malicious|grayware|phishing)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1204.002"}]
+    alert: {title: "PAN: WildFire malicious verdict"}
+    enabled: true
+
+  - id: 18017
+    level: 13
+    description: "PAN — URL category 'malware' / 'phishing' / 'command-and-control' accessed"
+    groups: [palo_alto, url_filter, threat]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),URL,.*(malware|phishing|command-and-control|hacking|proxy-avoidance-and-anonymizers)"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071"}]
+    alert: {title: "PAN: malicious URL category accessed"}
+    enabled: true
+
+  - id: 18018
+    level: 13
+    description: "PAN — Data Filtering profile match (DLP: SSN / CCN / PII transit)"
+    groups: [palo_alto, dlp, data_filtering]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),DATA,.*(SSN|credit.?card|PII|PHI|HIPAA|GDPR)"}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1567"}
+    alert: {title: "PAN: DLP rule hit"}
+    enabled: true
+
+  - id: 18019
+    level: 13
+    description: "PAN — File blocking profile match (executable file in mail/web)"
+    groups: [palo_alto, file_blocking, malware]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),FILE,.*\\.(exe|scr|bat|ps1|hta|js|jar|vbs|cmd)\\b"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1204"}]
+    alert: {title: "PAN: blocked executable file"}
+    enabled: true
+
+  # ── Traffic Anomalies ────────────────────────────────────────────────
+  - id: 18020
+    level: 11
+    description: "PAN — traffic deny burst from single IP (port scan / probing)"
+    groups: [palo_alto, deny_burst, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),TRAFFIC,deny,"}
+    correlation:
+      window: "5m"
+      threshold: 50
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "PAN: traffic deny burst"}
+    enabled: true
+
+  - id: 18021
+    level: 13
+    description: "PAN — large session count from one source (SYN flood / DoS)"
+    groups: [palo_alto, dos, syn_flood]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)flood (start|attack)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1498"}]
+    alert: {title: "PAN: flood attack pattern"}
+    enabled: true
+
+  - id: 18022
+    level: 13
+    description: "PAN — outbound connection to TI-flagged IP / hostname"
+    groups: [palo_alto, threatintel, c2]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),TRAFFIC,allow,"}
+      enrich:
+        ti_source: "malicious_ips,malicious_domains"
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071.001"}]
+    alert: {title: "PAN: outbound to TI IP/domain"}
+    enabled: true
+
+  - id: 18023
+    level: 13
+    description: "PAN — large data transfer outbound (>500MB single session)"
+    groups: [palo_alto, exfiltration, large_session]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),TRAFFIC,allow,.*bytes-sent.*([5-9]\\d{8,}|\\d{10,})"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1041"}]
+    alert: {title: "PAN: large outbound session (>500MB)"}
+    enabled: true
+
+  - id: 18024
+    level: 13
+    description: "PAN — encrypted upload to known anonymous file-sharing (mega/anonfiles/sendspace)"
+    groups: [palo_alto, exfiltration, file_share]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),URL,.*(mega\\.nz|anonfile|sendspace|filebin|file\\.io|gofile\\.io|temp\\.sh|0x0\\.st)"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567.002"}]
+    alert: {title: "PAN: file-sharing service hit"}
+    enabled: true
+
+  - id: 18025
+    level: 13
+    description: "PAN — DNS over HTTPS (DoH) detected (potential evasion)"
+    groups: [palo_alto, doh, evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),THREAT,.*(doh|dns-over-https)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1572"}]
+    alert: {title: "PAN: DoH evasion"}
+    enabled: true
+
+  # ── User-ID / Identity ───────────────────────────────────────────────
+  - id: 18026
+    level: 13
+    description: "PAN — User-ID agent disconnected (auth pipeline broken)"
+    groups: [palo_alto, userid, identity_fail]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)USERID.*(disconnected|connection failed)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "PAN: User-ID agent disconnect"}
+    enabled: true
+
+  - id: 18027
+    level: 13
+    description: "PAN — UserID-to-IP mapping changed for sensitive admin user"
+    groups: [palo_alto, userid, identity_pivot]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)USERID.*ip-tag.*(admin|root|svc-)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1134"}]
+    alert: {title: "PAN: User-ID mapping change (admin)"}
+    enabled: true
+
+  # ── HIP / Host Information Profile ───────────────────────────────────
+  - id: 18028
+    level: 12
+    description: "PAN — HIP check failure (endpoint posture violation)"
+    groups: [palo_alto, hip, posture]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)HIP-MATCH.*missing|HIP.*non-compliant"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1078"}]
+    alert: {title: "PAN: HIP posture violation"}
+    enabled: true
+
+  # ── Decryption / SSL Inspection ──────────────────────────────────────
+  - id: 18029
+    level: 14
+    description: "PAN — SSL decryption disabled / decrypt-bypass added"
+    groups: [palo_alto, decryption, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CONFIG.*decryption.*action.*(no-decrypt|decrypt-bypass)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "PAN: SSL decryption bypass"}
+    enabled: true
+
+  - id: 18030
+    level: 13
+    description: "PAN — SSL/TLS decryption failures burst (handshake / cert issues)"
+    groups: [palo_alto, decryption, errors]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SYSTEM.*decrypt.*(failed|error|cert)"}
+    correlation:
+      window: "10m"
+      threshold: 20
+    mitre: [{tactic_id: "TA0006", technique_id: "T1557"}]
+    alert: {title: "PAN: decryption error burst"}
+    enabled: true
+
+  # ── High-Availability / Failover ─────────────────────────────────────
+  - id: 18031
+    level: 12
+    description: "PAN — HA state changed (active/passive flip)"
+    groups: [palo_alto, ha_state]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SYSTEM.*HA.*state.*changed.*to\\s+(active|passive|suspended)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "PAN: HA state change"}
+    enabled: true
+
+  - id: 18032
+    level: 13
+    description: "PAN — HA flap (state changes ≥3 in 10m)"
+    groups: [palo_alto, ha_flap, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SYSTEM.*HA.*state.*changed"}
+    correlation:
+      window: "10m"
+      threshold: 3
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "PAN: HA flap"}
+    enabled: true
+
+  # ── Logging / Tampering ──────────────────────────────────────────────
+  - id: 18033
+    level: 14
+    description: "PAN — syslog forwarding profile disabled / removed"
+    groups: [palo_alto, audit_tampering, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CONFIG.*log-settings.*syslog.*(delete|disable|removed)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.008"}
+    alert: {title: "PAN: syslog forwarding disabled"}
+    enabled: true
+
+  - id: 18034
+    level: 14
+    description: "PAN — log forwarding profile removed from security rule"
+    groups: [palo_alto, audit_tampering, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CONFIG.*log-setting.*(none|removed)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.008"}]
+    alert: {title: "PAN: log forwarding removed from rule"}
+    enabled: true
+
+  - id: 18035
+    level: 13
+    description: "PAN — logs cleared (system event)"
+    groups: [palo_alto, log_tamper, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SYSTEM.*(clear-logs|log database cleared)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070"}]
+    alert: {title: "PAN: logs cleared"}
+    enabled: true
+
+  # ── Specific PAN-OS CVEs / Exploit Patterns ──────────────────────────
+  - id: 18036
+    level: 14
+    description: "PAN — CVE-2024-0012 PAN-OS mgmt-interface auth-bypass pattern"
+    groups: [palo_alto, cve_2024_0012, auth_bypass, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(php/utils/router\\.php|panAdmin\\.php).*(GET|POST)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "PAN: CVE-2024-0012 management auth-bypass pattern"}
+    enabled: true
+
+  - id: 18037
+    level: 14
+    description: "PAN — CVE-2024-9474 PAN-OS privilege escalation pattern (privilege upgrade)"
+    groups: [palo_alto, cve_2024_9474, privilege_escalation, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CONFIG.*(mgmt-config\\.users\\..*role\\.superuser|mgt-conf.*role-based)"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1068"}]
+    alert: {title: "PAN: CVE-2024-9474 privilege upgrade"}
+    enabled: true
+
+  # ── Routing / Network ────────────────────────────────────────────────
+  - id: 18038
+    level: 13
+    description: "PAN — new static route added (potential route hijack)"
+    groups: [palo_alto, routing, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CONFIG.*virtual-router.*routing-table.*static-route.*nexthop"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1556"}]
+    alert: {title: "PAN: static route added"}
+    enabled: true
+
+  - id: 18039
+    level: 13
+    description: "PAN — interface zone changed (segmentation bypass)"
+    groups: [palo_alto, zone_change, segmentation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CONFIG.*zone.*(change|moved|interface)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.007"}]
+    alert: {title: "PAN: interface zone changed"}
+    enabled: true
+
+  # ── Service / Tunnels ───────────────────────────────────────────────
+  - id: 18040
+    level: 13
+    description: "PAN — IPsec tunnel created to non-baseline peer (lateral / exfil channel)"
+    groups: [palo_alto, ipsec, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CONFIG.*network.*tunnel.*ipsec"}
+    enrich:
+      baseline: "pan.tunnel_peers"
+    mitre: [{tactic_id: "TA0008", technique_id: "T1199"}]
+    alert: {title: "PAN: IPsec tunnel created"}
+    enabled: true
+
+  - id: 18041
+    level: 13
+    description: "PAN — SSL VPN portal created/modified (potential rogue access)"
+    groups: [palo_alto, gp_portal, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CONFIG.*global-protect.*portal"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1133"}]
+    alert: {title: "PAN: GlobalProtect portal config change"}
+    enabled: true
+
+  # ── Application / App-ID Anomalies ───────────────────────────────────
+  - id: 18042
+    level: 13
+    description: "PAN — App-ID identified Tor / proxy / VPN tunneling"
+    groups: [palo_alto, anonymizer, evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),TRAFFIC,allow,.*(tor|psiphon|ultrasurf|wireguard|hide-my-ass|nordvpn|expressvpn|protonvpn)"}
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1090.003"}
+    alert: {title: "PAN: anonymizer / consumer VPN traffic"}
+    enabled: true
+
+  - id: 18043
+    level: 13
+    description: "PAN — file-transfer app (ftp/sftp/rsync/torrent) outbound to internet"
+    groups: [palo_alto, exfiltration, file_transfer]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),TRAFFIC,allow,.*(ftp|sftp|scp|rsync|bittorrent|peer-to-peer)"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1048"}]
+    alert: {title: "PAN: file-transfer app outbound"}
+    enabled: true
+
+  - id: 18044
+    level: 13
+    description: "PAN — App-ID detected ssh-tunnel / port-forward over allowed app"
+    groups: [palo_alto, tunneling, evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),THREAT,.*(ssh-tunnel|port-forwarding|tunnel)"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1572"}]
+    alert: {title: "PAN: tunneling pattern"}
+    enabled: true
+
+  # ── PAN-OS Software Updates ──────────────────────────────────────────
+  - id: 18045
+    level: 13
+    description: "PAN — content / threat signature update disabled (definition staleness)"
+    groups: [palo_alto, signature_update, hardening]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)update-schedule.*(disable|none)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "PAN: signature update disabled"}
+    enabled: true
+
+  - id: 18046
+    level: 14
+    description: "PAN — software downgrade detected (boot of older PAN-OS)"
+    groups: [palo_alto, downgrade, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SYSTEM.*PAN-OS\\s+\\d+\\.\\d+\\.\\d+\\s+booted"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1601"}
+    alert: {title: "PAN: PAN-OS version change (downgrade?)"}
+    enabled: true
+
+  # ── Panorama Specific ────────────────────────────────────────────────
+  - id: 18047
+    level: 13
+    description: "Panorama — push commit to managed firewalls (mass config change)"
+    groups: [palo_alto, panorama, mass_config]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Panorama.*commit-all.*device-group"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Panorama: push commit"}
+    enabled: true
+
+  - id: 18048
+    level: 13
+    description: "Panorama — template stack modified (firewall config change at scale)"
+    groups: [palo_alto, panorama, template_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Panorama.*template-stack.*(edit|set|delete)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Panorama: template stack changed"}
+    enabled: true
+
+  # ── WildFire / Threat Intelligence ───────────────────────────────────
+  - id: 18049
+    level: 14
+    description: "PAN — multiple WildFire malicious verdicts from one user (potential infection)"
+    groups: [palo_alto, wildfire, multi_hit, compromise]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i),WILDFIRE,.*verdict.*malicious"}
+    correlation:
+      window: "30m"
+      threshold: 3
+      group_by: ["agent_name"]
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1204"}
+    alert: {title: "PAN WildFire: multi-malicious from one user"}
+    enabled: true

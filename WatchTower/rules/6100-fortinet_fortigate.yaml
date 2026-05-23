@@ -1,0 +1,536 @@
+# WatchTower — Fortinet FortiGate Detection
+# Rule IDs: 18100-18139
+#
+# Sources: syslog from FortiGate (FortiOS). Logs have type/subtype fields:
+#   type=traffic,utm,event,virus,ips,webfilter,dlp,emailfilter
+#   subtype=forward/local/system/admin/auth/vpn/ipsec/ssl
+#   action=accept/deny/blocked/dropped/start/login/logout/closed
+
+rules:
+  # ── Authentication / Admin ────────────────────────────────────────────
+  - id: 18100
+    level: 13
+    description: "FortiGate — admin login failure"
+    groups: [fortinet, fortigate, admin_auth, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=event.*subtype=system.*logid=(0100032002|0100032003).*action=login.*status=failed"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1110.001"}
+    alert: {title: "FortiGate: admin login failed"}
+    enabled: true
+
+  - id: 18101
+    level: 13
+    description: "FortiGate — admin login brute force"
+    groups: [fortinet, fortigate, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=event.*action=login.*status=failed"}
+    correlation:
+      window: "10m"
+      threshold: 10
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "FortiGate: admin brute force"}
+    enabled: true
+
+  - id: 18102
+    level: 14
+    description: "FortiGate — admin user created"
+    groups: [fortinet, fortigate, account_creation, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=event.*subtype=system.*cfgpath=\"system\\.admin\".*cfgtid"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1136"}
+    alert: {title: "FortiGate: admin account created"}
+    enabled: true
+
+  - id: 18103
+    level: 14
+    description: "FortiGate — super_admin role assigned"
+    groups: [fortinet, fortigate, privilege_escalation, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)accprofile=super_admin|profile=super_admin"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "FortiGate: super_admin role granted"}
+    enabled: true
+
+  # ── SSL VPN / IPsec ──────────────────────────────────────────────────
+  - id: 18104
+    level: 13
+    description: "FortiGate — SSL VPN login failed"
+    groups: [fortinet, fortigate, sslvpn, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)logid=01000(39942|39949|39946).*action=ssl-login-fail"}
+    correlation:
+      window: "10m"
+      threshold: 10
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "FortiGate: SSL VPN brute force"}
+    enabled: true
+
+  - id: 18105
+    level: 14
+    description: "FortiGate — SSL VPN CVE-2024-21762 / CVE-2023-27997 exploit pattern (heap overflow)"
+    groups: [fortinet, fortigate, cve_2024_21762, cve_2023_27997, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sslvpn.*(buffer overflow|heap corruption|invalid request)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "FortiGate: SSL VPN exploit pattern"}
+    enabled: true
+
+  - id: 18106
+    level: 13
+    description: "FortiGate — SSL VPN login from new country / hosting ASN"
+    groups: [fortinet, sslvpn, geo_anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)logid=01000(39947|39943).*action=ssl-login.*remip=\\d+\\.\\d+\\.\\d+\\.\\d+"}
+    enrich:
+      geoip: true
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078.004"}]
+    alert: {title: "FortiGate: SSL VPN login from new geo"}
+    enabled: true
+
+  - id: 18107
+    level: 14
+    description: "FortiGate — IPsec phase-1/phase-2 authentication failure burst"
+    groups: [fortinet, ipsec, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=event.*subtype=vpn.*(negotiate error|phase1_failed|phase2_failed)"}
+    correlation:
+      window: "10m"
+      threshold: 10
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1110.001"}
+    alert: {title: "FortiGate: IPsec brute force"}
+    enabled: true
+
+  # ── Config / Policy ──────────────────────────────────────────────────
+  - id: 18108
+    level: 13
+    description: "FortiGate — configuration changed (cfgpath system / firewall)"
+    groups: [fortinet, fortigate, config_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=event.*subtype=system.*logid=0100032001"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "FortiGate: config change"}
+    enabled: true
+
+  - id: 18109
+    level: 14
+    description: "FortiGate — firewall policy 'all-to-all allow' added"
+    groups: [fortinet, fortigate, policy, exposure, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)cfgpath=\"firewall\\.policy\".*srcaddr=all.*dstaddr=all.*action=accept"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.007"}
+    alert: {title: "FortiGate: all-all allow policy"}
+    enabled: true
+
+  - id: 18110
+    level: 13
+    description: "FortiGate — UTM profile removed from policy (security bypass)"
+    groups: [fortinet, utm, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)cfgpath=\"firewall\\.policy\".*(av-profile|ips-sensor|webfilter-profile|application-list).*\"\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "FortiGate: UTM profile removed"}
+    enabled: true
+
+  # ── Logging / Tampering ──────────────────────────────────────────────
+  - id: 18111
+    level: 14
+    description: "FortiGate — log forwarding to syslog/FAZ disabled"
+    groups: [fortinet, audit_tampering, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)cfgpath=\"log\\.(syslogd|fortianalyzer)\".*(disable|status=disable)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.008"}
+    alert: {title: "FortiGate: log forwarding disabled"}
+    enabled: true
+
+  - id: 18112
+    level: 13
+    description: "FortiGate — disk log severity level lowered (less detail)"
+    groups: [fortinet, log_tamper, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)cfgpath=\"log\\..*\\.filter\".*severity.*(emergency|alert|critical)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.008"}]
+    alert: {title: "FortiGate: log severity raised (less recorded)"}
+    enabled: true
+
+  # ── IPS / AV / Web Filter Threat Logs ────────────────────────────────
+  - id: 18113
+    level: 14
+    description: "FortiGate IPS — critical severity attack signature triggered"
+    groups: [fortinet, ips, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=utm.*subtype=ips.*severity=critical"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "FortiGate IPS: critical severity hit"}
+    enabled: true
+
+  - id: 18114
+    level: 13
+    description: "FortiGate AV — virus blocked"
+    groups: [fortinet, av, malware]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=utm.*subtype=virus.*(action=blocked|action=detected)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1204.002"}]
+    alert: {title: "FortiGate AV: virus detected"}
+    enabled: true
+
+  - id: 18115
+    level: 13
+    description: "FortiGate Web Filter — malicious / phishing / botnet category"
+    groups: [fortinet, webfilter, threat]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=utm.*subtype=webfilter.*cat=(26|59|61|140).*action=block"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071"}]
+    alert: {title: "FortiGate Web: malicious category"}
+    enabled: true
+
+  - id: 18116
+    level: 13
+    description: "FortiGate — botnet C2 IP / hostname matched"
+    groups: [fortinet, botnet, c2]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=utm.*subtype=(ips|dns).*(botnet|c2|command-control)"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071"}]
+    alert: {title: "FortiGate: botnet match"}
+    enabled: true
+
+  - id: 18117
+    level: 13
+    description: "FortiGate DLP — sensitive data filter triggered"
+    groups: [fortinet, dlp, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=utm.*subtype=dlp.*(action=block|action=archive)"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567"}]
+    alert: {title: "FortiGate DLP: rule hit"}
+    enabled: true
+
+  - id: 18118
+    level: 13
+    description: "FortiGate App Control — Tor / anonymizer / proxy bypass"
+    groups: [fortinet, app_control, anonymizer]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=utm.*subtype=app-ctrl.*(Tor|Psiphon|UltraSurf|ProtonVPN|NordVPN|ExpressVPN|WireGuard)"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1090.003"}]
+    alert: {title: "FortiGate App-Ctrl: anonymizer"}
+    enabled: true
+
+  # ── Traffic Anomalies ────────────────────────────────────────────────
+  - id: 18119
+    level: 11
+    description: "FortiGate — traffic deny burst (port scan)"
+    groups: [fortinet, deny_burst, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=traffic.*action=deny"}
+    correlation:
+      window: "5m"
+      threshold: 50
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "FortiGate: traffic deny burst"}
+    enabled: true
+
+  - id: 18120
+    level: 13
+    description: "FortiGate — outbound to TI-flagged IP / domain"
+    groups: [fortinet, threatintel]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=traffic.*action=accept"}
+      enrich:
+        ti_source: "malicious_ips,malicious_domains"
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071"}]
+    alert: {title: "FortiGate: outbound to TI"}
+    enabled: true
+
+  - id: 18121
+    level: 13
+    description: "FortiGate — large outbound transfer (>500MB)"
+    groups: [fortinet, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=traffic.*action=accept.*sentbyte=([5-9]\\d{8,}|\\d{10,})"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1041"}]
+    alert: {title: "FortiGate: large outbound transfer"}
+    enabled: true
+
+  - id: 18122
+    level: 13
+    description: "FortiGate — DDoS / SYN flood signature triggered"
+    groups: [fortinet, ddos, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)logid=(20003|0420029)|type=anomaly.*(syn_flood|udp_flood|icmp_flood|port_scan)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1498"}]
+    alert: {title: "FortiGate: DDoS / flood signature"}
+    enabled: true
+
+  # ── FortiOS-Specific Vulnerabilities ─────────────────────────────────
+  - id: 18123
+    level: 14
+    description: "FortiGate — CVE-2022-42475 SSL VPN heap-buffer-overflow attempt"
+    groups: [fortinet, cve_2022_42475, sslvpn, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(sslvpnd.*signal\\s+11|sslvpnd.*crash)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "FortiGate: CVE-2022-42475 SSL VPN crash"}
+    enabled: true
+
+  - id: 18124
+    level: 14
+    description: "FortiGate — CVE-2022-40684 admin auth bypass (forwarded-for header)"
+    groups: [fortinet, cve_2022_40684, auth_bypass, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(api/v2/cmdb/.*forwarded-for=127\\.0\\.0\\.1|HTTP.*X-Forwarded-For:\\s*127\\.0\\.0\\.1)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "FortiGate: CVE-2022-40684 X-Forwarded-For bypass"}
+    enabled: true
+
+  - id: 18125
+    level: 14
+    description: "FortiGate — CVE-2018-13379 SSL VPN path traversal (download files)"
+    groups: [fortinet, cve_2018_13379, path_traversal, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/remote/fgt_lang\\?lang=/\\.\\./|/remote/login\\?lang=.*/sslvpn_websession"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1083"}]
+    alert: {title: "FortiGate: CVE-2018-13379 SSL VPN path traversal"}
+    enabled: true
+
+  # ── Routing / Network ────────────────────────────────────────────────
+  - id: 18126
+    level: 13
+    description: "FortiGate — static route added"
+    groups: [fortinet, routing]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)cfgpath=\"router\\.static\""}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1556"}]
+    alert: {title: "FortiGate: static route added"}
+    enabled: true
+
+  - id: 18127
+    level: 13
+    description: "FortiGate — interface zone changed"
+    groups: [fortinet, zone_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)cfgpath=\"system\\.zone\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.007"}]
+    alert: {title: "FortiGate: zone modified"}
+    enabled: true
+
+  # ── HA / Failover ────────────────────────────────────────────────────
+  - id: 18128
+    level: 12
+    description: "FortiGate — HA failover (state change)"
+    groups: [fortinet, ha_state]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)logid=(0100022920|0100022921|0105053999)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "FortiGate: HA failover"}
+    enabled: true
+
+  - id: 18129
+    level: 13
+    description: "FortiGate — HA cluster split (heartbeat lost)"
+    groups: [fortinet, ha_split]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(heartbeat.*lost|split-brain)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "FortiGate: HA heartbeat lost / split"}
+    enabled: true
+
+  # ── SSL Inspection ───────────────────────────────────────────────────
+  - id: 18130
+    level: 14
+    description: "FortiGate — SSL inspection profile disabled / no-inspection"
+    groups: [fortinet, ssl_inspection, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)cfgpath=\"firewall\\.policy\".*ssl-ssh-profile.*no-inspection"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "FortiGate: SSL inspection disabled"}
+    enabled: true
+
+  # ── FortiManager / FortiAnalyzer ─────────────────────────────────────
+  - id: 18131
+    level: 13
+    description: "FortiGate — FortiManager push install (mass config change)"
+    groups: [fortinet, fortimanager, mass_config]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)FortiManager.*install\\s+(start|finish|policy)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "FortiManager: install policy push"}
+    enabled: true
+
+  # ── Firmware ─────────────────────────────────────────────────────────
+  - id: 18132
+    level: 14
+    description: "FortiGate — firmware upgrade/downgrade"
+    groups: [fortinet, firmware, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(firmware (upgrade|downgrade)|image (uploaded|installed))"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1601"}
+    alert: {title: "FortiGate: firmware change"}
+    enabled: true
+
+  # ── Auth Server / RADIUS / LDAP ──────────────────────────────────────
+  - id: 18133
+    level: 13
+    description: "FortiGate — RADIUS / LDAP auth server unreachable (auth-pipeline broken)"
+    groups: [fortinet, auth_server, identity_fail]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(radius|ldap).*server.*(unreachable|connection lost|timeout)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "FortiGate: auth server unreachable"}
+    enabled: true
+
+  # ── REST API / Automation ────────────────────────────────────────────
+  - id: 18134
+    level: 14
+    description: "FortiGate — REST API token created"
+    groups: [fortinet, api_token, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)cfgpath=\"system\\.api-user\""}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1098.001"}
+    alert: {title: "FortiGate: API user created"}
+    enabled: true
+
+  - id: 18135
+    level: 13
+    description: "FortiGate — REST API call from unknown IP / unusual UA"
+    groups: [fortinet, api_anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)/api/v2/(cmdb|monitor)/"}
+    enrich:
+      baseline: "fortinet.api_ip"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "FortiGate: API call from new IP"}
+    enabled: true
+
+  # ── Anomaly / Quarantine ─────────────────────────────────────────────
+  - id: 18136
+    level: 13
+    description: "FortiGate — host quarantined by IPS (auto-isolation)"
+    groups: [fortinet, quarantine, post_exploit]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)logid=(0419016388|0419016389).*quarantine"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "FortiGate: host quarantined"}
+    enabled: true
+
+  # ── DNS Filter ───────────────────────────────────────────────────────
+  - id: 18137
+    level: 13
+    description: "FortiGate DNS filter — DGA / suspicious domain blocked"
+    groups: [fortinet, dns_filter, dga, c2]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=utm.*subtype=dns.*(DGA|botnet|c2)"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1568"}]
+    alert: {title: "FortiGate DNS: DGA/C2"}
+    enabled: true
+
+  # ── Session Anomalies ────────────────────────────────────────────────
+  - id: 18138
+    level: 13
+    description: "FortiGate — concurrent session limit exceeded (resource exhaustion)"
+    groups: [fortinet, session_limit, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)logid=(0421073000|0421073001).*session.*table.*full"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "FortiGate: session table full"}
+    enabled: true
+
+  # ── Specific FortiGate Internal Errors ───────────────────────────────
+  - id: 18139
+    level: 13
+    description: "FortiGate — Web Application Firewall (WAF) blocked attack"
+    groups: [fortinet, waf, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)type=utm.*subtype=waf.*(blocked|attack)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "FortiGate WAF: attack blocked"}
+    enabled: true

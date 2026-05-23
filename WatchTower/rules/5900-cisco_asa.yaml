@@ -1,0 +1,676 @@
+# WatchTower — Cisco ASA / FTD Detection
+# Rule IDs: 17900-17949
+#
+# Sources: syslog from ASA/FTD/IOS (UDP/TCP 514, 5140). ASA messages have
+# format: %ASA-<sev>-<id>:<message>. Rules match against the message body.
+
+rules:
+  # ── Authentication / VPN ──────────────────────────────────────────────
+  - id: 17900
+    level: 13
+    description: "Cisco ASA — failed admin login (109017 / 113015)"
+    groups: [cisco, asa, auth, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-(109017|113015):.*authentication failed"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1110.001"}
+    alert: {title: "Cisco ASA: admin auth failed"}
+    enabled: true
+
+  - id: 17901
+    level: 13
+    description: "Cisco ASA — admin auth brute force (failure burst)"
+    groups: [cisco, asa, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-113015"}
+    correlation:
+      window: "10m"
+      threshold: 10
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "Cisco ASA: admin brute force"}
+    enabled: true
+
+  - id: 17902
+    level: 12
+    description: "Cisco ASA — VPN user login (ID 113019)"
+    groups: [cisco, asa, vpn, login]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-113019.*Group.*User.*succeeded"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "Cisco ASA: VPN login"}
+    enabled: true
+
+  - id: 17903
+    level: 13
+    description: "Cisco ASA — VPN user from new country / unusual ASN"
+    groups: [cisco, asa, vpn, geo_anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-(113019|716039).*IP=\\d+\\.\\d+\\.\\d+\\.\\d+"}
+    enrich:
+      geoip: true
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078.004"}]
+    alert: {title: "Cisco ASA: VPN login from new geo"}
+    enabled: true
+
+  - id: 17904
+    level: 13
+    description: "Cisco ASA — AnyConnect SSL VPN session disconnected by client / server (review burst)"
+    groups: [cisco, asa, vpn, disconnect]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-(722037|722023).*disconnected"}
+    correlation:
+      window: "5m"
+      threshold: 30
+    mitre: [{tactic_id: "TA0011", technique_id: "T1090"}]
+    alert: {title: "Cisco ASA: AnyConnect disconnect burst"}
+    enabled: true
+
+  - id: 17905
+    level: 13
+    description: "Cisco ASA — VPN tunnel split-tunnel policy change"
+    groups: [cisco, asa, vpn, config_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)split[- ]tunnel.*(applied|configured)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.007"}]
+    alert: {title: "Cisco ASA: split-tunnel policy change"}
+    enabled: true
+
+  - id: 17906
+    level: 14
+    description: "Cisco ASA — IKE / IPsec authentication failure burst (VPN brute force)"
+    groups: [cisco, asa, vpn, ipsec, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-(713903|713904|750003).*authentication failed"}
+    correlation:
+      window: "10m"
+      threshold: 10
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1110.001"}
+    alert: {title: "Cisco ASA: IKE/IPsec brute force"}
+    enabled: true
+
+  # ── Config Changes ───────────────────────────────────────────────────
+  - id: 17907
+    level: 13
+    description: "Cisco ASA — running-config modified (111008/111010)"
+    groups: [cisco, asa, config_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-(111008|111010|199003):"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Cisco ASA: configuration changed"}
+    enabled: true
+
+  - id: 17908
+    level: 14
+    description: "Cisco ASA — running-config saved to flash (potential persistence)"
+    groups: [cisco, asa, persistence, config_save]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-111005.*write memory|copy run start"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1543"}
+    alert: {title: "Cisco ASA: config saved to startup"}
+    enabled: true
+
+  - id: 17909
+    level: 13
+    description: "Cisco ASA — user account added"
+    groups: [cisco, asa, account_creation, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)username\\s+\\S+\\s+(password|secret)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1136"}]
+    alert: {title: "Cisco ASA: username added"}
+    enabled: true
+
+  - id: 17910
+    level: 13
+    description: "Cisco ASA — privilege level 15 granted (full admin)"
+    groups: [cisco, asa, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)privilege\\s+15\\b"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "Cisco ASA: privilege 15 granted"}
+    enabled: true
+
+  - id: 17911
+    level: 13
+    description: "Cisco ASA — ACL modified (access-list permit/deny added)"
+    groups: [cisco, asa, acl_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)access-list\\s+\\S+\\s+(extended|standard)\\s+(permit|deny)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.007"}]
+    alert: {title: "Cisco ASA: ACL entry modified"}
+    enabled: true
+
+  - id: 17912
+    level: 14
+    description: "Cisco ASA — ACL ANY permit (broad allow rule)"
+    groups: [cisco, asa, acl, exposure, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)access-list\\s+\\S+.*permit\\s+ip\\s+any\\s+any"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.007"}
+    alert: {title: "Cisco ASA: permit ip any any rule"}
+    enabled: true
+
+  - id: 17913
+    level: 14
+    description: "Cisco ASA — entire ACL removed (no access-list configured)"
+    groups: [cisco, asa, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)no\\s+access-list\\s+"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Cisco ASA: ACL removed"}
+    enabled: true
+
+  # ── Logging Tampering ────────────────────────────────────────────────
+  - id: 17914
+    level: 14
+    description: "Cisco ASA — logging disabled / no logging"
+    groups: [cisco, asa, audit_tampering, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)no\\s+logging\\s+(enable|on|host)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.008"}
+    alert: {title: "Cisco ASA: logging disabled"}
+    enabled: true
+
+  - id: 17915
+    level: 14
+    description: "Cisco ASA — logging buffer cleared"
+    groups: [cisco, asa, log_tamper, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)clear\\s+logging\\s+buffered"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070.001"}]
+    alert: {title: "Cisco ASA: logging buffer cleared"}
+    enabled: true
+
+  # ── Threat Defense / IPS ─────────────────────────────────────────────
+  - id: 17916
+    level: 13
+    description: "Cisco ASA — Threat Defense IPS signature triggered (high severity)"
+    groups: [cisco, asa, ftd, ips, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%FTD-\\d-(430001|430002|430003).*High|%ASA-\\d-414001"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "Cisco ASA/FTD: high-sev IPS hit"}
+    enabled: true
+
+  - id: 17917
+    level: 13
+    description: "Cisco ASA — Botnet Traffic Filter hit"
+    groups: [cisco, asa, botnet, c2]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-338\\d{3}.*Botnet"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071"}]
+    alert: {title: "Cisco ASA: Botnet Traffic Filter hit"}
+    enabled: true
+
+  - id: 17918
+    level: 13
+    description: "Cisco ASA — IP address denied by reputation / TI feed"
+    groups: [cisco, asa, threatintel]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-(338\\d{3}|414001).*(malware|reputation|threat)"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071"}]
+    alert: {title: "Cisco ASA: IP blocked by reputation"}
+    enabled: true
+
+  # ── Connection / Traffic Anomalies ───────────────────────────────────
+  - id: 17919
+    level: 11
+    description: "Cisco ASA — TCP connection denied (high volume from one IP)"
+    groups: [cisco, asa, denied_conn, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-(106001|106023).*Deny"}
+    correlation:
+      window: "5m"
+      threshold: 50
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "Cisco ASA: deny burst from one IP"}
+    enabled: true
+
+  - id: 17920
+    level: 13
+    description: "Cisco ASA — TCP SYN flood detected (scanning/threat)"
+    groups: [cisco, asa, syn_flood, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-(733100|733102).*Object detected.*threat detected|.*scanning attack"}
+    mitre:
+      - {tactic_id: "TA0040", technique_id: "T1498"}
+    alert: {title: "Cisco ASA: scanning / SYN flood"}
+    enabled: true
+
+  - id: 17921
+    level: 13
+    description: "Cisco ASA — IP address blocked by Threat Detection feature"
+    groups: [cisco, asa, threat_detection]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-733101.*shun"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "Cisco ASA: IP shunned"}
+    enabled: true
+
+  - id: 17922
+    level: 13
+    description: "Cisco ASA — translation/connection limit reached (resource exhaustion)"
+    groups: [cisco, asa, dos, resource_exhaustion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-(305006|201008|201009).*limit reached"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "Cisco ASA: translation/conn limit reached"}
+    enabled: true
+
+  - id: 17923
+    level: 11
+    description: "Cisco ASA — fragmentation chunk dropped (anti-fragmentation evasion)"
+    groups: [cisco, asa, ip_fragmentation, evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-209\\d{3}.*Reassembly"}
+    correlation:
+      window: "5m"
+      threshold: 20
+    mitre: [{tactic_id: "TA0005", technique_id: "T1599"}]
+    alert: {title: "Cisco ASA: IP fragmentation burst"}
+    enabled: true
+
+  # ── Connection from External / Suspicious ────────────────────────────
+  - id: 17924
+    level: 13
+    description: "Cisco ASA — outbound connection to TI-flagged IP"
+    groups: [cisco, asa, threatintel, c2]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-(302013|302015).*Built outbound"}
+      enrich:
+        ti_source: "malicious_ips"
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1071"}
+    alert: {title: "Cisco ASA: outbound to TI IP"}
+    enabled: true
+
+  - id: 17925
+    level: 13
+    description: "Cisco ASA — port-scan signature (multiple deny entries to many ports)"
+    groups: [cisco, asa, port_scan, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-(106001|710003).*Deny.*to.*port"}
+    correlation:
+      window: "5m"
+      threshold: 30
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595.001"}]
+    alert: {title: "Cisco ASA: port scan pattern"}
+    enabled: true
+
+  # ── SSH / Console Anomalies ──────────────────────────────────────────
+  - id: 17926
+    level: 12
+    description: "Cisco ASA — SSH session opened from external IP"
+    groups: [cisco, asa, ssh, session]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-605005.*SSH.*opened.*from"}
+    enrich:
+      baseline: "asa.admin_ip"
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "Cisco ASA: SSH session from external IP"}
+    enabled: true
+
+  - id: 17927
+    level: 13
+    description: "Cisco ASA — console session active (physical access)"
+    groups: [cisco, asa, console_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-611101.*User authentication succeeded.*console"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "Cisco ASA: console session"}
+    enabled: true
+
+  # ── Specific CVE / Exploit Patterns ──────────────────────────────────
+  - id: 17928
+    level: 14
+    description: "Cisco ASA — CVE-2018-0101 SSL VPN heap overflow trigger"
+    groups: [cisco, asa, cve_2018_0101, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-725007.*SSL.*alert.*close_notify"}
+    correlation:
+      window: "5m"
+      threshold: 5
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "Cisco ASA: SSL VPN heap-overflow pattern"}
+    enabled: true
+
+  - id: 17929
+    level: 14
+    description: "Cisco ASA — CVE-2023-20198 / 20273 web UI exploit pattern (IOS XE)"
+    groups: [cisco, ios_xe, cve_2023_20198, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(level\\s+15.*username|webui.*new\\s+user)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "Cisco IOS XE: web-UI exploit pattern"}
+    enabled: true
+
+  - id: 17930
+    level: 13
+    description: "Cisco ASA — clear/reset of session table (potential cover-up)"
+    groups: [cisco, asa, session_clear, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)clear\\s+(xlate|conn|local-host)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070"}]
+    alert: {title: "Cisco ASA: session table cleared"}
+    enabled: true
+
+  # ── Failover / High-Availability ─────────────────────────────────────
+  - id: 17931
+    level: 12
+    description: "Cisco ASA — failover state change (active/standby flip)"
+    groups: [cisco, asa, failover]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-105005.*failover"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "Cisco ASA: failover state change"}
+    enabled: true
+
+  - id: 17932
+    level: 13
+    description: "Cisco ASA — failover repeatedly flips (instability / attack)"
+    groups: [cisco, asa, failover_flap]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-105005"}
+    correlation:
+      window: "10m"
+      threshold: 5
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "Cisco ASA: failover flap"}
+    enabled: true
+
+  # ── NAT Anomalies ─────────────────────────────────────────────────────
+  - id: 17933
+    level: 13
+    description: "Cisco ASA — new NAT statement added"
+    groups: [cisco, asa, nat_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)\\bnat\\s+(\\(|inside|outside)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Cisco ASA: NAT statement added"}
+    enabled: true
+
+  # ── Identity Firewall ────────────────────────────────────────────────
+  - id: 17934
+    level: 13
+    description: "Cisco ASA — Identity firewall AD agent disconnected (auth-pipeline broken)"
+    groups: [cisco, asa, identity_fw, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%ASA-\\d-746003.*disconnected.*AD"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Cisco ASA: Identity FW AD disconnected"}
+    enabled: true
+
+  # ── Cisco IOS / Switch Specific ──────────────────────────────────────
+  - id: 17935
+    level: 13
+    description: "Cisco IOS — privileged EXEC mode entered from line vty (remote)"
+    groups: [cisco, ios, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%SYS-\\d-PRIV_LEVEL_CHANGE.*level\\s+15"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "Cisco IOS: enable mode from vty"}
+    enabled: true
+
+  - id: 17936
+    level: 13
+    description: "Cisco IOS — SNMP community 'public' / 'private' configured (default weak community)"
+    groups: [cisco, ios, snmp, hardening]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)snmp-server\\s+community\\s+(public|private)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1018"}]
+    alert: {title: "Cisco IOS: default SNMP community"}
+    enabled: true
+
+  - id: 17937
+    level: 13
+    description: "Cisco IOS — TFTP / FTP upload of config (potential exfil)"
+    groups: [cisco, ios, config_exfil]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)copy\\s+running-config\\s+(tftp|ftp|http|scp)"}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1602.002"}
+    alert: {title: "Cisco IOS: config copied to network"}
+    enabled: true
+
+  - id: 17938
+    level: 14
+    description: "Cisco IOS — IOS image (firmware) loaded from non-standard location"
+    groups: [cisco, ios, firmware_tamper, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)boot\\s+system\\s+(tftp|http|usb|disk1)"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1542.005"}
+    alert: {title: "Cisco IOS: boot from non-standard"}
+    enabled: true
+
+  - id: 17939
+    level: 14
+    description: "Cisco IOS — reload command issued (potential disruption)"
+    groups: [cisco, ios, reload, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%SYS-\\d-RELOAD.*Reload requested"}
+    mitre:
+      - {tactic_id: "TA0040", technique_id: "T1529"}
+    alert: {title: "Cisco IOS: reload requested"}
+    enabled: true
+
+  - id: 17940
+    level: 13
+    description: "Cisco IOS — interface line protocol changed to down (potential disconnect attack)"
+    groups: [cisco, ios, interface_down]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%LINEPROTO-\\d-UPDOWN.*changed state to down"}
+    correlation:
+      window: "5m"
+      threshold: 5
+    mitre: [{tactic_id: "TA0040", technique_id: "T1531"}]
+    alert: {title: "Cisco IOS: interface down burst"}
+    enabled: true
+
+  # ── Cisco Smart Install / DHCP Snooping ──────────────────────────────
+  - id: 17941
+    level: 14
+    description: "Cisco IOS — Smart Install client unauthenticated TCP 4786 (CVE-2018-0171)"
+    groups: [cisco, ios, smart_install, cve_2018_0171, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%CMRP-\\d-IMAGEFILE_REPLACED|smart-install.*4786"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "Cisco IOS: Smart Install exploit"}
+    enabled: true
+
+  - id: 17942
+    level: 13
+    description: "Cisco — DHCP snooping violation (rogue DHCP server)"
+    groups: [cisco, dhcp_snoop, network_attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%DHCP_SNOOPING-\\d-DHCP_SNOOPING_DENY"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1557.002"}]
+    alert: {title: "Cisco: DHCP snooping deny (rogue DHCP)"}
+    enabled: true
+
+  - id: 17943
+    level: 13
+    description: "Cisco — DAI (Dynamic ARP Inspection) violation (ARP spoofing)"
+    groups: [cisco, arp_spoofing, network_attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%SW_DAI-\\d-INVALID_ARP"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1557.002"}]
+    alert: {title: "Cisco: DAI invalid ARP"}
+    enabled: true
+
+  - id: 17944
+    level: 13
+    description: "Cisco — port-security violation (MAC flapping / rogue device)"
+    groups: [cisco, port_security, network_attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%PORT_SECURITY-\\d-PSECURE_VIOLATION"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1200"}]
+    alert: {title: "Cisco: port-security violation"}
+    enabled: true
+
+  - id: 17945
+    level: 12
+    description: "Cisco — Spanning Tree BPDU guard triggered (rogue switch)"
+    groups: [cisco, bpdu_guard, network_attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%SPANTREE-\\d-BLOCK_BPDUGUARD"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1200"}]
+    alert: {title: "Cisco: BPDU guard triggered"}
+    enabled: true
+
+  # ── 802.1X / MAB ─────────────────────────────────────────────────────
+  - id: 17946
+    level: 12
+    description: "Cisco — 802.1X authentication failure burst"
+    groups: [cisco, dot1x, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%DOT1X-\\d-FAIL"}
+    correlation:
+      window: "10m"
+      threshold: 15
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "Cisco: 802.1X failure burst"}
+    enabled: true
+
+  # ── Cisco FTD / Firepower ────────────────────────────────────────────
+  - id: 17947
+    level: 13
+    description: "Cisco FTD — file/malware event detected (Firepower)"
+    groups: [cisco, ftd, firepower, malware]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%FTD-\\d-(430\\d{3}).*(malware|file detected|disposition.*Malware)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1204.002"}
+    alert: {title: "Cisco FTD: malware/file event"}
+    enabled: true
+
+  - id: 17948
+    level: 13
+    description: "Cisco FTD — URL filtering: malicious URL category"
+    groups: [cisco, ftd, url_filter, threat]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)%FTD-\\d-430005.*URL\\s+category.*(Malware|Phishing|Bot|Command and Control)"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071"}]
+    alert: {title: "Cisco FTD: malicious URL category"}
+    enabled: true
+
+  - id: 17949
+    level: 14
+    description: "Cisco FTD — Intelligent SSL decryption disabled (visibility loss)"
+    groups: [cisco, ftd, ssl_inspection, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ssl decryption.*(disabled|bypass)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "Cisco FTD: SSL decryption disabled"}
+    enabled: true
