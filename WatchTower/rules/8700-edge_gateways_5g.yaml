@@ -1,0 +1,252 @@
+# Edge gateways, 5G/MEC, satellite, SD-WAN, secure access service edge (SASE)
+# IDs 19730-19749 (20 rules)
+
+- id: 19730
+  level: 11
+  description: "Edge: SD-WAN tunnel established outside approved overlay topology"
+  groups: [edge, sd_wan]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {regex: "(?i)(viptela|silver_peak|versa|meraki)"}
+      event: {regex: "(?i)tunnel.*up"}
+      topology_known: {equals: "false"}
+  alert: {title: "Edge: rogue SD-WAN tunnel"}
+  enabled: true
+
+- id: 19731
+  level: 11
+  description: "Edge: ZTNA / SASE bypass - direct path used instead of cloud proxy"
+  groups: [edge, sase, ztna]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(zscaler|netskope|prisma_access|cato)"}
+      event: {equals: "bypass_detected"}
+  alert: {title: "Edge: SASE bypass detected"}
+  enabled: true
+
+- id: 19732
+  level: 11
+  description: "Edge: SSL inspection failure on SASE for sensitive category"
+  groups: [edge, sase]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(zscaler|netskope)"}
+      ssl_inspection_status: {equals: "skipped"}
+      category: {regex: "(?i)(financial|health|government)"}
+  alert: {title: "Edge: SSL inspection skipped on sensitive site"}
+  enabled: true
+
+- id: 19733
+  level: 10
+  description: "Edge: ZTNA application policy disabled by admin"
+  groups: [edge, ztna]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(zscaler|cloudflare|zpa)"}
+      operation: {regex: "(?i)disable.*application"}
+  alert: {title: "Edge: ZTNA app policy disabled"}
+  enabled: true
+
+- id: 19734
+  level: 11
+  description: "5G/MEC: Workload deployed on edge node outside CI/CD pipeline"
+  groups: [edge, 5g, mec]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "mec_orchestrator"}
+      operation: {equals: "deploy_workload"}
+      pipeline_id: {equals: ""}
+  alert: {title: "5G MEC: out-of-band workload deploy"}
+  enabled: true
+
+- id: 19735
+  level: 11
+  description: "5G: GTPv1-U tunnel anomaly (encapsulation from unexpected GW)"
+  groups: [edge, 5g, gtp]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "gtp_u"}
+      src_gw_known: {equals: "false"}
+  alert: {title: "5G: unexpected GTP-U source"}
+  enabled: true
+
+- id: 19736
+  level: 11
+  description: "5G: SUPI/SUCI repeated authentication failures (IMSI catcher style)"
+  groups: [edge, 5g, identity]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {equals: "ausf"}
+      auth_result: {equals: "fail"}
+  correlation: {window: "5m", threshold: 20, group_by: ["src_gnb"]}
+  alert: {title: "5G: SUPI auth fail spike"}
+  enabled: true
+
+- id: 19737
+  level: 11
+  description: "Satellite: ground station modem firmware unsigned image accepted"
+  groups: [edge, satellite, supply_chain]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "sat_modem"}
+      event: {regex: "(?i)firmware.*(unsigned|signature_skipped)"}
+  alert: {title: "Satellite: unsigned firmware"}
+  enabled: true
+
+- id: 19738
+  level: 11
+  description: "Edge: Kubernetes-edge (k3s) API server exposed to non-mgmt net"
+  groups: [edge, kubernetes]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "tcp"}
+      dst_port: {equals: "6443"}
+      dst_role: {equals: "edge_node"}
+      src_subnet_mgmt: {equals: "false"}
+  alert: {title: "Edge: k3s API exposed"}
+  enabled: true
+
+- id: 19739
+  level: 11
+  description: "Edge: IoT/edge gateway configuration restore from non-vault source"
+  groups: [edge, integrity]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "edge_gateway"}
+      event: {equals: "config_restore"}
+      source_path: {regex: "(?i)(?!vault|hashi|aws_ssm).+"}
+  alert: {title: "Edge: config restored from unknown source"}
+  enabled: true
+
+- id: 19740
+  level: 11
+  description: "Cellular: APN changed on enterprise modem (carrier swap)"
+  groups: [edge, cellular]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "cellular_modem"}
+      event: {regex: "(?i)apn.*(changed|switch)"}
+  alert: {title: "Edge: APN changed on modem"}
+  enabled: true
+
+- id: 19741
+  level: 11
+  description: "SASE: User policy bypassed via direct DNS-over-HTTPS resolver"
+  groups: [edge, sase, evasion]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(zscaler|netskope|cloudflare)"}
+      bypass_method: {equals: "doh"}
+  alert: {title: "SASE: DoH-based bypass"}
+  enabled: true
+
+- id: 19742
+  level: 11
+  description: "Edge: long-lived API token from edge device used from new IP"
+  groups: [edge, identity]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "edge_api"}
+      token_age_days: {regex: "^([3-9][0-9]|[1-9][0-9]{2,})$"}
+      src_ip_seen_before: {equals: "false"}
+  alert: {title: "Edge: long-lived token reused from new IP"}
+  enabled: true
+
+- id: 19743
+  level: 10
+  description: "Edge: zero-touch provisioning (ZTP) downloaded firmware from non-vendor host"
+  groups: [edge, ztp, supply_chain]
+  match:
+    type: "logs.syslog"
+    fields:
+      event: {equals: "ztp_download"}
+      url_vendor_domain: {equals: "false"}
+  alert: {title: "Edge: ZTP from non-vendor URL"}
+  enabled: true
+
+- id: 19744
+  level: 11
+  description: "SD-WAN: split-tunneling allowed for sensitive app"
+  groups: [edge, sd_wan]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(viptela|silver_peak)"}
+      app_sensitivity: {equals: "high"}
+      mode: {equals: "split_tunnel"}
+  alert: {title: "SD-WAN: split tunnel on sensitive app"}
+  enabled: true
+
+- id: 19745
+  level: 11
+  description: "Edge: BGP route hijack of corporate prefix"
+  groups: [edge, bgp]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "bgp_monitor"}
+      event: {equals: "hijack_detected"}
+  alert: {title: "Edge: BGP hijack of corp prefix"}
+  enabled: true
+
+- id: 19746
+  level: 10
+  description: "Edge: route flap on critical interface"
+  groups: [edge, availability]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {equals: "router"}
+      event: {regex: "(?i)(line protocol.*(down|up)){3,}"}
+  alert: {title: "Edge: route flap critical iface"}
+  enabled: true
+
+- id: 19747
+  level: 11
+  description: "5G: Network slice misuse - workload pinned to wrong SST"
+  groups: [edge, 5g, slicing]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {equals: "amf"}
+      event: {regex: "(?i)slice.*mismatch"}
+  alert: {title: "5G: slice misuse"}
+  enabled: true
+
+- id: 19748
+  level: 11
+  description: "Edge: container drift - running image differs from manifest"
+  groups: [edge, kubernetes, integrity]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "image_drift_scan"}
+      result: {equals: "drift_detected"}
+  alert: {title: "Edge: container image drift"}
+  enabled: true
+
+- id: 19749
+  level: 12
+  description: "Edge: SSH key added to edge router from off-corp IP"
+  groups: [edge, identity]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "router"}
+      event: {equals: "ssh_key_added"}
+      src_ip_corp: {equals: "false"}
+  alert: {title: "Edge: SSH key added from off-corp IP"}
+  enabled: true

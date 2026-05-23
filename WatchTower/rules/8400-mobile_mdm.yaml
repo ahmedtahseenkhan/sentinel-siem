@@ -1,0 +1,512 @@
+# Mobile + MDM detection rules (Intune, Jamf, Workspace ONE, Android Enterprise, iOS)
+# IDs 19630-19669 (40 rules)
+
+- id: 19630
+  level: 9
+  description: "MDM: Device enrolled outside business hours"
+  groups: [mobile, mdm, anomaly]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(intune|jamf|workspace_one)"}
+      operation: {equals: "enroll"}
+      hour: {regex: "^([01]?[0-5]|2[2-3])$"}
+  alert: {title: "MDM: off-hours device enrollment"}
+  enabled: true
+
+- id: 19631
+  level: 11
+  description: "MDM: Device jailbroken/rooted reported by agent"
+  groups: [mobile, mdm, integrity]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(intune|jamf|workspace_one)"}
+      compliance_state: {regex: "(?i)(jailbroken|rooted|integrity_failed)"}
+  mitre:
+    - {tactic_id: "TA0004", technique_id: "T1404", technique_name: "Exploitation for Privilege Escalation"}
+  alert: {title: "MDM: jailbroken/rooted device"}
+  enabled: true
+
+- id: 19632
+  level: 10
+  description: "MDM: Compliance policy removed by admin"
+  groups: [mobile, mdm]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(intune|jamf)"}
+      operation: {regex: "(?i)(delete|remove)_(compliance|configuration)_policy"}
+  alert: {title: "MDM: compliance policy removed"}
+  enabled: true
+
+- id: 19633
+  level: 10
+  description: "MDM: Bulk device wipe initiated"
+  groups: [mobile, mdm]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(intune|jamf|workspace_one)"}
+      operation: {equals: "wipe"}
+  correlation: {window: "10m", threshold: 5, group_by: ["admin_user"]}
+  alert: {title: "MDM: bulk device wipe"}
+  enabled: true
+
+- id: 19634
+  level: 11
+  description: "MDM: Admin role assigned outside change window"
+  groups: [mobile, mdm, identity]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(intune|jamf)"}
+      operation: {regex: "(?i)assign.*admin"}
+      change_window: {equals: "false"}
+  alert: {title: "MDM: admin role grant off-window"}
+  enabled: true
+
+- id: 19635
+  level: 11
+  description: "iOS: profile installed manually (sideloaded) bypassing MDM"
+  groups: [mobile, ios, integrity]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "ios_supervised"}
+      profile_source: {equals: "manual"}
+      signed_by_mdm: {equals: "false"}
+  alert: {title: "iOS: sideloaded configuration profile"}
+  enabled: true
+
+- id: 19636
+  level: 11
+  description: "iOS: TestFlight beta app installed on managed device"
+  groups: [mobile, ios, supply_chain]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "mdm_inventory"}
+      install_source: {equals: "testflight"}
+      device_role: {regex: "(?i)(executive|finance|engineering)"}
+  alert: {title: "iOS: TestFlight on sensitive role device"}
+  enabled: true
+
+- id: 19637
+  level: 10
+  description: "iOS: VPN profile pushed from untrusted source"
+  groups: [mobile, ios, vpn]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "ios_supervised"}
+      profile_type: {equals: "VPN"}
+      signed_by: {regex: "(?i)(?!.*mdm).+"}
+  alert: {title: "iOS: untrusted VPN profile"}
+  enabled: true
+
+- id: 19638
+  level: 11
+  description: "Android: Sideloaded APK (unknown sources enabled)"
+  groups: [mobile, android]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "android_enterprise"}
+      install_source: {regex: "(?i)(unknown|adb|sideload)"}
+  mitre:
+    - {tactic_id: "TA0001", technique_id: "T1476", technique_name: "Deliver Malicious App via Other Means"}
+  alert: {title: "Android: sideloaded APK"}
+  enabled: true
+
+- id: 19639
+  level: 11
+  description: "Android: Accessibility service granted to untrusted app"
+  groups: [mobile, android, banking_trojan]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "android_enterprise"}
+      permission: {equals: "android.permission.BIND_ACCESSIBILITY_SERVICE"}
+      app_trust: {equals: "untrusted"}
+  alert: {title: "Android: accessibility service to untrusted app"}
+  enabled: true
+
+- id: 19640
+  level: 10
+  description: "Android: Device admin rights granted to non-MDM app"
+  groups: [mobile, android]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "android_enterprise"}
+      permission: {regex: "(?i)BIND_DEVICE_ADMIN"}
+      app_publisher: {regex: "(?i)(?!.*google|samsung|mdm).+"}
+  alert: {title: "Android: device admin to non-MDM app"}
+  enabled: true
+
+- id: 19641
+  level: 11
+  description: "Mobile: Outbound SMS to premium number"
+  groups: [mobile, fraud]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "sms_audit"}
+      direction: {equals: "outbound"}
+      number_class: {equals: "premium"}
+  alert: {title: "Mobile: premium SMS sent"}
+  enabled: true
+
+- id: 19642
+  level: 10
+  description: "Mobile: Excessive data usage spike"
+  groups: [mobile, anomaly, exfil]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "mdm_telemetry"}
+      bytes_24h: {regex: "^([5-9][0-9]{9}|[1-9][0-9]{10,})$"}
+  alert: {title: "Mobile: >5GB/day data usage"}
+  enabled: true
+
+- id: 19643
+  level: 11
+  description: "Mobile: Corporate app accessed after SIM swap"
+  groups: [mobile, identity]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "carrier_alert"}
+      event: {equals: "sim_swap"}
+  correlation: {window: "30m", threshold: 1, group_by: ["user"]}
+  alert: {title: "Mobile: corp app login after SIM swap"}
+  enabled: true
+
+- id: 19644
+  level: 11
+  description: "iOS: MDM unenrollment by user"
+  groups: [mobile, ios]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(intune|jamf)"}
+      operation: {equals: "unenroll"}
+      initiated_by: {equals: "user"}
+  alert: {title: "iOS: user-initiated MDM unenroll"}
+  enabled: true
+
+- id: 19645
+  level: 11
+  description: "Android: factory reset protection (FRP) disabled"
+  groups: [mobile, android]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "android_enterprise"}
+      setting: {equals: "frp"}
+      value: {equals: "disabled"}
+  alert: {title: "Android: FRP disabled"}
+  enabled: true
+
+- id: 19646
+  level: 10
+  description: "Mobile: SafetyNet / Play Integrity attestation failed"
+  groups: [mobile, android, integrity]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "play_integrity"}
+      verdict: {regex: "(?i)(fail|unknown)"}
+  alert: {title: "Android: Play Integrity attestation fail"}
+  enabled: true
+
+- id: 19647
+  level: 10
+  description: "iOS: DeviceCheck / App Attest failed for corp app"
+  groups: [mobile, ios, integrity]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "ios_app_attest"}
+      result: {equals: "fail"}
+  alert: {title: "iOS: App Attest fail"}
+  enabled: true
+
+- id: 19648
+  level: 10
+  description: "Mobile: Bluetooth pairing with unknown peripheral (BLE keyboard)"
+  groups: [mobile, bluetooth]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "mdm_telemetry"}
+      bluetooth_class: {regex: "(?i)(keyboard|HID)"}
+      paired_known: {equals: "false"}
+  alert: {title: "Mobile: unknown HID Bluetooth pairing"}
+  enabled: true
+
+- id: 19649
+  level: 11
+  description: "Mobile: MDM admin enrolling personal Apple ID"
+  groups: [mobile, ios, identity]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "jamf"}
+      operation: {equals: "set_apple_id"}
+      apple_id_domain: {regex: "(?i)(icloud|me)\\.com$"}
+  alert: {title: "iOS: personal Apple ID on managed device"}
+  enabled: true
+
+- id: 19650
+  level: 11
+  description: "Mobile: corporate mailbox config removed (data wipe avoidance)"
+  groups: [mobile, exfil]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(intune|jamf)"}
+      operation: {equals: "remove_email_profile"}
+      initiated_by: {equals: "user"}
+  alert: {title: "Mobile: user removed corp email profile"}
+  enabled: true
+
+- id: 19651
+  level: 10
+  description: "Android: ADB enabled on managed device"
+  groups: [mobile, android]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "android_enterprise"}
+      setting: {equals: "adb_enabled"}
+      value: {equals: "true"}
+  alert: {title: "Android: ADB enabled"}
+  enabled: true
+
+- id: 19652
+  level: 10
+  description: "iOS: developer mode enabled (iOS 16+)"
+  groups: [mobile, ios]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "ios_supervised"}
+      developer_mode: {equals: "true"}
+  alert: {title: "iOS: developer mode enabled"}
+  enabled: true
+
+- id: 19653
+  level: 11
+  description: "Mobile: Mobile spyware indicators (Pegasus/Predator artifacts)"
+  groups: [mobile, spyware]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "mvt_scan"}
+      indicator_tag: {regex: "(?i)(pegasus|predator|chrysaor|hermit|reign)"}
+  alert: {title: "Mobile: spyware artifact found"}
+  enabled: true
+
+- id: 19654
+  level: 11
+  description: "Mobile: Lockdown mode disabled on high-risk role device"
+  groups: [mobile, ios]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "ios_supervised"}
+      lockdown_mode: {equals: "false"}
+      device_role: {regex: "(?i)(executive|board|journalist|legal)"}
+  alert: {title: "iOS: Lockdown mode off on sensitive device"}
+  enabled: true
+
+- id: 19655
+  level: 10
+  description: "Mobile: Excessive failed device passcode attempts"
+  groups: [mobile, anomaly]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "mdm_telemetry"}
+      event: {equals: "passcode_fail"}
+  correlation: {window: "5m", threshold: 5, group_by: ["device"]}
+  alert: {title: "Mobile: repeated passcode failures"}
+  enabled: true
+
+- id: 19656
+  level: 10
+  description: "Android: Work Profile removed by user"
+  groups: [mobile, android]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "android_enterprise"}
+      operation: {equals: "work_profile_removed"}
+      initiated_by: {equals: "user"}
+  alert: {title: "Android: work profile removed"}
+  enabled: true
+
+- id: 19657
+  level: 11
+  description: "Mobile: device location anomaly (impossible travel)"
+  groups: [mobile, geo, anomaly]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "mdm_telemetry"}
+      impossible_travel: {equals: "true"}
+  alert: {title: "Mobile: impossible travel between MDM heartbeats"}
+  enabled: true
+
+- id: 19658
+  level: 9
+  description: "Mobile: OS version >12 months behind latest"
+  groups: [mobile, patching]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "mdm_inventory"}
+      os_age_days: {regex: "^(36[6-9]|3[7-9][0-9]|[4-9][0-9]{2}|[1-9][0-9]{3,})$"}
+  alert: {title: "Mobile: OS >12 months out of date"}
+  enabled: true
+
+- id: 19659
+  level: 11
+  description: "Mobile: Stalkerware app installed (named indicator)"
+  groups: [mobile, spyware]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "mdm_inventory"}
+      app_id: {regex: "(?i)(mspy|cocospy|flexispy|spyzie|hoverwatch|spyera)"}
+  alert: {title: "Mobile: stalkerware app present"}
+  enabled: true
+
+- id: 19660
+  level: 11
+  description: "Mobile: VPN configured to unknown IPSec endpoint"
+  groups: [mobile, vpn]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "mdm_inventory"}
+      vpn_endpoint_corp: {equals: "false"}
+  alert: {title: "Mobile: non-corp VPN endpoint"}
+  enabled: true
+
+- id: 19661
+  level: 10
+  description: "Android: Accessibility-based overlay attack pattern"
+  groups: [mobile, android, banking_trojan]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "android_enterprise"}
+      permissions_set: {regex: "BIND_ACCESSIBILITY_SERVICE.*SYSTEM_ALERT_WINDOW|SYSTEM_ALERT_WINDOW.*BIND_ACCESSIBILITY_SERVICE"}
+  alert: {title: "Android: overlay+accessibility combo"}
+  enabled: true
+
+- id: 19662
+  level: 11
+  description: "Android: Banking trojan family signature (Cerberus/Anatsa/Hydra)"
+  groups: [mobile, android, banking_trojan]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "mtd_scan"}
+      family: {regex: "(?i)(cerberus|anatsa|hydra|sharkbot|brata|godfather)"}
+  alert: {title: "Android: banking trojan detected"}
+  enabled: true
+
+- id: 19663
+  level: 11
+  description: "MDM: API token generated and used from non-corp IP"
+  groups: [mobile, mdm, identity]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(intune|jamf)"}
+      api_call: {equals: "true"}
+      src_ip_corp: {equals: "false"}
+  correlation: {window: "5m", threshold: 1}
+  alert: {title: "MDM: API call from off-corp IP"}
+  enabled: true
+
+- id: 19664
+  level: 9
+  description: "Mobile: NFC payment terminal interactions outside business country"
+  groups: [mobile, fraud, geo]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "mdm_telemetry"}
+      nfc_event: {equals: "payment"}
+      country: {regex: "(?i)(?!.*(US|GB|EU)).+"}
+  alert: {title: "Mobile: NFC payment in unusual country"}
+  enabled: true
+
+- id: 19665
+  level: 11
+  description: "MDM: shared admin credential used from new browser/UA"
+  groups: [mobile, mdm, identity]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(intune|jamf)"}
+      user_agent_seen_before: {equals: "false"}
+      role: {equals: "admin"}
+  alert: {title: "MDM: admin login from unknown UA"}
+  enabled: true
+
+- id: 19666
+  level: 10
+  description: "Mobile: app signature change between MDM scans (repackaging)"
+  groups: [mobile, integrity]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "mdm_inventory"}
+      app_signature_changed: {equals: "true"}
+  alert: {title: "Mobile: app signature changed in place"}
+  enabled: true
+
+- id: 19667
+  level: 11
+  description: "iOS: AirDrop receive from non-contact while device unlocked"
+  groups: [mobile, ios, dlp]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "ios_supervised"}
+      airdrop_event: {equals: "receive"}
+      from_contact: {equals: "false"}
+  alert: {title: "iOS: AirDrop from stranger"}
+  enabled: true
+
+- id: 19668
+  level: 11
+  description: "Mobile: Excessive cert-pinning bypass detected by app"
+  groups: [mobile, mitm]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "mobile_app_telemetry"}
+      tls_validation: {equals: "fail"}
+  correlation: {window: "10m", threshold: 5, group_by: ["device"]}
+  alert: {title: "Mobile: repeated TLS pinning failures"}
+  enabled: true
+
+- id: 19669
+  level: 11
+  description: "MDM: Apple Push Notification certificate expired"
+  groups: [mobile, mdm, availability]
+  match:
+    type: "log.file"
+    fields:
+      source: {regex: "(?i)(intune|jamf)"}
+      cert_type: {equals: "APNs"}
+      status: {equals: "expired"}
+  alert: {title: "MDM: APNs cert expired (push broken)"}
+  enabled: true

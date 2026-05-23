@@ -1,0 +1,385 @@
+# IoT + edge gateway detection rules (cameras, smart devices, printers, MQTT, CoAP, Zigbee, edge gateways)
+# IDs 19670-19699 (30 rules)
+
+- id: 19670
+  level: 10
+  description: "IoT: Telnet login attempt on IoT device"
+  groups: [iot]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "iot"}
+      protocol: {equals: "telnet"}
+      auth_attempt: {equals: "true"}
+  alert: {title: "IoT: telnet auth attempt"}
+  enabled: true
+
+- id: 19671
+  level: 11
+  description: "IoT: Mirai-style default credential dictionary auth"
+  groups: [iot, malware]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "iot"}
+      username: {regex: "(?i)^(root|admin|user|guest|support|service|888888|666666)$"}
+      password: {regex: "(?i)^(root|admin|password|12345|xc3511|vizxv|default)$"}
+  mitre:
+    - {tactic_id: "TA0001", technique_id: "T1078.001", technique_name: "Default Accounts"}
+  alert: {title: "IoT: Mirai default cred attempt"}
+  enabled: true
+
+- id: 19672
+  level: 11
+  description: "IoT: UPnP IGD external port open from inside (cryptominer)"
+  groups: [iot]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "ssdp"}
+      action: {equals: "addportmapping"}
+      external_port: {regex: "^(3333|7777|14444|14433)$"}
+  alert: {title: "IoT: UPnP miner port mapping"}
+  enabled: true
+
+- id: 19673
+  level: 11
+  description: "IoT: Camera RTSP unauthenticated access"
+  groups: [iot, camera]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "rtsp"}
+      auth: {equals: "none"}
+      method: {regex: "DESCRIBE|SETUP|PLAY"}
+  alert: {title: "IoT: unauth RTSP camera access"}
+  enabled: true
+
+- id: 19674
+  level: 11
+  description: "IoT: Hikvision / Dahua web-shell exploitation pattern"
+  groups: [iot, camera, exploit]
+  match:
+    type: "log.file"
+    fields:
+      device_class: {regex: "(?i)(hikvision|dahua|amcrest)"}
+      uri: {regex: "(?i)(language=|magicBox\\.cgi|cgi-bin/.+&.+=)"}
+  alert: {title: "IoT: camera CGI exploit pattern"}
+  enabled: true
+
+- id: 19675
+  level: 11
+  description: "IoT: MQTT publish to broker from unknown client"
+  groups: [iot, mqtt]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "mqtt"}
+      client_id_known: {equals: "false"}
+      action: {equals: "publish"}
+  alert: {title: "IoT: unknown MQTT client publishing"}
+  enabled: true
+
+- id: 19676
+  level: 11
+  description: "IoT: MQTT broker allowing anonymous connect"
+  groups: [iot, mqtt]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "mqtt"}
+      allow_anonymous: {equals: "true"}
+  alert: {title: "IoT: MQTT broker anonymous"}
+  enabled: true
+
+- id: 19677
+  level: 10
+  description: "IoT: CoAP request with large payload (amplification candidate)"
+  groups: [iot, coap]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "coap"}
+      response_size: {regex: "^([5-9][0-9]{3,}|[1-9][0-9]{4,})$"}
+  alert: {title: "IoT: CoAP amplification potential"}
+  enabled: true
+
+- id: 19678
+  level: 11
+  description: "Edge: TLS certificate not pinned on edge gateway -> MITM"
+  groups: [iot, edge, mitm]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "edge_gateway"}
+      tls_pin_match: {equals: "false"}
+  alert: {title: "Edge: cert pin mismatch"}
+  enabled: true
+
+- id: 19679
+  level: 11
+  description: "Printer: PJL job containing executable / script content"
+  groups: [iot, printer]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {regex: "(?i)(ipp|lpd|pjl)"}
+      content: {regex: "(?i)(\\x4d\\x5a|#!/bin/|<script)"}
+  alert: {title: "Printer: malicious print payload"}
+  enabled: true
+
+- id: 19680
+  level: 11
+  description: "Printer: firmware update from non-vendor source"
+  groups: [iot, printer, supply_chain]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "printer"}
+      event: {equals: "firmware_update"}
+      source_url_vendor: {equals: "false"}
+  alert: {title: "Printer: third-party firmware update"}
+  enabled: true
+
+- id: 19681
+  level: 10
+  description: "IoT: Zigbee / Z-Wave network key change"
+  groups: [iot, zigbee]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {regex: "(?i)(zigbee|z-wave)"}
+      event: {regex: "(?i)(network key changed|join with new key)"}
+  alert: {title: "IoT: Zigbee network key changed"}
+  enabled: true
+
+- id: 19682
+  level: 11
+  description: "IoT: Smart device beaconing to non-vendor cloud endpoint"
+  groups: [iot, c2]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "iot"}
+      dst_domain_vendor: {equals: "false"}
+      dst_port: {regex: "^(443|8883|5683)$"}
+  correlation: {window: "30m", threshold: 30, group_by: ["device"]}
+  alert: {title: "IoT: beaconing to non-vendor cloud"}
+  enabled: true
+
+- id: 19683
+  level: 11
+  description: "IoT: Mirai botnet C2 indicator (specific port + small payload)"
+  groups: [iot, botnet]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "iot"}
+      dst_port: {regex: "^(23|2323|7547|5555)$"}
+      payload_size: {regex: "^[0-9]{1,3}$"}
+  correlation: {window: "5m", threshold: 5, group_by: ["src_ip"]}
+  alert: {title: "IoT: Mirai-like beacon"}
+  enabled: true
+
+- id: 19684
+  level: 10
+  description: "IoT: BACnet / Modbus traffic crossing IT/OT boundary"
+  groups: [iot, ot, segmentation]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {regex: "(?i)(bacnet|modbus)"}
+      src_zone: {equals: "it"}
+      dst_zone: {equals: "ot"}
+  alert: {title: "IoT/OT: BACnet/Modbus from IT side"}
+  enabled: true
+
+- id: 19685
+  level: 11
+  description: "Edge: Raspberry Pi default 'pi' user login from internet"
+  groups: [iot, edge]
+  match:
+    type: "logs.syslog"
+    fields:
+      program: {equals: "sshd"}
+      user: {equals: "pi"}
+      src_ip_internal: {equals: "false"}
+  alert: {title: "Edge: default pi user login from WAN"}
+  enabled: true
+
+- id: 19686
+  level: 11
+  description: "IoT: Camera SD card export pattern (ONVIF GetRecordings burst)"
+  groups: [iot, camera, exfil]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "onvif"}
+      action: {equals: "GetRecordings"}
+  correlation: {window: "5m", threshold: 50, group_by: ["src_ip"]}
+  alert: {title: "IoT: ONVIF recording export burst"}
+  enabled: true
+
+- id: 19687
+  level: 11
+  description: "IoT: Smart TV / Chromecast loading non-vendor firmware OTA"
+  groups: [iot, supply_chain]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {regex: "(?i)(smart_tv|chromecast|firestick)"}
+      ota_source_vendor: {equals: "false"}
+  alert: {title: "IoT: smart TV third-party OTA"}
+  enabled: true
+
+- id: 19688
+  level: 10
+  description: "IoT: HTTP basic auth used to manage smart device"
+  groups: [iot]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "iot"}
+      protocol: {equals: "http"}
+      auth_scheme: {equals: "basic"}
+  alert: {title: "IoT: HTTP basic auth on device"}
+  enabled: true
+
+- id: 19689
+  level: 11
+  description: "IoT: Voice assistant making outbound call to unknown number"
+  groups: [iot, voice]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {regex: "(?i)(echo|alexa|google_home)"}
+      event: {equals: "call_placed"}
+      contact_known: {equals: "false"}
+  alert: {title: "IoT: voice assistant unknown-number call"}
+  enabled: true
+
+- id: 19690
+  level: 11
+  description: "Edge: containerized gateway exposing docker.sock to wider network"
+  groups: [iot, edge, docker]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "tcp"}
+      dst_port: {equals: "2375"}
+      direction: {equals: "ingress"}
+  alert: {title: "Edge: docker daemon TCP exposed"}
+  enabled: true
+
+- id: 19691
+  level: 11
+  description: "IoT: Solar inverter / EV charger management exposed (vendor cloud bypass)"
+  groups: [iot, ot]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {regex: "(?i)(inverter|ev_charger|solar)"}
+      mgmt_exposed_wan: {equals: "true"}
+  alert: {title: "IoT: energy device mgmt exposed"}
+  enabled: true
+
+- id: 19692
+  level: 10
+  description: "IoT: SNMP v1/v2c community 'public' on device"
+  groups: [iot]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {regex: "(?i)snmp(v[12]c?)?"}
+      community: {regex: "^(public|private)$"}
+  alert: {title: "IoT: SNMP default community"}
+  enabled: true
+
+- id: 19693
+  level: 11
+  description: "IoT: Camera config download via ISAPI / SDK from unusual IP"
+  groups: [iot, camera]
+  match:
+    type: "log.file"
+    fields:
+      device_class: {regex: "(?i)(hikvision|dahua)"}
+      uri: {regex: "(?i)/ISAPI/(System|Security)/configurationData"}
+      src_ip_corp: {equals: "false"}
+  alert: {title: "IoT: camera config download off-corp"}
+  enabled: true
+
+- id: 19694
+  level: 11
+  description: "IoT: medical IoT - infusion pump command from non-EHR host"
+  groups: [iot, medical, ot]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "infusion_pump"}
+      command: {regex: "(?i)(rate change|bolus)"}
+      src_app: {regex: "(?i)(?!.*ehr|epic|cerner).+"}
+  alert: {title: "Medical IoT: pump command from non-EHR source"}
+  enabled: true
+
+- id: 19695
+  level: 11
+  description: "IoT: HVAC building automation system access from internet"
+  groups: [iot, ot]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "hvac_bas"}
+      src_ip_internal: {equals: "false"}
+      action: {regex: "(?i)(login|setpoint change)"}
+  alert: {title: "IoT: HVAC mgmt from WAN"}
+  enabled: true
+
+- id: 19696
+  level: 10
+  description: "Edge: edge AI device exporting model weights to non-corp dest"
+  groups: [iot, edge, exfil]
+  match:
+    type: "log.file"
+    fields:
+      device_class: {equals: "edge_ai"}
+      action: {equals: "model_export"}
+      dst_corp: {equals: "false"}
+  alert: {title: "Edge: AI model exfil"}
+  enabled: true
+
+- id: 19697
+  level: 11
+  description: "IoT: Mass beacon to known C2 from many low-power devices"
+  groups: [iot, botnet, c2]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "iot"}
+      dst_ip_blocklisted: {equals: "true"}
+  correlation: {window: "10m", threshold: 10, group_by: ["dst_ip"]}
+  alert: {title: "IoT: botnet beacon swarm"}
+  enabled: true
+
+- id: 19698
+  level: 11
+  description: "IoT: Voice command issued via ultrasonic / inaudible (DolphinAttack pattern)"
+  groups: [iot, voice]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {regex: "(?i)(alexa|google_home|siri)"}
+      audio_freq_khz: {regex: "^(2[0-9]|[3-9][0-9])$"}
+  alert: {title: "IoT: inaudible voice command"}
+  enabled: true
+
+- id: 19699
+  level: 11
+  description: "Edge gateway: shell escape attempt from MQTT message"
+  groups: [iot, edge, mqtt]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "mqtt"}
+      payload: {regex: "(?i)(\\$\\(|`|;\\s*(rm|sh|wget|curl))"}
+  alert: {title: "Edge: MQTT shell escape pattern"}
+  enabled: true

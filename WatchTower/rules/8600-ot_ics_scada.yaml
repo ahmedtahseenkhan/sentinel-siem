@@ -1,0 +1,387 @@
+# OT / ICS / SCADA detection rules (Purdue model L0-L3)
+# Modbus, DNP3, IEC-104, S7, BACnet, EtherNet/IP, OPC UA
+# IDs 19700-19729 (30 rules)
+
+- id: 19700
+  level: 11
+  description: "ICS: Modbus function code 8 (diagnostics) from non-engineering host"
+  groups: [ot, ics, modbus]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "modbus"}
+      function_code: {equals: "8"}
+      src_role: {regex: "(?i)(?!engineering|scada).+"}
+  alert: {title: "ICS: Modbus diagnostic command off-role"}
+  enabled: true
+
+- id: 19701
+  level: 12
+  description: "ICS: Modbus write to coil/holding register from IT zone"
+  groups: [ot, ics, modbus, segmentation]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "modbus"}
+      function_code: {regex: "^(5|6|15|16|22|23)$"}
+      src_zone: {equals: "it"}
+  mitre:
+    - {tactic_id: "TA0104", technique_id: "T0855", technique_name: "Unauthorized Command Message"}
+  alert: {title: "ICS: Modbus write from IT zone"}
+  enabled: true
+
+- id: 19702
+  level: 12
+  description: "ICS: Modbus stop CPU (function code 11/12 abuse for older PLCs)"
+  groups: [ot, ics, modbus]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "modbus"}
+      function_code: {regex: "^(11|12|17)$"}
+      hour: {regex: "^([01]?[0-5]|2[2-3])$"}
+  alert: {title: "ICS: Modbus diagnostic off-hours"}
+  enabled: true
+
+- id: 19703
+  level: 12
+  description: "ICS: DNP3 SELECT then OPERATE (control sequence)"
+  groups: [ot, ics, dnp3]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "dnp3"}
+      function_code: {regex: "^(3|4)$"}
+  correlation: {window: "30s", threshold: 1, group_by: ["src_ip", "dst_ip"]}
+  alert: {title: "ICS: DNP3 SELECT-OPERATE"}
+  enabled: true
+
+- id: 19704
+  level: 12
+  description: "ICS: DNP3 cold restart (function code 13) issued"
+  groups: [ot, ics, dnp3]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "dnp3"}
+      function_code: {equals: "13"}
+  alert: {title: "ICS: DNP3 cold restart"}
+  enabled: true
+
+- id: 19705
+  level: 12
+  description: "ICS: IEC-104 C_SC_NA_1 single command (Industroyer signature)"
+  groups: [ot, ics, iec104]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {regex: "iec.?104"}
+      asdu_type: {regex: "(?i)C_SC_NA_1|C_DC_NA_1|C_RC_NA_1"}
+  alert: {title: "ICS: IEC-104 control command"}
+  enabled: true
+
+- id: 19706
+  level: 12
+  description: "ICS: S7Comm STOP CPU function"
+  groups: [ot, ics, s7]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "s7"}
+      function: {regex: "(?i)plc_stop|cpu_stop"}
+  mitre:
+    - {tactic_id: "TA0105", technique_id: "T0814", technique_name: "Denial of Service"}
+  alert: {title: "ICS: S7 STOP CPU"}
+  enabled: true
+
+- id: 19707
+  level: 12
+  description: "ICS: S7 download block (program change)"
+  groups: [ot, ics, s7]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "s7"}
+      function: {regex: "(?i)(download_block|insert_block)"}
+  mitre:
+    - {tactic_id: "TA0104", technique_id: "T0843", technique_name: "Program Download"}
+  alert: {title: "ICS: S7 program download"}
+  enabled: true
+
+- id: 19708
+  level: 11
+  description: "ICS: EtherNet/IP CIP forward open from non-engineering host"
+  groups: [ot, ics, enip]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "enip"}
+      service: {equals: "ForwardOpen"}
+      src_role: {regex: "(?i)(?!engineering).+"}
+  alert: {title: "ICS: EtherNet/IP unusual ForwardOpen"}
+  enabled: true
+
+- id: 19709
+  level: 12
+  description: "ICS: EtherNet/IP service 0x5B (program upload) - logic theft"
+  groups: [ot, ics, enip, exfil]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "enip"}
+      service_code: {equals: "0x5B"}
+  alert: {title: "ICS: EtherNet/IP program upload"}
+  enabled: true
+
+- id: 19710
+  level: 11
+  description: "ICS: BACnet WriteProperty to setpoint by non-BAS host"
+  groups: [ot, bacnet]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "bacnet"}
+      service: {equals: "WriteProperty"}
+      src_role: {regex: "(?i)(?!bas|hvac|engineering).+"}
+  alert: {title: "BACnet: WriteProperty off-role"}
+  enabled: true
+
+- id: 19711
+  level: 11
+  description: "ICS: OPC UA WriteValue request from outside OPC client subnet"
+  groups: [ot, opcua]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "opcua"}
+      service: {equals: "Write"}
+      src_subnet_opc: {equals: "false"}
+  alert: {title: "OPC UA: Write from non-OPC subnet"}
+  enabled: true
+
+- id: 19712
+  level: 11
+  description: "ICS: PLC vendor mode change to RUN/PROG via panel"
+  groups: [ot, ics]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "plc"}
+      event: {regex: "(?i)(mode change|key switch)"}
+  alert: {title: "ICS: PLC key-switch mode change"}
+  enabled: true
+
+- id: 19713
+  level: 11
+  description: "ICS: Engineering workstation file transfer to multiple PLCs"
+  groups: [ot, ics, lateral]
+  match:
+    type: "logs.syslog"
+    fields:
+      src_role: {equals: "engineering_ws"}
+      action: {regex: "(?i)file_transfer|download_block"}
+  correlation: {window: "30m", threshold: 5, group_by: ["src_ip"]}
+  alert: {title: "ICS: mass PLC update from EW"}
+  enabled: true
+
+- id: 19714
+  level: 12
+  description: "ICS: HMI alarm flood / suppression pattern"
+  groups: [ot, hmi]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "hmi"}
+      event: {regex: "(?i)(alarm suppressed|notification disabled)"}
+  alert: {title: "ICS: HMI alarms suppressed"}
+  enabled: true
+
+- id: 19715
+  level: 12
+  description: "ICS: Sensor reading mismatch with redundant sensor"
+  groups: [ot, integrity]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "sensor"}
+      event: {equals: "redundancy_mismatch"}
+  alert: {title: "ICS: sensor redundancy mismatch"}
+  enabled: true
+
+- id: 19716
+  level: 11
+  description: "ICS: ICCP / IEC 60870-6 data exchange with new control center"
+  groups: [ot, iccp]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {regex: "(?i)(iccp|tase\\.2)"}
+      peer_known: {equals: "false"}
+  alert: {title: "ICS: ICCP new peer"}
+  enabled: true
+
+- id: 19717
+  level: 11
+  description: "ICS: Profinet alarm packet flood"
+  groups: [ot, profinet]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "profinet"}
+      packet_type: {equals: "alarm"}
+  correlation: {window: "1m", threshold: 50, group_by: ["src_ip"]}
+  alert: {title: "ICS: Profinet alarm flood"}
+  enabled: true
+
+- id: 19718
+  level: 12
+  description: "ICS: Safety instrumented system (SIS) bypass command"
+  groups: [ot, sis, safety]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "sis"}
+      event: {regex: "(?i)(bypass|override|inhibit)"}
+  alert: {title: "ICS: SIS bypass command"}
+  enabled: true
+
+- id: 19719
+  level: 12
+  description: "ICS: TRITON/TRISIS-style payload targeting Triconex SIS"
+  groups: [ot, sis, triton]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "triconex"}
+      event: {regex: "(?i)(unauthenticated TR_GET|TS_cnames\\.bin|imain\\.bin)"}
+  mitre:
+    - {tactic_id: "TA0105", technique_id: "T0880", technique_name: "Loss of Safety"}
+  alert: {title: "ICS: TRITON-like payload"}
+  enabled: true
+
+- id: 19720
+  level: 11
+  description: "ICS: VPN tunnel from vendor support to OT directly (jump host bypass)"
+  groups: [ot, segmentation, vendor]
+  match:
+    type: "log.file"
+    fields:
+      source: {equals: "vpn"}
+      dst_zone: {equals: "ot"}
+      jumphost_used: {equals: "false"}
+  alert: {title: "ICS: vendor VPN bypassing jumphost"}
+  enabled: true
+
+- id: 19721
+  level: 11
+  description: "ICS: USB device inserted into engineering workstation"
+  groups: [ot, removable]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 6416}
+      device_class: {regex: "(?i)(usb|removable)"}
+      host_role: {equals: "engineering_ws"}
+  alert: {title: "ICS: USB on engineering WS"}
+  enabled: true
+
+- id: 19722
+  level: 11
+  description: "ICS: HMI software running unsupported OS (XP/Win7)"
+  groups: [ot, hmi, patching]
+  match:
+    type: "log.file"
+    fields:
+      device_class: {equals: "hmi"}
+      os: {regex: "(?i)(windows xp|windows 7|windows server 2003|2008)"}
+  alert: {title: "ICS: HMI on EOL OS"}
+  enabled: true
+
+- id: 19723
+  level: 11
+  description: "ICS: BACnet 'WhoIs' broadcast from unusual source (reconnaissance)"
+  groups: [ot, bacnet, recon]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "bacnet"}
+      service: {equals: "WhoIs"}
+      src_role: {regex: "(?i)(?!bas|hvac).+"}
+  correlation: {window: "5m", threshold: 5, group_by: ["src_ip"]}
+  alert: {title: "BACnet: WhoIs scan"}
+  enabled: true
+
+- id: 19724
+  level: 12
+  description: "ICS: PIPEDREAM / INCONTROLLER toolkit indicator (Schneider/OMRON)"
+  groups: [ot, pipedream]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_vendor: {regex: "(?i)(schneider|omron|codesys)"}
+      event: {regex: "(?i)(badomen|evilscholar|mousehole|dustpan|incontroller)"}
+  alert: {title: "ICS: PIPEDREAM indicator"}
+  enabled: true
+
+- id: 19725
+  level: 11
+  description: "ICS: GE Cimplicity / iFIX project file copied from OT to IT"
+  groups: [ot, exfil]
+  match:
+    type: "logs.syslog"
+    fields:
+      source: {equals: "fim"}
+      ext_to: {regex: "(?i)\\.(cwx|imdb|hist|prj)$"}
+      dst_zone: {equals: "it"}
+  alert: {title: "ICS: HMI project exfil"}
+  enabled: true
+
+- id: 19726
+  level: 11
+  description: "ICS: Modbus reading large register block (recon / data theft)"
+  groups: [ot, modbus, recon]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "modbus"}
+      function_code: {regex: "^(3|4)$"}
+      register_count: {regex: "^([1-9][0-9]{2,})$"}
+  alert: {title: "ICS: Modbus large register read"}
+  enabled: true
+
+- id: 19727
+  level: 11
+  description: "ICS: PLC firmware upload (overwrite firmware)"
+  groups: [ot, firmware]
+  match:
+    type: "logs.syslog"
+    fields:
+      device_class: {equals: "plc"}
+      event: {regex: "(?i)(firmware_upload|os_update)"}
+  alert: {title: "ICS: PLC firmware update"}
+  enabled: true
+
+- id: 19728
+  level: 12
+  description: "ICS: Industroyer/CRASHOVERRIDE protocol module loaded"
+  groups: [ot, industroyer]
+  match:
+    type: "log.eventlog"
+    fields:
+      event_id: {equals: 7}
+      image_loaded: {regex: "(?i)\\\\(101|104|61850|opc)\\\\.+\\.dll"}
+      image: {regex: "(?i)\\\\(haslo|win32m|crash)\\.exe"}
+  alert: {title: "ICS: Industroyer module loaded"}
+  enabled: true
+
+- id: 19729
+  level: 12
+  description: "ICS: Stuxnet-style centrifuge frequency change pattern (S7 specific)"
+  groups: [ot, stuxnet, s7]
+  match:
+    type: "logs.syslog"
+    fields:
+      protocol: {equals: "s7"}
+      detail: {regex: "(?i)(profibus|centrifuge|freq.*4140|167a)"}
+  alert: {title: "ICS: Stuxnet-like centrifuge pattern"}
+  enabled: true
