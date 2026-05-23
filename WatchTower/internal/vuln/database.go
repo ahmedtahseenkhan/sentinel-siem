@@ -27,6 +27,11 @@ type Vulnerability struct {
 	Severity     string  `json:"severity"`
 	Description  string  `json:"description"`
 	CVSSScore    float64 `json:"cvss_score"`
+	// AffectedOS scopes the vulnerability to a single platform. Values are
+	// runtime.GOOS strings ("linux", "windows", "darwin") or empty for
+	// cross-platform applications. Set by convertNVDItem from CPE part=o
+	// + vendor heuristics; an empty value means "match any OS".
+	AffectedOS string `json:"affected_os,omitempty"`
 }
 
 // Database holds vulnerability data and supports matching against packages.
@@ -107,7 +112,7 @@ func (d *Database) Update(feedURL string) error {
 	// one CVE can now span multiple CPE matches, each a distinct row; keying
 	// on CVEID alone would collapse them.
 	key := func(v Vulnerability) string {
-		return v.CVEID + "|" + v.Vendor + "|" + v.PackageName + "|" + v.AffectedMin + "|" + v.AffectedMax
+		return v.CVEID + "|" + v.Vendor + "|" + v.PackageName + "|" + v.AffectedMin + "|" + v.AffectedMax + "|" + v.AffectedOS
 	}
 	existing := make(map[string]int)
 	for i, v := range d.vulns {
@@ -140,7 +145,15 @@ func (d *Database) Match(packageName, version string) []Vulnerability {
 
 // MatchVendor scopes the lookup to a specific vendor when known. Empty
 // vendor means "match any vendor for this product name" (legacy behavior).
+// Forwards to MatchOS with empty hostOS for back-compat.
 func (d *Database) MatchVendor(vendor, packageName, version string) []Vulnerability {
+	return d.MatchOS("", vendor, packageName, version)
+}
+
+// MatchOS additionally scopes by host OS — a vulnerability tagged
+// AffectedOS="linux" will not match a Windows host. Empty hostOS means
+// "match any OS" (legacy / unknown host).
+func (d *Database) MatchOS(hostOS, vendor, packageName, version string) []Vulnerability {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
@@ -148,6 +161,12 @@ func (d *Database) MatchVendor(vendor, packageName, version string) []Vulnerabil
 	var matches []Vulnerability
 	for _, idx := range indices {
 		v := d.vulns[idx]
+
+		// OS scope: skip when both sides specify and disagree.
+		if hostOS != "" && v.AffectedOS != "" &&
+			!strings.EqualFold(hostOS, v.AffectedOS) {
+			continue
+		}
 
 		// Vendor disambiguation: only enforce when both sides specify one.
 		if vendor != "" && v.Vendor != "" &&

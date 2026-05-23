@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -205,6 +206,7 @@ func convertNVDItem(item NVDCVEItem) []Vulnerability {
 				Severity:    sev,
 				Description: desc,
 				CVSSScore:   score,
+				AffectedOS:  cpeAffectedOS(parts.Part, parts.Vendor),
 			}
 
 			// Lower bound.
@@ -246,15 +248,19 @@ func convertNVDItem(item NVDCVEItem) []Vulnerability {
 }
 
 type cpeParts struct {
+	Part    string // "a" (application), "o" (operating system), "h" (hardware)
 	Vendor  string
 	Product string
 	Version string
 }
 
 func parseCPE(cpe string) cpeParts {
-	// cpe:2.3:a:vendor:product:version:...
+	// cpe:2.3:<part>:<vendor>:<product>:<version>:...
 	parts := splitN(cpe, ':', 6)
 	cp := cpeParts{}
+	if len(parts) >= 3 {
+		cp.Part = parts[2]
+	}
 	if len(parts) >= 5 {
 		cp.Vendor = parts[3]
 		cp.Product = parts[4]
@@ -263,6 +269,28 @@ func parseCPE(cpe string) cpeParts {
 		cp.Version = parts[5]
 	}
 	return cp
+}
+
+// cpeAffectedOS derives a runtime.GOOS-style OS scope from CPE part + vendor.
+// Conservative: returns "" (cross-platform) unless the CPE strongly indicates
+// a single OS. We don't try to scope application CPEs by vendor alone because
+// many Microsoft / Apple apps run on multiple OSes (Office, Teams, Safari
+// Tech Preview, etc.); only the explicit OS CPE part="o" produces a scope.
+func cpeAffectedOS(part, vendor string) string {
+	if part != "o" {
+		return ""
+	}
+	v := strings.ToLower(vendor)
+	switch {
+	case strings.Contains(v, "microsoft"):
+		return "windows"
+	case strings.Contains(v, "apple"):
+		return "darwin"
+	default:
+		// Most everything else under part=o is a Linux distro vendor
+		// (redhat, canonical, debian, suse, oracle, fedoraproject, ...).
+		return "linux"
+	}
 }
 
 func splitN(s string, sep byte, n int) []string {

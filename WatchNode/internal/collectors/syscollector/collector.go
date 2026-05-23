@@ -164,8 +164,13 @@ func (c *Collector) collectPackages(ts time.Time) {
 				fields[k] = v
 			}
 		}
+		// Tag every package with the host OS so the manager-side vuln
+		// matcher can skip CVEs scoped to a different platform (e.g.
+		// avoid alerting a Linux kernel CVE on a Windows host).
+		fields["os"] = runtime.GOOS
 		c.emit(ts, "syscollector.packages", fields, map[string]string{
 			"package_name": pkg["name"],
+			"os":           runtime.GOOS,
 		})
 	}
 }

@@ -33,13 +33,13 @@ type ActiveResponseOrchestrator interface {
 
 // VulnChecker performs vulnerability lookups for package inventory events.
 //
-// CheckPackage takes vendor so the matcher can disambiguate same-named
-// products across vendors (apache:tomcat vs eclipse:tomcat).
-// CheckPackageEvent is retained for backward compatibility — implementations
-// should treat it as vendor="".
+// CheckPackageOS takes hostOS + vendor so the matcher can disambiguate
+// same-named products across vendors and skip CVEs scoped to a different
+// platform. CheckPackage / CheckPackageEvent are retained for back-compat.
 type VulnChecker interface {
 	CheckPackageEvent(agentID, name, version, arch string) []models.Event
 	CheckPackage(agentID, vendor, name, version, arch string) []models.Event
+	CheckPackageOS(agentID, hostOS, vendor, name, version, arch string) []models.Event
 }
 
 // PlaybookHook is called after every stored alert so SOAR playbooks can fire.
@@ -232,8 +232,11 @@ func (e *Engine) process(event *models.Event) {
 		// Vendor comes from dpkg Maintainer / rpm Vendor / Windows registry
 		// Publisher and lets us disambiguate same-named products across vendors.
 		vendor, _ := event.Fields["vendor"].(string)
+		// Host OS from the package event (agent populates this from
+		// runtime.GOOS) so we don't fire Linux CVEs on Windows hosts.
+		hostOS, _ := event.Fields["os"].(string)
 		if name != "" && version != "" {
-			for _, ve := range e.vulnChecker.CheckPackage(event.AgentID, vendor, name, version, arch) {
+			for _, ve := range e.vulnChecker.CheckPackageOS(event.AgentID, hostOS, vendor, name, version, arch) {
 				ve := ve // capture loop variable
 				e.Ingest(&ve)
 			}

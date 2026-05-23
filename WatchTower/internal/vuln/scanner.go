@@ -34,17 +34,22 @@ func (s *Scanner) UpdateDatabase(dbPath, feedURL string) error {
 }
 
 // CheckPackageEvent satisfies the legacy engine.VulnChecker interface.
-// Equivalent to CheckPackage with an empty vendor.
+// Equivalent to CheckPackage with empty vendor and OS.
 func (s *Scanner) CheckPackageEvent(agentID, name, version, arch string) []models.Event {
 	return s.CheckPackage(agentID, "", name, version, arch)
 }
 
-// CheckPackage scans a single package extracted from a syscollector.packages
-// event and returns zero or more vulnerability events. When vendor is
-// non-empty the matcher will skip rows whose CPE vendor does not match,
-// preventing apache:tomcat alerts on eclipse:tomcat installs.
+// CheckPackage scans a package without OS scoping. Prefer CheckPackageOS.
 func (s *Scanner) CheckPackage(agentID, vendor, name, version, arch string) []models.Event {
-	return s.Scan(agentID, []PackageInfo{{Vendor: vendor, Name: name, Version: version, Arch: arch}})
+	return s.CheckPackageOS(agentID, "", vendor, name, version, arch)
+}
+
+// CheckPackageOS scans a single package with full vendor + OS scope. When
+// hostOS is non-empty, the matcher will skip vulnerabilities tagged for a
+// different platform, preventing e.g. a Linux openssl CVE from alerting on
+// every Windows host's installed-software inventory.
+func (s *Scanner) CheckPackageOS(agentID, hostOS, vendor, name, version, arch string) []models.Event {
+	return s.Scan(agentID, []PackageInfo{{OS: hostOS, Vendor: vendor, Name: name, Version: version, Arch: arch}})
 }
 
 func (s *Scanner) Scan(agentID string, packages []PackageInfo) []models.Event {
@@ -53,7 +58,7 @@ func (s *Scanner) Scan(agentID string, packages []PackageInfo) []models.Event {
 
 	var results []models.Event
 	for _, pkg := range packages {
-		vulns := s.db.MatchVendor(pkg.Vendor, pkg.Name, pkg.Version)
+		vulns := s.db.MatchOS(pkg.OS, pkg.Vendor, pkg.Name, pkg.Version)
 		for _, v := range vulns {
 			results = append(results, models.Event{
 				Type:    "vulnerability",
@@ -62,8 +67,10 @@ func (s *Scanner) Scan(agentID string, packages []PackageInfo) []models.Event {
 					"package_name":    pkg.Name,
 					"package_vendor":  pkg.Vendor,
 					"package_version": pkg.Version,
+					"host_os":         pkg.OS,
 					"cve_id":          v.CVEID,
 					"vuln_vendor":     v.Vendor,
+					"vuln_os":         v.AffectedOS,
 					"severity":        v.Severity,
 					"description":     v.Description,
 					"cvss_score":      v.CVSSScore,
@@ -76,6 +83,7 @@ func (s *Scanner) Scan(agentID string, packages []PackageInfo) []models.Event {
 }
 
 type PackageInfo struct {
+	OS      string `json:"os,omitempty"`
 	Vendor  string `json:"vendor,omitempty"`
 	Name    string `json:"name"`
 	Version string `json:"version"`
