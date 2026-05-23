@@ -1,0 +1,346 @@
+# WatchTower — BIND DNS Server Detection
+# Rule IDs: 15800-15824
+#
+# Sources expected:
+#   /var/log/named/*.log  (file collector)
+#   journald named.service (journal collector)
+
+rules:
+  # ── Service Lifecycle ─────────────────────────────────────────────────
+  - id: 15800
+    level: 11
+    description: "BIND — server started"
+    groups: [bind, dns, service]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:\\s+running"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "BIND: named started"}
+    enabled: true
+
+  - id: 15801
+    level: 12
+    description: "BIND — server stopped"
+    groups: [bind, dns, service, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:\\s+(received .* shutting down|exiting)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "BIND: named stopped"}
+    enabled: true
+
+  - id: 15802
+    level: 12
+    description: "BIND — reload / reconfig"
+    groups: [bind, dns, config_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:\\s+(loading|reloading) (configuration|zones)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "BIND: configuration reload"}
+    enabled: true
+
+  # ── Zone Transfers (T1213) ────────────────────────────────────────────
+  - id: 15803
+    level: 13
+    description: "BIND — unauthorized AXFR zone transfer attempt"
+    groups: [bind, dns, zone_transfer, recon, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*denied AXFR"}
+    mitre:
+      - {tactic_id: "TA0007", technique_id: "T1213"}
+    alert: {title: "BIND: AXFR denied (unauthorized transfer attempt)"}
+    enabled: true
+
+  - id: 15804
+    level: 12
+    description: "BIND — successful AXFR from unfamiliar peer"
+    groups: [bind, dns, zone_transfer, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*transfer of '.*': AXFR (started|ended)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1213"}]
+    alert: {title: "BIND: AXFR transfer (verify peer)"}
+    enabled: true
+
+  - id: 15805
+    level: 11
+    description: "BIND — IXFR incremental transfer"
+    groups: [bind, dns, zone_transfer]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*transfer of '.*': IXFR"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1213"}]
+    alert: {title: "BIND: IXFR transfer"}
+    enabled: true
+
+  # ── DNS Tunneling / Exfiltration ──────────────────────────────────────
+  - id: 15806
+    level: 13
+    description: "BIND — DNS query for very long subdomain (tunneling indicator)"
+    groups: [bind, dns, tunneling, exfiltration, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*query:\\s+[a-zA-Z0-9\\-_]{60,}\\."}
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1071.004"}
+    alert: {title: "BIND: Very long subdomain query (tunneling)"}
+    enabled: true
+
+  - id: 15807
+    level: 12
+    description: "BIND — high TXT query rate from single client (exfil channel)"
+    groups: [bind, dns, tunneling, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*query:.*TXT\\b"}
+    correlation:
+      window: "5m"
+      threshold: 50
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071.004"}]
+    alert: {title: "BIND: TXT query flood (DNS exfil)"}
+    enabled: true
+
+  - id: 15808
+    level: 12
+    description: "BIND — DNS query to known TI-flagged domain"
+    groups: [bind, dns, threatintel, c2]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*query:\\s+\\S+\\."}
+      enrich:
+        ti_source: "malicious_domains"
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1071.004"}
+    alert: {title: "BIND: DNS query to TI-flagged domain"}
+    enabled: true
+
+  - id: 15809
+    level: 11
+    description: "BIND — DGA-style domain query (random-looking labels)"
+    groups: [bind, dns, dga, malware]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*query:\\s+[a-z0-9]{15,32}\\.[a-z]{2,6}\\b"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1568.002"}]
+    alert: {title: "BIND: DGA-like domain query"}
+    enabled: true
+
+  # ── Cache Poisoning / Spoofing ────────────────────────────────────────
+  - id: 15810
+    level: 14
+    description: "BIND — response to query with non-matching transaction ID (cache poisoning)"
+    groups: [bind, dns, cache_poisoning, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*(unexpected RCODE|bad referral|bad cache|forged|formerr)"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1557"}
+    alert: {title: "BIND: Suspicious response (cache poisoning suspect)"}
+    enabled: true
+
+  - id: 15811
+    level: 13
+    description: "BIND — DNSSEC validation failure"
+    groups: [bind, dns, dnssec, integrity]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*(validating.*no valid signature found|RRSIG.*failed|DNSKEY.*not found|bogus)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1557"}]
+    alert: {title: "BIND: DNSSEC validation failure"}
+    enabled: true
+
+  # ── DoS / Amplification ───────────────────────────────────────────────
+  - id: 15812
+    level: 13
+    description: "BIND — query flood from single IP"
+    groups: [bind, dns, dos, ddos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*query:"}
+    correlation:
+      window: "1m"
+      threshold: 200
+      group_by: ["agent_name"]
+    mitre:
+      - {tactic_id: "TA0040", technique_id: "T1498.001"}
+    alert: {title: "BIND: Query flood from one client"}
+    enabled: true
+
+  - id: 15813
+    level: 13
+    description: "BIND — ANY query (amplification reflection)"
+    groups: [bind, dns, amplification, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*query:\\s+\\S+\\.\\s+IN\\s+ANY"}
+    correlation:
+      window: "5m"
+      threshold: 20
+    mitre: [{tactic_id: "TA0040", technique_id: "T1498.002"}]
+    alert: {title: "BIND: ANY query — amplification suspect"}
+    enabled: true
+
+  - id: 15814
+    level: 12
+    description: "BIND — recursion denied (open resolver probe)"
+    groups: [bind, dns, open_resolver, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*query .* denied|recursion denied"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "BIND: Recursion denied (probe)"}
+    enabled: true
+
+  # ── Zone / Record Tampering ───────────────────────────────────────────
+  - id: 15815
+    level: 13
+    description: "BIND — dynamic update (DDNS) — possible record injection"
+    groups: [bind, dns, ddns, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*client.*updating zone"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1556"}
+    alert: {title: "BIND: Dynamic DNS update"}
+    enabled: true
+
+  - id: 15816
+    level: 14
+    description: "BIND — denied dynamic update (signature attack)"
+    groups: [bind, dns, ddns, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*update.*denied"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1556"}]
+    alert: {title: "BIND: Dynamic DNS update denied"}
+    enabled: true
+
+  - id: 15817
+    level: 13
+    description: "BIND — TSIG signature failure (forged update)"
+    groups: [bind, dns, tsig, integrity]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*(TSIG|tsig).*(invalid|verify failed|bad key)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1557"}]
+    alert: {title: "BIND: TSIG signature failure"}
+    enabled: true
+
+  # ── Suspicious Query Patterns ─────────────────────────────────────────
+  - id: 15818
+    level: 11
+    description: "BIND — query for SOA / NS of internal zones from external IP"
+    groups: [bind, dns, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*query:.*\\b(SOA|NS|MX)\\b"}
+    correlation:
+      window: "10m"
+      threshold: 30
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1590.002"}]
+    alert: {title: "BIND: SOA/NS/MX enumeration burst"}
+    enabled: true
+
+  - id: 15819
+    level: 12
+    description: "BIND — NXDOMAIN burst (DNS storm / subdomain enum)"
+    groups: [bind, dns, recon, enumeration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*(NXDOMAIN|response: NXDOMAIN)"}
+    correlation:
+      window: "5m"
+      threshold: 100
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1590.002"}]
+    alert: {title: "BIND: NXDOMAIN burst (subdomain enumeration)"}
+    enabled: true
+
+  - id: 15820
+    level: 10
+    description: "BIND — query for known abuse TLD (.tk, .top, .xyz with random subdomain)"
+    groups: [bind, dns, malware]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*query:.*\\.(tk|top|xyz|cn|ru|info|click)\\b"}
+    correlation:
+      window: "15m"
+      threshold: 20
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071.004"}]
+    alert: {title: "BIND: Suspicious TLD query burst"}
+    enabled: true
+
+  # ── Server Internal Errors ────────────────────────────────────────────
+  - id: 15821
+    level: 11
+    description: "BIND — segfault / crash"
+    groups: [bind, dns, crash, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named.*(received signal 11|segfault|core dumped)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "BIND: named crash"}
+    enabled: true
+
+  - id: 15822
+    level: 12
+    description: "BIND — running as root (configuration weakness)"
+    groups: [bind, dns, hardening, misconfiguration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*running as root"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1078.003"}]
+    alert: {title: "BIND: named running as root"}
+    enabled: true
+
+  - id: 15823
+    level: 11
+    description: "BIND — query log file rotation / truncation"
+    groups: [bind, dns, log_tampering]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)named\\[\\d+\\]:.*query log (truncated|rotated)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070"}]
+    alert: {title: "BIND: Query log rotated/truncated"}
+    enabled: true
+
+  - id: 15824
+    level: 13
+    description: "BIND — CVE exploit pattern (multiple known parser/dns rebinding CVEs)"
+    groups: [bind, dns, cve, exploit, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(assertion failed.*\\.c|REQUIRE\\(.*\\).*failed|RUNTIME_CHECK)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "BIND: Internal assertion (possible CVE exploit)"}
+    enabled: true

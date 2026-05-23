@@ -1,0 +1,443 @@
+# WatchTower — PostgreSQL Audit Detection
+# Rule IDs: 15700-15734
+#
+# Sources expected:
+#   /var/log/postgresql/postgresql-*.log
+#   pgAudit extension output (LOG: AUDIT: ...)
+
+rules:
+  # ── Authentication ────────────────────────────────────────────────────
+  - id: 15700
+    level: 10
+    description: "PostgreSQL — password authentication failed"
+    groups: [postgresql, database, auth, failure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)FATAL:\\s+password authentication failed for user"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "PostgreSQL: password auth failure"}
+    enabled: true
+
+  - id: 15701
+    level: 12
+    description: "PostgreSQL — brute force (repeated password failures)"
+    groups: [postgresql, database, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)FATAL:\\s+password authentication failed"}
+    correlation:
+      window: "5m"
+      threshold: 10
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "PostgreSQL: Brute force"}
+    enabled: true
+
+  - id: 15702
+    level: 11
+    description: "PostgreSQL — failed login for superuser (postgres)"
+    groups: [postgresql, database, brute_force, superuser]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)password authentication failed for user \"postgres\""}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "PostgreSQL: Failed login for postgres user"}
+    enabled: true
+
+  - id: 15703
+    level: 11
+    description: "PostgreSQL — connection from disallowed host (pg_hba.conf)"
+    groups: [postgresql, database, access_control]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)FATAL:\\s+no pg_hba\\.conf entry"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "PostgreSQL: Connection from unauthorized host"}
+    enabled: true
+
+  - id: 15704
+    level: 8
+    description: "PostgreSQL — successful connection (baseline)"
+    groups: [postgresql, database, session]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)LOG:\\s+connection authorized:"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "PostgreSQL: Connection authorized"}
+    enabled: true
+
+  - id: 15705
+    level: 13
+    description: "PostgreSQL — connection authorized as superuser"
+    groups: [postgresql, database, superuser, session]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)LOG:\\s+connection authorized:.*user=postgres"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078.003"}]
+    alert: {title: "PostgreSQL: Superuser connection"}
+    enabled: true
+
+  # ── Role / Privilege Management ───────────────────────────────────────
+  - id: 15706
+    level: 12
+    description: "PostgreSQL — CREATE ROLE / CREATE USER"
+    groups: [postgresql, database, account_creation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CREATE\\s+(ROLE|USER)\\s+"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1136"}]
+    alert: {title: "PostgreSQL: CREATE ROLE/USER"}
+    enabled: true
+
+  - id: 15707
+    level: 13
+    description: "PostgreSQL — CREATE ROLE with SUPERUSER attribute"
+    groups: [postgresql, database, privilege_escalation, superuser]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CREATE\\s+(ROLE|USER)\\s+\\S+.*SUPERUSER"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1078"}]
+    alert: {title: "PostgreSQL: New SUPERUSER role"}
+    enabled: true
+
+  - id: 15708
+    level: 13
+    description: "PostgreSQL — ALTER ROLE granting SUPERUSER"
+    groups: [postgresql, database, privilege_escalation, superuser]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ALTER\\s+(ROLE|USER)\\s+\\S+.*SUPERUSER"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1098"}
+    alert: {title: "PostgreSQL: Role granted SUPERUSER"}
+    enabled: true
+
+  - id: 15709
+    level: 12
+    description: "PostgreSQL — GRANT ALL PRIVILEGES"
+    groups: [postgresql, database, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)GRANT\\s+ALL\\s+PRIVILEGES"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "PostgreSQL: GRANT ALL PRIVILEGES"}
+    enabled: true
+
+  - id: 15710
+    level: 11
+    description: "PostgreSQL — password change for role"
+    groups: [postgresql, database, account_manipulation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ALTER\\s+(ROLE|USER)\\s+\\S+.*PASSWORD"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1098"}]
+    alert: {title: "PostgreSQL: Role password changed"}
+    enabled: true
+
+  - id: 15711
+    level: 12
+    description: "PostgreSQL — DROP ROLE / DROP USER"
+    groups: [postgresql, database, account_manipulation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)DROP\\s+(ROLE|USER)\\s+"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1531"}]
+    alert: {title: "PostgreSQL: DROP ROLE/USER"}
+    enabled: true
+
+  # ── Extensions (RCE/privesc vectors) ──────────────────────────────────
+  - id: 15712
+    level: 14
+    description: "PostgreSQL — CREATE EXTENSION (dangerous: plpython, plperl, plsh)"
+    groups: [postgresql, database, code_execution, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CREATE\\s+(OR REPLACE\\s+)?EXTENSION\\s+(plpython|plperl|plsh|adminpack|file_fdw|dblink)"}
+    mitre:
+      - {tactic_id: "TA0002", technique_id: "T1059"}
+    alert: {title: "PostgreSQL: Dangerous extension installed"}
+    enabled: true
+
+  - id: 15713
+    level: 13
+    description: "PostgreSQL — COPY ... TO/FROM PROGRAM (RCE)"
+    groups: [postgresql, database, code_execution, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)COPY\\s+.*\\s+(TO|FROM)\\s+PROGRAM"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059"}]
+    alert: {title: "PostgreSQL: COPY TO/FROM PROGRAM"}
+    enabled: true
+
+  - id: 15714
+    level: 14
+    description: "PostgreSQL — LARGE OBJECT lo_export to filesystem"
+    groups: [postgresql, database, file_write, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)lo_export\\s*\\("}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1567"}
+    alert: {title: "PostgreSQL: lo_export to filesystem"}
+    enabled: true
+
+  - id: 15715
+    level: 13
+    description: "PostgreSQL — function created in untrusted language"
+    groups: [postgresql, database, code_execution]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CREATE\\s+(OR REPLACE\\s+)?FUNCTION.*LANGUAGE\\s+(plpythonu|plperlu|plshu|c)"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059"}]
+    alert: {title: "PostgreSQL: Function in untrusted language"}
+    enabled: true
+
+  - id: 15716
+    level: 13
+    description: "PostgreSQL — pg_read_server_files() / pg_write_server_files() invoked"
+    groups: [postgresql, database, file_access, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)pg_(read|write)_server_files"}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1005"}]
+    alert: {title: "PostgreSQL: server-side file read/write"}
+    enabled: true
+
+  # ── Dangerous Queries ─────────────────────────────────────────────────
+  - id: 15717
+    level: 12
+    description: "PostgreSQL — pg_authid table query (password hashes)"
+    groups: [postgresql, database, credential_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SELECT\\s+.*\\s+FROM\\s+pg_(authid|shadow|catalog\\.pg_authid)"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1552.001"}
+    alert: {title: "PostgreSQL: pg_authid access (hash steal)"}
+    enabled: true
+
+  - id: 15718
+    level: 12
+    description: "PostgreSQL — pg_dump executed (export)"
+    groups: [postgresql, database, exfiltration, backup]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)pg_dump(all)?\\s"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567"}]
+    alert: {title: "PostgreSQL: pg_dump executed"}
+    enabled: true
+
+  - id: 15719
+    level: 12
+    description: "PostgreSQL — SLEEP-equivalent (pg_sleep) — possible time-based SQLi"
+    groups: [postgresql, database, sqli, time_based]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)pg_sleep\\s*\\(\\s*\\d"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "PostgreSQL: pg_sleep in query"}
+    enabled: true
+
+  - id: 15720
+    level: 11
+    description: "PostgreSQL — UNION SELECT in query (SQLi suspect)"
+    groups: [postgresql, database, sqli]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)UNION\\s+(ALL\\s+)?SELECT"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "PostgreSQL: UNION SELECT"}
+    enabled: true
+
+  - id: 15721
+    level: 13
+    description: "PostgreSQL — DROP DATABASE"
+    groups: [postgresql, database, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)DROP\\s+DATABASE\\s+"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "PostgreSQL: DROP DATABASE"}
+    enabled: true
+
+  - id: 15722
+    level: 13
+    description: "PostgreSQL — DROP SCHEMA CASCADE (large-scale data loss)"
+    groups: [postgresql, database, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)DROP\\s+SCHEMA\\s+\\S+\\s+CASCADE"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "PostgreSQL: DROP SCHEMA CASCADE"}
+    enabled: true
+
+  - id: 15723
+    level: 12
+    description: "PostgreSQL — TRUNCATE without WHERE"
+    groups: [postgresql, database, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)TRUNCATE\\s+(TABLE\\s+)?"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "PostgreSQL: TRUNCATE"}
+    enabled: true
+
+  # ── Audit / Config Tampering ──────────────────────────────────────────
+  - id: 15724
+    level: 13
+    description: "PostgreSQL — log_destination changed"
+    groups: [postgresql, database, audit_tampering, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ALTER\\s+SYSTEM\\s+SET\\s+log_destination"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.002"}
+    alert: {title: "PostgreSQL: log_destination ALTER SYSTEM"}
+    enabled: true
+
+  - id: 15725
+    level: 13
+    description: "PostgreSQL — log_statement set to none/error (audit reduce)"
+    groups: [postgresql, database, audit_tampering, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)ALTER\\s+SYSTEM\\s+SET\\s+log_statement\\s*=\\s*'(none|error)'"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.002"}]
+    alert: {title: "PostgreSQL: log_statement weakened"}
+    enabled: true
+
+  - id: 15726
+    level: 13
+    description: "PostgreSQL — pgaudit extension dropped"
+    groups: [postgresql, database, audit_tampering, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)DROP\\s+EXTENSION\\s+pgaudit"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.002"}]
+    alert: {title: "PostgreSQL: pgaudit extension dropped"}
+    enabled: true
+
+  - id: 15727
+    level: 12
+    description: "PostgreSQL — pg_hba.conf reload via pg_reload_conf()"
+    groups: [postgresql, database, config_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)pg_reload_conf\\s*\\("}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "PostgreSQL: pg_reload_conf()"}
+    enabled: true
+
+  # ── Replication / Backup ──────────────────────────────────────────────
+  - id: 15728
+    level: 12
+    description: "PostgreSQL — replication slot created"
+    groups: [postgresql, database, replication]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)pg_create_(physical|logical)_replication_slot"}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1213"}]
+    alert: {title: "PostgreSQL: replication slot created"}
+    enabled: true
+
+  - id: 15729
+    level: 12
+    description: "PostgreSQL — base backup initiated"
+    groups: [postgresql, database, backup, exfiltration]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)pg_basebackup\\s|LOG:\\s+received replication command:\\s+BASE_BACKUP"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567"}]
+    alert: {title: "PostgreSQL: base backup initiated"}
+    enabled: true
+
+  # ── Errors / Crashes ──────────────────────────────────────────────────
+  - id: 15730
+    level: 12
+    description: "PostgreSQL — server crash / signal"
+    groups: [postgresql, database, crash, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(server process \\(PID \\d+\\) was terminated|terminating connection because of crash|PANIC:)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "PostgreSQL: Server crash"}
+    enabled: true
+
+  - id: 15731
+    level: 11
+    description: "PostgreSQL — out-of-memory / shared_buffers exhausted"
+    groups: [postgresql, database, dos, performance]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(out of memory|ERROR:\\s+out of memory|memory required for the requested operation)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "PostgreSQL: OOM"}
+    enabled: true
+
+  - id: 15732
+    level: 11
+    description: "PostgreSQL — connection limit reached"
+    groups: [postgresql, database, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)remaining connection slots are reserved|too many clients already"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "PostgreSQL: Connection limit reached"}
+    enabled: true
+
+  - id: 15733
+    level: 11
+    description: "PostgreSQL — checksum failure (data corruption)"
+    groups: [postgresql, database, integrity]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)invalid page in block|page verification failed|checksum failure"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "PostgreSQL: Page checksum failure"}
+    enabled: true
+
+  - id: 15734
+    level: 11
+    description: "PostgreSQL — long-running query (>60s) — possible DoS or scan"
+    groups: [postgresql, database, performance, anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)duration:\\s+([6-9]\\d{4}|\\d{6,})\\.\\d+\\s+ms"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "PostgreSQL: Long-running query (>60s)"}
+    enabled: true

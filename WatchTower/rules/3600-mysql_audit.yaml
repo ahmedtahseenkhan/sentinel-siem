@@ -1,0 +1,510 @@
+# WatchTower — MySQL / MariaDB Audit Detection
+# Rule IDs: 15600-15639
+#
+# Sources expected:
+#   /var/log/mysql/error.log
+#   /var/log/mysql/general.log (if general_log=ON)
+#   /var/log/mysql/audit.log (if audit_log plugin / MariaDB server_audit)
+# Ingested via type: file, tag service=mysql
+
+rules:
+  # ── Authentication ────────────────────────────────────────────────────
+  - id: 15600
+    level: 10
+    description: "MySQL — access denied for user"
+    groups: [mysql, mariadb, database, auth]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Access denied for user '[^']+'@'"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "MySQL: Access denied"}
+    enabled: true
+
+  - id: 15601
+    level: 12
+    description: "MySQL — brute force (repeated access denied)"
+    groups: [mysql, mariadb, database, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Access denied for user"}
+    correlation:
+      window: "5m"
+      threshold: 10
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "MySQL: Brute force on user accounts"}
+    enabled: true
+
+  - id: 15602
+    level: 12
+    description: "MySQL — failed login for root account"
+    groups: [mysql, mariadb, database, brute_force, root]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Access denied for user 'root'@"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "MySQL: Failed login for root"}
+    enabled: true
+
+  - id: 15603
+    level: 12
+    description: "MySQL — login from new host / unusual source"
+    groups: [mysql, mariadb, database, anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Connect\\s+\\S+@\\S+"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "MySQL: Connect — review source host"}
+    enabled: true
+
+  # ── User / Privilege Management ───────────────────────────────────────
+  - id: 15604
+    level: 12
+    description: "MySQL — CREATE USER (new account)"
+    groups: [mysql, mariadb, database, account_creation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CREATE\\s+USER\\s+"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1136"}]
+    alert: {title: "MySQL: CREATE USER"}
+    enabled: true
+
+  - id: 15605
+    level: 13
+    description: "MySQL — GRANT ALL PRIVILEGES (excessive permissions)"
+    groups: [mysql, mariadb, database, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)GRANT\\s+ALL\\s+PRIVILEGES\\s+ON\\s+\\*\\.\\*"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1098"}
+    alert: {title: "MySQL: GRANT ALL PRIVILEGES on *.*"}
+    enabled: true
+
+  - id: 15606
+    level: 12
+    description: "MySQL — GRANT WITH GRANT OPTION (delegation)"
+    groups: [mysql, mariadb, database, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)WITH\\s+GRANT\\s+OPTION"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "MySQL: GRANT with GRANT OPTION"}
+    enabled: true
+
+  - id: 15607
+    level: 13
+    description: "MySQL — GRANT SUPER / FILE / PROCESS / RELOAD"
+    groups: [mysql, mariadb, database, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)GRANT\\s+(SUPER|FILE|PROCESS|RELOAD|SHUTDOWN|REPLICATION SLAVE)"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1098"}]
+    alert: {title: "MySQL: GRANT sensitive global privilege"}
+    enabled: true
+
+  - id: 15608
+    level: 12
+    description: "MySQL — DROP USER"
+    groups: [mysql, mariadb, database, account_manipulation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)DROP\\s+USER\\s+"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1531"}]
+    alert: {title: "MySQL: DROP USER"}
+    enabled: true
+
+  - id: 15609
+    level: 11
+    description: "MySQL — password change"
+    groups: [mysql, mariadb, database, account_manipulation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(SET\\s+PASSWORD|ALTER\\s+USER.*IDENTIFIED BY)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1098"}]
+    alert: {title: "MySQL: Password change"}
+    enabled: true
+
+  - id: 15610
+    level: 12
+    description: "MySQL — REVOKE ALL — user lockout suspect"
+    groups: [mysql, mariadb, database, account_manipulation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)REVOKE\\s+ALL\\s+PRIVILEGES"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1531"}]
+    alert: {title: "MySQL: REVOKE ALL"}
+    enabled: true
+
+  # ── Dangerous Operations ──────────────────────────────────────────────
+  - id: 15611
+    level: 14
+    description: "MySQL — SELECT ... INTO OUTFILE (file write / exfil)"
+    groups: [mysql, mariadb, database, exfiltration, file_write, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SELECT\\s+.*\\s+INTO\\s+(OUTFILE|DUMPFILE)"}
+    mitre:
+      - {tactic_id: "TA0010", technique_id: "T1567"}
+    alert: {title: "MySQL: SELECT INTO OUTFILE/DUMPFILE"}
+    enabled: true
+
+  - id: 15612
+    level: 12
+    description: "MySQL — LOAD DATA INFILE (file read into database)"
+    groups: [mysql, mariadb, database, file_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)LOAD\\s+DATA\\s+(LOCAL\\s+)?INFILE"}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1005"}]
+    alert: {title: "MySQL: LOAD DATA INFILE"}
+    enabled: true
+
+  - id: 15613
+    level: 13
+    description: "MySQL — UDF created (custom function — RCE risk)"
+    groups: [mysql, mariadb, database, udf, code_execution]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CREATE\\s+FUNCTION\\s+\\S+\\s+RETURNS"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059"}]
+    alert: {title: "MySQL: User-defined function created"}
+    enabled: true
+
+  - id: 15614
+    level: 14
+    description: "MySQL — sys_exec / sys_eval / lib_mysqludf_sys usage"
+    groups: [mysql, mariadb, database, udf, code_execution, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(sys_exec|sys_eval|lib_mysqludf_sys)"}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059"}]
+    alert: {title: "MySQL: sys_exec / sys_eval UDF invocation"}
+    enabled: true
+
+  - id: 15615
+    level: 11
+    description: "MySQL — SHOW DATABASES / TABLES enumeration burst"
+    groups: [mysql, mariadb, database, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SHOW\\s+(DATABASES|TABLES|GRANTS|VARIABLES)"}
+    correlation:
+      window: "3m"
+      threshold: 20
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1213"}]
+    alert: {title: "MySQL: Enumeration burst"}
+    enabled: true
+
+  - id: 15616
+    level: 12
+    description: "MySQL — query against mysql.user table (creds enum)"
+    groups: [mysql, mariadb, database, credential_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SELECT\\s+.*\\s+FROM\\s+(mysql|sys)\\.user\\b"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1552.001"}
+    alert: {title: "MySQL: query on mysql.user"}
+    enabled: true
+
+  - id: 15617
+    level: 13
+    description: "MySQL — query against information_schema columns to find PII"
+    groups: [mysql, mariadb, database, recon, pii]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)information_schema\\.columns.*(password|ssn|credit|account)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1213"}]
+    alert: {title: "MySQL: information_schema PII enumeration"}
+    enabled: true
+
+  # ── Replication / Backup ──────────────────────────────────────────────
+  - id: 15618
+    level: 12
+    description: "MySQL — replication slave registered"
+    groups: [mysql, mariadb, database, replication]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CHANGE\\s+(MASTER|REPLICATION)\\s+TO"}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1213"}]
+    alert: {title: "MySQL: Replication source changed"}
+    enabled: true
+
+  - id: 15619
+    level: 12
+    description: "MySQL — mysqldump executed with --all-databases"
+    groups: [mysql, mariadb, database, exfiltration, backup]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)mysqldump.*--all-databases"}
+    mitre: [{tactic_id: "TA0010", technique_id: "T1567"}]
+    alert: {title: "MySQL: mysqldump --all-databases"}
+    enabled: true
+
+  # ── Config / Audit Tampering ──────────────────────────────────────────
+  - id: 15620
+    level: 13
+    description: "MySQL — audit_log plugin disabled"
+    groups: [mysql, mariadb, database, audit_tampering, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(UNINSTALL\\s+PLUGIN\\s+audit_log|server_audit_logging\\s*=\\s*OFF)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.002"}]
+    alert: {title: "MySQL: Audit logging disabled"}
+    enabled: true
+
+  - id: 15621
+    level: 12
+    description: "MySQL — general_log toggled"
+    groups: [mysql, mariadb, database, config_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SET\\s+GLOBAL\\s+general_log\\s*="}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "MySQL: general_log toggled"}
+    enabled: true
+
+  - id: 15622
+    level: 12
+    description: "MySQL — slow_query_log toggled"
+    groups: [mysql, mariadb, database, config_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SET\\s+GLOBAL\\s+slow_query_log\\s*="}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "MySQL: slow_query_log toggled"}
+    enabled: true
+
+  - id: 15623
+    level: 13
+    description: "MySQL — secure_file_priv changed to empty/permissive"
+    groups: [mysql, mariadb, database, config_change, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SET\\s+GLOBAL\\s+secure_file_priv\\s*=\\s*['\"]?\\s*['\"]?"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "MySQL: secure_file_priv weakened"}
+    enabled: true
+
+  - id: 15624
+    level: 12
+    description: "MySQL — log file truncated (FLUSH LOGS) — possible tampering"
+    groups: [mysql, mariadb, database, log_tampering]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)FLUSH\\s+(LOGS|GENERAL\\s+LOGS|SLOW\\s+LOGS|ERROR\\s+LOGS)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070"}]
+    alert: {title: "MySQL: FLUSH LOGS executed"}
+    enabled: true
+
+  # ── Errors / Crashes / DoS ────────────────────────────────────────────
+  - id: 15625
+    level: 12
+    description: "MySQL — server crash (signal 11)"
+    groups: [mysql, mariadb, database, crash, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(signal\\s+11|InnoDB:\\s+Assertion failure|got signal\\s+\\d+\\s+from operating system)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "MySQL: Server crash"}
+    enabled: true
+
+  - id: 15626
+    level: 11
+    description: "MySQL — too many connections (connection exhaustion)"
+    groups: [mysql, mariadb, database, dos, performance]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Too many connections"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "MySQL: Too many connections"}
+    enabled: true
+
+  - id: 15627
+    level: 11
+    description: "MySQL — aborted connection (auth failure or protocol abuse)"
+    groups: [mysql, mariadb, database, anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Aborted connection\\s+\\d+\\s+to db"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "MySQL: Aborted connection"}
+    enabled: true
+
+  - id: 15628
+    level: 11
+    description: "MySQL — InnoDB tablespace corruption"
+    groups: [mysql, mariadb, database, integrity]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)InnoDB:\\s+(Database page corruption|Page is older than|tablespace.*corrupt)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "MySQL: InnoDB corruption detected"}
+    enabled: true
+
+  - id: 15629
+    level: 11
+    description: "MySQL — disk full / table full"
+    groups: [mysql, mariadb, database, performance]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(table is full|disk is full|out of space)"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "MySQL: Storage exhausted"}
+    enabled: true
+
+  # ── Suspicious Queries / Injection ────────────────────────────────────
+  - id: 15630
+    level: 12
+    description: "MySQL — SLEEP() / BENCHMARK() in query (time-based SQLi)"
+    groups: [mysql, mariadb, database, sqli, time_based]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(SLEEP\\s*\\(\\s*\\d|BENCHMARK\\s*\\()"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "MySQL: SLEEP/BENCHMARK in query"}
+    enabled: true
+
+  - id: 15631
+    level: 12
+    description: "MySQL — UNION SELECT in query log (SQLi suspect)"
+    groups: [mysql, mariadb, database, sqli]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)UNION\\s+(ALL\\s+)?SELECT"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "MySQL: UNION SELECT in query"}
+    enabled: true
+
+  - id: 15632
+    level: 13
+    description: "MySQL — comment-based bypass token in query"
+    groups: [mysql, mariadb, database, sqli, evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(/\\*!|--\\s|#\\s)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "MySQL: SQL comment evasion token"}
+    enabled: true
+
+  # ── Database Manipulation ─────────────────────────────────────────────
+  - id: 15633
+    level: 13
+    description: "MySQL — DROP DATABASE"
+    groups: [mysql, mariadb, database, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)DROP\\s+DATABASE\\s+"}
+    mitre:
+      - {tactic_id: "TA0040", technique_id: "T1485"}
+    alert: {title: "MySQL: DROP DATABASE"}
+    enabled: true
+
+  - id: 15634
+    level: 12
+    description: "MySQL — TRUNCATE TABLE"
+    groups: [mysql, mariadb, database, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)TRUNCATE\\s+(TABLE\\s+)?"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "MySQL: TRUNCATE TABLE"}
+    enabled: true
+
+  - id: 15635
+    level: 13
+    description: "MySQL — DELETE without WHERE clause"
+    groups: [mysql, mariadb, database, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)DELETE\\s+FROM\\s+\\S+\\s*;?\\s*$"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "MySQL: Unrestricted DELETE"}
+    enabled: true
+
+  - id: 15636
+    level: 13
+    description: "MySQL — UPDATE without WHERE clause"
+    groups: [mysql, mariadb, database, destructive]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)UPDATE\\s+\\S+\\s+SET\\s+[^;]+;?\\s*$"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1485"}]
+    alert: {title: "MySQL: Unrestricted UPDATE"}
+    enabled: true
+
+  # ── Trigger / Procedure / Event ───────────────────────────────────────
+  - id: 15637
+    level: 12
+    description: "MySQL — CREATE TRIGGER (possible persistence)"
+    groups: [mysql, mariadb, database, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CREATE\\s+(DEFINER\\s*=\\s*\\S+\\s+)?TRIGGER"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505"}]
+    alert: {title: "MySQL: Trigger created"}
+    enabled: true
+
+  - id: 15638
+    level: 12
+    description: "MySQL — CREATE EVENT (scheduled persistence)"
+    groups: [mysql, mariadb, database, persistence, scheduled]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CREATE\\s+(DEFINER\\s*=\\s*\\S+\\s+)?EVENT"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1053"}]
+    alert: {title: "MySQL: Scheduled event created"}
+    enabled: true
+
+  - id: 15639
+    level: 11
+    description: "MySQL — stored procedure created with DEFINER privilege"
+    groups: [mysql, mariadb, database, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)CREATE\\s+(DEFINER\\s*=\\s*\\S+\\s+)?PROCEDURE"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1505"}]
+    alert: {title: "MySQL: Stored procedure created"}
+    enabled: true

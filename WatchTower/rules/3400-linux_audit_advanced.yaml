@@ -1,0 +1,658 @@
+# WatchTower — Linux auditd Deep Detection
+# Rule IDs: 15500-15549
+#
+# Sources expected:
+#   - /var/log/audit/audit.log  (auditd default)
+#     ingested via `type: file` with tag service=auditd
+#   - journald  audit messages via `type: journal` if forwarded
+#
+# auditd records have key=value pairs. Match against the raw line.
+# Common fields: type=SYSCALL/EXECVE/PATH/USER_AUTH/USER_LOGIN/ANOM_*,
+#   uid=, auid=, comm=, exe=, name=, success=yes/no, key=...
+
+rules:
+  # ── Authentication & Session ──────────────────────────────────────────
+  - id: 15500
+    level: 10
+    description: "auditd — user login failure (USER_LOGIN)"
+    groups: [linux, auditd, auth, failure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=USER_LOGIN.*acct=\"[^\"]+\".*res=failed"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1110.001"}
+    alert: {title: "Linux: auditd USER_LOGIN failure"}
+    enabled: true
+
+  - id: 15501
+    level: 12
+    description: "auditd — repeated USER_AUTH failures (brute force)"
+    groups: [linux, auditd, auth, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=USER_AUTH.*res=failed"}
+    correlation:
+      window: "5m"
+      threshold: 10
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "Linux: USER_AUTH brute force"}
+    enabled: true
+
+  - id: 15502
+    level: 9
+    description: "auditd — successful root login from network"
+    groups: [linux, auditd, auth, root]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=USER_LOGIN.*acct=\"root\".*addr=\\d+\\.\\d+\\.\\d+\\.\\d+.*res=success"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078.003"}]
+    alert: {title: "Linux: Root login from network"}
+    enabled: true
+
+  - id: 15503
+    level: 11
+    description: "auditd — USER_CHAUTHTOK (password change) by another user"
+    groups: [linux, auditd, account_manipulation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=USER_CHAUTHTOK.*res=success"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1098"}]
+    alert: {title: "Linux: Password changed via auditd"}
+    enabled: true
+
+  - id: 15504
+    level: 12
+    description: "auditd — new user account created (USER_MGMT add)"
+    groups: [linux, auditd, account_creation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=(USER_MGMT|ADD_USER|ADD_GROUP).*res=success"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1136.001"}
+    alert: {title: "Linux: New user / group added (auditd)"}
+    enabled: true
+
+  - id: 15505
+    level: 12
+    description: "auditd — user account deleted"
+    groups: [linux, auditd, account_manipulation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=(DEL_USER|DEL_GROUP).*res=success"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1531"}]
+    alert: {title: "Linux: User / group deleted"}
+    enabled: true
+
+  - id: 15506
+    level: 12
+    description: "auditd — su to root succeeded"
+    groups: [linux, auditd, privilege_escalation, su]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=USER_ROLE_CHANGE.*acct=\"root\""}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1078.003"}
+    alert: {title: "Linux: su to root via auditd"}
+    enabled: true
+
+  - id: 15507
+    level: 11
+    description: "auditd — sudo command (USER_CMD)"
+    groups: [linux, auditd, sudo, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=USER_CMD.*cmd="}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1548.003"}]
+    alert: {title: "Linux: sudo USER_CMD executed"}
+    enabled: true
+
+  - id: 15508
+    level: 13
+    description: "auditd — sudo failure (potential abuse / probe)"
+    groups: [linux, auditd, sudo, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=USER_CMD.*res=failed"}
+    correlation:
+      window: "5m"
+      threshold: 3
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0004", technique_id: "T1548.003"}]
+    alert: {title: "Linux: Repeated sudo failures"}
+    enabled: true
+
+  # ── Privileged Process Execution ──────────────────────────────────────
+  - id: 15509
+    level: 12
+    description: "auditd — EXECVE of compiler/interpreter by service account"
+    groups: [linux, auditd, execution, suspicious_process]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=EXECVE.*a0=\"(gcc|cc|g\\+\\+|python|python3|perl|ruby|node|php)\""}
+    mitre: [{tactic_id: "TA0002", technique_id: "T1059"}]
+    alert: {title: "Linux: Compiler/interpreter exec via auditd"}
+    enabled: true
+
+  - id: 15510
+    level: 13
+    description: "auditd — reverse-shell command pattern in EXECVE"
+    groups: [linux, auditd, execution, reverse_shell, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=EXECVE.*(bash.*-i|/dev/tcp/|mkfifo|nc.*-e|ncat.*-e)"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071"}]
+    alert: {title: "Linux: Reverse shell EXECVE pattern"}
+    enabled: true
+
+  - id: 15511
+    level: 14
+    description: "auditd — chmod 4755/u+s on binary (setuid backdoor)"
+    groups: [linux, auditd, setuid, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=SYSCALL.*syscall=(chmod|fchmod|fchmodat).*name=.*key=\"setuid\""}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1548.001"}
+    alert: {title: "Linux: setuid/setgid chmod (key=setuid)"}
+    enabled: true
+
+  - id: 15512
+    level: 13
+    description: "auditd — ptrace syscall (process injection / debug)"
+    groups: [linux, auditd, ptrace, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=SYSCALL.*syscall=ptrace"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1055.008"}
+    alert: {title: "Linux: ptrace syscall"}
+    enabled: true
+
+  - id: 15513
+    level: 12
+    description: "auditd — capset (capability change — possible privesc)"
+    groups: [linux, auditd, capabilities, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=SYSCALL.*syscall=capset"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1548"}]
+    alert: {title: "Linux: capset syscall"}
+    enabled: true
+
+  - id: 15514
+    level: 11
+    description: "auditd — execve of suid binary not in normal /bin/sudo path"
+    groups: [linux, auditd, suid_abuse, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=EXECVE.*key=\"suid_binary\""}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1548.001"}]
+    alert: {title: "Linux: SUID binary executed (key=suid_binary)"}
+    enabled: true
+
+  # ── Kernel Modules / Persistence ──────────────────────────────────────
+  - id: 15515
+    level: 13
+    description: "auditd — kernel module loaded (insmod/modprobe)"
+    groups: [linux, auditd, kernel_module, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=SYSCALL.*syscall=(init_module|finit_module|delete_module)"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1547.006"}
+    alert: {title: "Linux: Kernel module loaded/removed"}
+    enabled: true
+
+  - id: 15516
+    level: 14
+    description: "auditd — change to /etc/ld.so.preload (LD_PRELOAD persistence)"
+    groups: [linux, auditd, ld_preload, persistence, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=PATH.*name=\"/etc/ld\\.so\\.preload\""}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1574.006"}
+    alert: {title: "Linux: /etc/ld.so.preload modified"}
+    enabled: true
+
+  - id: 15517
+    level: 13
+    description: "auditd — sshd_config modified"
+    groups: [linux, auditd, config_change, ssh, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=PATH.*name=\"/etc/ssh/sshd_config\""}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1098.004"}]
+    alert: {title: "Linux: sshd_config modified"}
+    enabled: true
+
+  - id: 15518
+    level: 13
+    description: "auditd — authorized_keys modified by non-owner"
+    groups: [linux, auditd, ssh_key, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=PATH.*name=.*authorized_keys"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1098.004"}
+    alert: {title: "Linux: authorized_keys modified"}
+    enabled: true
+
+  - id: 15519
+    level: 13
+    description: "auditd — modification to /etc/passwd, shadow, sudoers, group"
+    groups: [linux, auditd, identity_files, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=PATH.*name=\"/etc/(passwd|shadow|sudoers|gshadow|group)\""}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1098"}
+    alert: {title: "Linux: identity file modified"}
+    enabled: true
+
+  - id: 15520
+    level: 13
+    description: "auditd — modification to sudoers.d directory"
+    groups: [linux, auditd, sudo, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=PATH.*name=\"/etc/sudoers\\.d/"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1098"}]
+    alert: {title: "Linux: sudoers.d file modified"}
+    enabled: true
+
+  # ── Cron / At / systemd ───────────────────────────────────────────────
+  - id: 15521
+    level: 12
+    description: "auditd — change to /etc/cron.* or /var/spool/cron"
+    groups: [linux, auditd, scheduled_task, cron, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=PATH.*name=\"/(etc/cron|var/spool/cron)"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1053.003"}
+    alert: {title: "Linux: cron file modified"}
+    enabled: true
+
+  - id: 15522
+    level: 12
+    description: "auditd — systemd unit file created / modified"
+    groups: [linux, auditd, systemd, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=PATH.*name=\"/(etc|usr/lib|run)/systemd/system/.+\\.service\""}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1543.002"}
+    alert: {title: "Linux: systemd unit file modified"}
+    enabled: true
+
+  - id: 15523
+    level: 12
+    description: "auditd — at job created (one-shot persistence)"
+    groups: [linux, auditd, scheduled_task, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=PATH.*name=\"/var/spool/at/"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1053.001"}]
+    alert: {title: "Linux: at job created"}
+    enabled: true
+
+  # ── Network ───────────────────────────────────────────────────────────
+  - id: 15524
+    level: 11
+    description: "auditd — bind to non-standard listening port by non-root"
+    groups: [linux, auditd, network, listener]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=SYSCALL.*syscall=bind.*key=\"net_listen\""}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1571"}]
+    alert: {title: "Linux: bind() listening socket (key=net_listen)"}
+    enabled: true
+
+  - id: 15525
+    level: 12
+    description: "auditd — connect() to external address from sensitive process"
+    groups: [linux, auditd, network, c2_suspect]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=SYSCALL.*syscall=connect.*key=\"net_out\""}
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1071.001"}
+    alert: {title: "Linux: outbound connect (key=net_out)"}
+    enabled: true
+
+  - id: 15526
+    level: 13
+    description: "auditd — iptables rules modified (firewall tamper)"
+    groups: [linux, auditd, firewall, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=EXECVE.*(iptables|nft|nftables|ufw).*-(F|D|X)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.004"}
+    alert: {title: "Linux: Firewall rules flushed/modified"}
+    enabled: true
+
+  # ── Logs / Audit Tampering ────────────────────────────────────────────
+  - id: 15527
+    level: 14
+    description: "auditd — auditd config (/etc/audit/audit.rules) modified"
+    groups: [linux, auditd, audit_tampering, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=CONFIG_CHANGE|type=PATH.*name=\"/etc/audit/audit\\.rules\""}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.002"}
+    alert: {title: "Linux: auditd configuration changed"}
+    enabled: true
+
+  - id: 15528
+    level: 14
+    description: "auditd — auditd service stopped"
+    groups: [linux, auditd, audit_tampering, defense_evasion, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=SERVICE_STOP.*unit=auditd"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.002"}]
+    alert: {title: "Linux: auditd service stopped"}
+    enabled: true
+
+  - id: 15529
+    level: 13
+    description: "auditd — log file truncated/deleted via shell"
+    groups: [linux, auditd, log_tampering, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=EXECVE.*(:?>|truncate|shred|rm).*\\/(var\\/log\\/)?(audit|secure|messages|syslog|auth\\.log)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1070.002"}]
+    alert: {title: "Linux: Log file truncated/deleted"}
+    enabled: true
+
+  - id: 15530
+    level: 13
+    description: "auditd — bash history file deleted or piped to /dev/null"
+    groups: [linux, auditd, evasion, history_tampering]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=EXECVE.*(unset HISTFILE|HISTFILE=/dev/null|rm .*\\.bash_history|history -c)"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1070.003"}
+    alert: {title: "Linux: Shell history cleared"}
+    enabled: true
+
+  # ── Tools commonly used by attackers ──────────────────────────────────
+  - id: 15531
+    level: 13
+    description: "auditd — execution of pentest tool (nmap/masscan/sqlmap/hydra/john/hashcat)"
+    groups: [linux, auditd, pentest_tool, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=EXECVE.*a0=\"(nmap|masscan|sqlmap|hydra|john|hashcat|responder|crackmapexec|impacket|kerbrute|enum4linux)"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "Linux: Pentest tool executed"}
+    enabled: true
+
+  - id: 15532
+    level: 13
+    description: "auditd — Living-off-the-land binary used for code execution (LOLBin)"
+    groups: [linux, auditd, lolbin, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=EXECVE.*a0=\"(awk|env|find|gdb|nice|stdbuf|taskset|time|timeout|nohup|setsid|watch|xargs)\""}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1218"}]
+    alert: {title: "Linux: LOLBin executed"}
+    enabled: true
+
+  - id: 15533
+    level: 12
+    description: "auditd — curl/wget execution with pipe to shell"
+    groups: [linux, auditd, download_exec, ingress]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=EXECVE.*(curl|wget).*\\|.*(sh|bash)"}
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1105"}
+    alert: {title: "Linux: Download-and-execute pattern"}
+    enabled: true
+
+  # ── Container / Docker / K8s ──────────────────────────────────────────
+  - id: 15534
+    level: 13
+    description: "auditd — docker.sock accessed by non-root process"
+    groups: [linux, auditd, docker, container_escape]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=PATH.*name=\"/var/run/docker\\.sock\""}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1611"}
+    alert: {title: "Linux: docker.sock accessed"}
+    enabled: true
+
+  - id: 15535
+    level: 13
+    description: "auditd — privileged container started (--privileged)"
+    groups: [linux, auditd, container, privileged]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=EXECVE.*(docker|podman).*--privileged"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "Linux: Privileged container started"}
+    enabled: true
+
+  - id: 15536
+    level: 12
+    description: "auditd — container started with host network/PID/IPC namespace"
+    groups: [linux, auditd, container, namespace_escape]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=EXECVE.*(docker|podman).*--(net|pid|ipc)=host"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1611"}]
+    alert: {title: "Linux: Container with host namespace"}
+    enabled: true
+
+  - id: 15537
+    level: 13
+    description: "auditd — kubectl exec into a pod"
+    groups: [linux, auditd, kubernetes, lateral_movement]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=EXECVE.*kubectl.*\\bexec\\b"}
+    mitre: [{tactic_id: "TA0008", technique_id: "T1609"}]
+    alert: {title: "Linux: kubectl exec into pod"}
+    enabled: true
+
+  # ── Filesystem mount / disk ───────────────────────────────────────────
+  - id: 15538
+    level: 12
+    description: "auditd — mount of new filesystem (USB / smb / nfs)"
+    groups: [linux, auditd, mount, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=SYSCALL.*syscall=mount"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1547.006"}]
+    alert: {title: "Linux: mount syscall (filesystem attached)"}
+    enabled: true
+
+  - id: 15539
+    level: 12
+    description: "auditd — block device created (mknod) — possible rootkit"
+    groups: [linux, auditd, rootkit, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=SYSCALL.*syscall=mknod"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1014"}]
+    alert: {title: "Linux: mknod syscall"}
+    enabled: true
+
+  # ── Privilege escalation tools ────────────────────────────────────────
+  - id: 15540
+    level: 14
+    description: "auditd — pkexec / polkit exploit pattern (PwnKit CVE-2021-4034)"
+    groups: [linux, auditd, pkexec, pwnkit, cve, privilege_escalation, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=EXECVE.*pkexec"}
+    mitre:
+      - {tactic_id: "TA0004", technique_id: "T1068"}
+    alert: {title: "Linux: pkexec executed (PwnKit suspect)"}
+    enabled: true
+
+  - id: 15541
+    level: 13
+    description: "auditd — SUID exploit binary (CVE/known-bad) executed"
+    groups: [linux, auditd, exploit, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=EXECVE.*a0=\"(pwnkit|dirtypipe|dirtycow|sudoedit|baron-samedit)"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1068"}]
+    alert: {title: "Linux: Known exploit binary executed"}
+    enabled: true
+
+  # ── Cryptography / Mining ─────────────────────────────────────────────
+  - id: 15542
+    level: 14
+    description: "auditd — cryptominer process executed (xmrig/cpuminer/etc.)"
+    groups: [linux, auditd, cryptominer, impact, malware, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=EXECVE.*a0=\"(xmrig|cpuminer|minerd|ethminer|t-rex|nbminer|phoenixminer)"}
+    mitre:
+      - {tactic_id: "TA0040", technique_id: "T1496"}
+    alert: {title: "Linux: Cryptominer process executed"}
+    enabled: true
+
+  # ── ABAC / SELinux / AppArmor ─────────────────────────────────────────
+  - id: 15543
+    level: 12
+    description: "auditd — SELinux disabled (setenforce 0)"
+    groups: [linux, auditd, selinux, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=EXECVE.*setenforce.*0|type=USER_MAC_STATUS.*op=setenforce.*new=permissive"}
+    mitre:
+      - {tactic_id: "TA0005", technique_id: "T1562.001"}
+    alert: {title: "Linux: SELinux set to permissive"}
+    enabled: true
+
+  - id: 15544
+    level: 13
+    description: "auditd — SELinux policy AVC denial (mass burst)"
+    groups: [linux, auditd, selinux, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=AVC.*denied"}
+    correlation:
+      window: "5m"
+      threshold: 50
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Linux: SELinux AVC denial burst"}
+    enabled: true
+
+  - id: 15545
+    level: 12
+    description: "auditd — AppArmor profile changed/disabled"
+    groups: [linux, auditd, apparmor, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=APPARMOR.*operation=(profile_load|profile_replace|profile_remove)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Linux: AppArmor profile modification"}
+    enabled: true
+
+  # ── Anomaly markers (auditd ANOM_*) ───────────────────────────────────
+  - id: 15546
+    level: 14
+    description: "auditd — abnormal program termination (ANOM_ABEND)"
+    groups: [linux, auditd, anomaly, errors]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=ANOM_ABEND"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "Linux: ANOM_ABEND — abnormal program termination"}
+    enabled: true
+
+  - id: 15547
+    level: 14
+    description: "auditd — promiscuous mode change on interface (ANOM_PROMISCUOUS)"
+    groups: [linux, auditd, sniffer, anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=ANOM_PROMISCUOUS"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1040"}
+    alert: {title: "Linux: Interface promiscuous mode change"}
+    enabled: true
+
+  - id: 15548
+    level: 14
+    description: "auditd — root execution by uid != 0 (uid_set_unusual)"
+    groups: [linux, auditd, anomaly, privilege_escalation]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=ANOM_ROOT_TRANS"}
+    mitre: [{tactic_id: "TA0004", technique_id: "T1548"}]
+    alert: {title: "Linux: ANOM_ROOT_TRANS — anomalous root transition"}
+    enabled: true
+
+  - id: 15549
+    level: 13
+    description: "auditd — TTY input recorded (TTY watcher)"
+    groups: [linux, auditd, tty, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "type=TTY.*data="}
+    mitre: [{tactic_id: "TA0009", technique_id: "T1056.001"}]
+    alert: {title: "Linux: TTY input captured (auditd)"}
+    enabled: true

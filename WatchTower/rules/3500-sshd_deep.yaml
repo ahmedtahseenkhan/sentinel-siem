@@ -1,0 +1,405 @@
+# WatchTower — SSH Daemon Deep Detection
+# Rule IDs: 15550-15579
+#
+# Targets sshd messages on Linux endpoints. Source:
+#   journald unit=sshd
+#   or /var/log/auth.log / /var/log/secure (file collector)
+
+rules:
+  - id: 15550
+    level: 9
+    description: "sshd — root login attempted (any result)"
+    groups: [linux, sshd, auth, root]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:.*Failed password for root|sshd\\[\\d+\\]:.*Accepted .* for root"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078.003"}]
+    alert: {title: "sshd: Root login attempted"}
+    enabled: true
+
+  - id: 15551
+    level: 11
+    description: "sshd — successful root login (high-risk)"
+    groups: [linux, sshd, auth, root, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:\\s+Accepted\\s+\\S+\\s+for\\s+root"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078.003"}]
+    alert: {title: "sshd: Successful ROOT login"}
+    enabled: true
+
+  - id: 15552
+    level: 10
+    description: "sshd — brute force across many users from one IP"
+    groups: [linux, sshd, brute_force, password_spray]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:.*Failed password for invalid user"}
+    correlation:
+      window: "5m"
+      threshold: 10
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.003"}]
+    alert: {title: "sshd: Brute force / user spray"}
+    enabled: true
+
+  - id: 15553
+    level: 9
+    description: "sshd — failed password for non-existent user"
+    groups: [linux, sshd, recon, invalid_user]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:.*invalid user\\s+\\S+\\s+from"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1087.001"}]
+    alert: {title: "sshd: Invalid user enumeration"}
+    enabled: true
+
+  - id: 15554
+    level: 12
+    description: "sshd — possible password spray (many distinct usernames, low rate)"
+    groups: [linux, sshd, password_spray]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:.*Failed password"}
+    correlation:
+      window: "30m"
+      threshold: 20
+      distinct: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.003"}]
+    alert: {title: "sshd: Password spray (low-and-slow)"}
+    enabled: true
+
+  - id: 15555
+    level: 12
+    description: "sshd — successful login after multiple failures (compromise suspect)"
+    groups: [linux, sshd, compromise, follow_up]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:\\s+Accepted\\s+\\S+\\s+for"}
+    correlation:
+      window: "10m"
+      threshold: 1
+      precondition_match:
+        regex: "sshd.*Failed password.*from \\S+"
+        precondition_count: 5
+    mitre: [{tactic_id: "TA0008", technique_id: "T1078"}]
+    alert: {title: "sshd: Success following multiple failures"}
+    enabled: true
+
+  - id: 15556
+    level: 11
+    description: "sshd — key-based auth from new key fingerprint"
+    groups: [linux, sshd, key_auth, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:\\s+Accepted\\s+publickey\\s+for"}
+    mitre:
+      - {tactic_id: "TA0003", technique_id: "T1098.004"}
+    alert: {title: "sshd: Public-key login (review fingerprint)"}
+    enabled: true
+
+  - id: 15557
+    level: 11
+    description: "sshd — login from unusual geographic IP (TI-flagged)"
+    groups: [linux, sshd, geo_anomaly, threatintel]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd.*from\\s+(\\d+\\.\\d+\\.\\d+\\.\\d+)"}
+    enrich:
+      geoip: true
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "sshd: Login from anomalous geography (enrich)"}
+    enabled: true
+
+  - id: 15558
+    level: 13
+    description: "sshd — login from Tor exit node"
+    groups: [linux, sshd, tor, threatintel]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd.*from"}
+      enrich:
+        ti_source: "tor_exit_nodes"
+    mitre: [{tactic_id: "TA0011", technique_id: "T1090.003"}]
+    alert: {title: "sshd: SSH from Tor exit node"}
+    enabled: true
+
+  - id: 15559
+    level: 11
+    description: "sshd — TCP forwarding requested (lateral movement / tunnel)"
+    groups: [linux, sshd, tunnel, lateral_movement]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:\\s+(direct-tcpip|tcpip-forward)"}
+    mitre:
+      - {tactic_id: "TA0008", technique_id: "T1572"}
+    alert: {title: "sshd: TCP/X11 forwarding active (tunnel)"}
+    enabled: true
+
+  - id: 15560
+    level: 11
+    description: "sshd — SOCKS dynamic port forwarding"
+    groups: [linux, sshd, tunnel, socks_proxy]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:\\s+(dynamic-tcpip|client-session.*-D)"}
+    mitre: [{tactic_id: "TA0011", technique_id: "T1090"}]
+    alert: {title: "sshd: SOCKS dynamic port forwarding"}
+    enabled: true
+
+  - id: 15561
+    level: 12
+    description: "sshd — agent forwarding requested (cred-relay risk)"
+    groups: [linux, sshd, agent_forward, credential_access]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:\\s+auth-agent-req"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1552.004"}]
+    alert: {title: "sshd: Agent forwarding requested"}
+    enabled: true
+
+  - id: 15562
+    level: 13
+    description: "sshd — unsupported protocol probing (key exchange failed)"
+    groups: [linux, sshd, recon, version_probe]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:\\s+(Bad protocol version|no matching key exchange|no matching cipher)"}
+    correlation:
+      window: "5m"
+      threshold: 10
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "sshd: Protocol probe burst"}
+    enabled: true
+
+  - id: 15563
+    level: 12
+    description: "sshd — preauth segfault / crash"
+    groups: [linux, sshd, exploit, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:\\s+(fatal|segfault).*\\[preauth\\]"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "sshd: Preauth crash"}
+    enabled: true
+
+  - id: 15564
+    level: 14
+    description: "sshd — terrapin attack pattern (CVE-2023-48795)"
+    groups: [linux, sshd, terrapin, cve, downgrade]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd.*(strict kex.*disabled|kex.*chacha20-poly1305.*injected)"}
+    mitre:
+      - {tactic_id: "TA0006", technique_id: "T1557"}
+    alert: {title: "sshd: Terrapin downgrade pattern"}
+    enabled: true
+
+  - id: 15565
+    level: 12
+    description: "sshd — failed reverse DNS lookup spike (spoof / scanning)"
+    groups: [linux, sshd, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:\\s+reverse mapping checking getaddrinfo.*failed"}
+    correlation:
+      window: "10m"
+      threshold: 20
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "sshd: Reverse DNS lookup failures"}
+    enabled: true
+
+  - id: 15566
+    level: 11
+    description: "sshd — user changed default port-forwarding restrictions"
+    groups: [linux, sshd, config_change]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd.*Match (User|Group|Host).*PermitTunnel|AllowTcpForwarding"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "sshd: Config change on tunneling"}
+    enabled: true
+
+  - id: 15567
+    level: 13
+    description: "sshd — PermitRootLogin yes (insecure config detected)"
+    groups: [linux, sshd, config_audit, hardening]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd.*PermitRootLogin\\s+yes"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1078.003"}]
+    alert: {title: "sshd: PermitRootLogin yes"}
+    enabled: true
+
+  - id: 15568
+    level: 11
+    description: "sshd — password authentication enabled (insecure config)"
+    groups: [linux, sshd, config_audit, hardening]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd.*PasswordAuthentication\\s+yes"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110"}]
+    alert: {title: "sshd: PasswordAuthentication yes"}
+    enabled: true
+
+  - id: 15569
+    level: 12
+    description: "sshd — known vulnerable version banner observed"
+    groups: [linux, sshd, version, cve]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)SSH-2\\.0-OpenSSH_(7\\.[0-3]|6\\.|5\\.)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "sshd: Old/vulnerable OpenSSH version"}
+    enabled: true
+
+  - id: 15570
+    level: 11
+    description: "sshd — disconnect with 'Too many authentication failures'"
+    groups: [linux, sshd, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd.*Disconnecting.*Too many authentication failures"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "sshd: Too many auth failures — disconnect"}
+    enabled: true
+
+  - id: 15571
+    level: 9
+    description: "sshd — session started (informational, baseline)"
+    groups: [linux, sshd, session]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:\\s+pam_unix\\(sshd:session\\):\\s+session opened for user"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "sshd: Session opened"}
+    enabled: true
+
+  - id: 15572
+    level: 8
+    description: "sshd — session closed"
+    groups: [linux, sshd, session]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:\\s+pam_unix\\(sshd:session\\):\\s+session closed for user"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "sshd: Session closed"}
+    enabled: true
+
+  - id: 15573
+    level: 13
+    description: "sshd — auth via certificate (unusual — verify CA)"
+    groups: [linux, sshd, certificate_auth]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:\\s+Accepted certificate"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1098.004"}]
+    alert: {title: "sshd: Certificate-based login"}
+    enabled: true
+
+  - id: 15574
+    level: 12
+    description: "sshd — login by user not in AllowUsers list (config bypass attempt)"
+    groups: [linux, sshd, access_control]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd.*User\\s+\\S+\\s+not allowed because not listed in AllowUsers"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1078"}]
+    alert: {title: "sshd: User not in AllowUsers attempted login"}
+    enabled: true
+
+  - id: 15575
+    level: 12
+    description: "sshd — connection from large number of distinct IPs (distributed brute)"
+    groups: [linux, sshd, distributed_brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:.*Failed password"}
+    correlation:
+      window: "10m"
+      threshold: 50
+      distinct: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.003"}]
+    alert: {title: "sshd: Distributed brute-force suspected"}
+    enabled: true
+
+  - id: 15576
+    level: 14
+    description: "sshd — successful login from previously-failing IP (post-breach indicator)"
+    groups: [linux, sshd, compromise, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:\\s+Accepted password for"}
+    correlation:
+      window: "10m"
+      threshold: 1
+      precondition_match:
+        regex: "sshd.*Failed password.*from \\S+"
+        precondition_count: 20
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "sshd: Compromise suspected — auth after brute force"}
+    enabled: true
+
+  - id: 15577
+    level: 9
+    description: "sshd — pubkey rejected, user did not have key in authorized_keys"
+    groups: [linux, sshd, key_auth]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:\\s+Connection closed by authenticating user"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "sshd: Public-key auth rejected"}
+    enabled: true
+
+  - id: 15578
+    level: 13
+    description: "sshd — disconnect by client mid-session (suspicious cancel)"
+    groups: [linux, sshd, anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd\\[\\d+\\]:\\s+Disconnected from authenticating user"}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "sshd: Connection cancelled mid-auth"}
+    enabled: true
+
+  - id: 15579
+    level: 11
+    description: "sshd — MFA / 2FA failure (PAM module rejected secondary factor)"
+    groups: [linux, sshd, mfa, auth]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)sshd.*pam_google_authenticator|pam_oath|pam_yubico.*failed"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1111"}]
+    alert: {title: "sshd: MFA factor failed"}
+    enabled: true

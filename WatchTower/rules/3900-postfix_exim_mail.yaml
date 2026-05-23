@@ -1,0 +1,410 @@
+# WatchTower — Postfix / Exim Mail Server Detection
+# Rule IDs: 15900-15929
+#
+# Sources expected:
+#   /var/log/mail.log, /var/log/maillog
+#   journald postfix.service / exim4.service
+
+rules:
+  # ── Postfix Authentication ────────────────────────────────────────────
+  - id: 15900
+    level: 10
+    description: "Postfix — SASL authentication failure"
+    groups: [postfix, mail, auth, failure]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)postfix.*sasl_method=.*authentication failed"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "Postfix: SASL auth failure"}
+    enabled: true
+
+  - id: 15901
+    level: 12
+    description: "Postfix — SASL brute force"
+    groups: [postfix, mail, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)postfix.*authentication failed"}
+    correlation:
+      window: "10m"
+      threshold: 15
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "Postfix: SMTP auth brute force"}
+    enabled: true
+
+  - id: 15902
+    level: 11
+    description: "Postfix — login from new client country / hosted provider"
+    groups: [postfix, mail, anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)postfix.*sasl_method=(PLAIN|LOGIN).*authenticated"}
+    enrich:
+      geoip: true
+    mitre: [{tactic_id: "TA0001", technique_id: "T1078"}]
+    alert: {title: "Postfix: Authenticated SMTP — review geography"}
+    enabled: true
+
+  # ── Relay / Spam Abuse ────────────────────────────────────────────────
+  - id: 15903
+    level: 12
+    description: "Postfix — relay access denied (open-relay probe)"
+    groups: [postfix, mail, relay, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)postfix.*Relay access denied"}
+    correlation:
+      window: "5m"
+      threshold: 10
+      group_by: ["agent_name"]
+    mitre:
+      - {tactic_id: "TA0007", technique_id: "T1595"}
+    alert: {title: "Postfix: Open-relay probe burst"}
+    enabled: true
+
+  - id: 15904
+    level: 13
+    description: "Postfix — high outbound message rate from single sender (spam burst)"
+    groups: [postfix, mail, spam, abuse]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)postfix.*status=sent"}
+    correlation:
+      window: "5m"
+      threshold: 100
+    mitre:
+      - {tactic_id: "TA0011", technique_id: "T1071.003"}
+    alert: {title: "Postfix: High outbound message rate"}
+    enabled: true
+
+  - id: 15905
+    level: 12
+    description: "Postfix — outbound spam (bounce backscatter — many DSN's)"
+    groups: [postfix, mail, spam, bounce]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)postfix.*(undeliverable|bounce|Mail Delivery System)"}
+    correlation:
+      window: "10m"
+      threshold: 50
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071.003"}]
+    alert: {title: "Postfix: Bounce flood (spam exhaust)"}
+    enabled: true
+
+  # ── Connection / Anti-Abuse ───────────────────────────────────────────
+  - id: 15906
+    level: 11
+    description: "Postfix — connection rate-limit hit (smtpd_client_message_rate_limit)"
+    groups: [postfix, mail, rate_limit, abuse]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)postfix.*Client host rejected.*rate exceeded"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1498"}]
+    alert: {title: "Postfix: Client rate-limit hit"}
+    enabled: true
+
+  - id: 15907
+    level: 12
+    description: "Postfix — connections from RBL-listed IP"
+    groups: [postfix, mail, rbl, spam]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)postfix.*blocked using.*Service unavailable.*Client host.*blocked using"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1071.003"}]
+    alert: {title: "Postfix: RBL-listed sender"}
+    enabled: true
+
+  - id: 15908
+    level: 12
+    description: "Postfix — lost connection mid-transaction (TLS strip / abuse)"
+    groups: [postfix, mail, anomaly]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)postfix.*lost connection after .* from"}
+    correlation:
+      window: "10m"
+      threshold: 20
+      group_by: ["agent_name"]
+    mitre: [{tactic_id: "TA0007", technique_id: "T1595"}]
+    alert: {title: "Postfix: lost-connection burst"}
+    enabled: true
+
+  - id: 15909
+    level: 11
+    description: "Postfix — TLS handshake failure burst"
+    groups: [postfix, mail, tls, downgrade]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)postfix.*TLS .*(error|failed)"}
+    correlation:
+      window: "5m"
+      threshold: 15
+    mitre: [{tactic_id: "TA0006", technique_id: "T1557"}]
+    alert: {title: "Postfix: TLS handshake failure burst"}
+    enabled: true
+
+  - id: 15910
+    level: 12
+    description: "Postfix — STARTTLS downgrade attempted"
+    groups: [postfix, mail, tls, downgrade, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)postfix.*Untrusted TLS|TLS is required, but was not offered"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1557"}]
+    alert: {title: "Postfix: STARTTLS downgrade"}
+    enabled: true
+
+  # ── Header Anomalies / Phishing ───────────────────────────────────────
+  - id: 15911
+    level: 12
+    description: "Postfix — DMARC fail / SPF fail / DKIM fail (phishing risk)"
+    groups: [postfix, mail, dmarc, spf, dkim, phishing]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(DMARC=fail|SPF=fail|DKIM=fail|spf=softfail.*From:.*<)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1566.001"}
+    alert: {title: "Mail: SPF/DKIM/DMARC fail (phishing)"}
+    enabled: true
+
+  - id: 15912
+    level: 13
+    description: "Postfix — message with executable attachment (.exe/.bat/.ps1/.scr)"
+    groups: [postfix, mail, attachment, malware]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Content-Disposition:.*filename=.*\\.(exe|bat|ps1|cmd|scr|vbs|jar|hta|js|wsf)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1566.001"}]
+    alert: {title: "Mail: Executable attachment"}
+    enabled: true
+
+  - id: 15913
+    level: 13
+    description: "Postfix — message with macro-enabled office attachment (.docm/.xlsm/.pptm)"
+    groups: [postfix, mail, attachment, macros, malware]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Content-Disposition:.*filename=.*\\.(docm|xlsm|pptm|xlsb|dotm)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1566.001"}]
+    alert: {title: "Mail: Macro-enabled Office attachment"}
+    enabled: true
+
+  - id: 15914
+    level: 11
+    description: "Postfix — message with display-name spoofing (From != envelope)"
+    groups: [postfix, mail, phishing, spoofing]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)from=<[^>]+>.*helo=<[^>]+>.*envelope-from"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1566"}]
+    alert: {title: "Mail: Envelope/From mismatch suspect"}
+    enabled: true
+
+  - id: 15915
+    level: 11
+    description: "Postfix — message from disposable-email domain (mailinator / temp-mail)"
+    groups: [postfix, mail, disposable, recon]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)from=<[^>]*@(mailinator|10minutemail|guerrillamail|temp-mail|throwaway)\\."}
+    mitre: [{tactic_id: "TA0007", technique_id: "T1589"}]
+    alert: {title: "Mail: Sender on disposable-email domain"}
+    enabled: true
+
+  # ── Exim ──────────────────────────────────────────────────────────────
+  - id: 15916
+    level: 14
+    description: "Exim — CVE-2019-15846 / CVE-2019-10149 'return-path' exploit pattern"
+    groups: [exim, mail, cve, rce, attack]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)exim.*\\$\\{run\\{.*\\}\\}"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1190"}
+    alert: {title: "Exim: ${run{}} expansion (CVE exploit pattern)"}
+    enabled: true
+
+  - id: 15917
+    level: 14
+    description: "Exim — CVE-2020-28017..28026 (21Nails) crash / parser anomaly"
+    groups: [exim, mail, cve, crash]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)exim.*(child process .* died with signal|panic|assertion failed)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1190"}]
+    alert: {title: "Exim: Crash / panic (CVE suspect)"}
+    enabled: true
+
+  - id: 15918
+    level: 12
+    description: "Exim — login failure"
+    groups: [exim, mail, auth, brute_force]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)exim\\[\\d+\\]:.*(authenticator failed|login authenticator failed)"}
+    correlation:
+      window: "5m"
+      threshold: 10
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110.001"}]
+    alert: {title: "Exim: Login auth failures"}
+    enabled: true
+
+  - id: 15919
+    level: 13
+    description: "Exim — outbound spam (high local sender count)"
+    groups: [exim, mail, spam]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)exim.*<=\\s+\\S+@\\S+\\s+U=\\S+"}
+    correlation:
+      window: "5m"
+      threshold: 100
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071.003"}]
+    alert: {title: "Exim: Outbound spam burst"}
+    enabled: true
+
+  - id: 15920
+    level: 12
+    description: "Exim — connection from blacklisted IP"
+    groups: [exim, mail, rbl, spam]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)exim.*\\[\\d+\\.\\d+\\.\\d+\\.\\d+\\].*rejected.*(RBL|blacklist|blocked)"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1071.003"}]
+    alert: {title: "Exim: Blacklisted sender"}
+    enabled: true
+
+  - id: 15921
+    level: 11
+    description: "Exim — TLS error / cert mismatch"
+    groups: [exim, mail, tls, integrity]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)exim.*TLS error.*(cert|handshake|verify)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1557"}]
+    alert: {title: "Exim: TLS verification error"}
+    enabled: true
+
+  # ── Misc / Service Lifecycle ──────────────────────────────────────────
+  - id: 15922
+    level: 12
+    description: "Mail — service stopped (postfix/exim)"
+    groups: [postfix, exim, mail, service, defense_evasion]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(postfix|exim).*(stopped|terminating|exit)"}
+    mitre: [{tactic_id: "TA0005", technique_id: "T1562.001"}]
+    alert: {title: "Mail: service stopped"}
+    enabled: true
+
+  - id: 15923
+    level: 12
+    description: "Mail — large queue depth (DoS / abuse signal)"
+    groups: [postfix, exim, mail, performance, dos]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)mail queue.*(deep|exceeded|overflow)|queue is too large"}
+    mitre: [{tactic_id: "TA0040", technique_id: "T1499"}]
+    alert: {title: "Mail: Queue overflow"}
+    enabled: true
+
+  - id: 15924
+    level: 11
+    description: "Mail — message rejected for SPF policy"
+    groups: [postfix, exim, mail, spf]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)Rejected by SPF|550-SPF|Sender Policy Framework rejected"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1566"}]
+    alert: {title: "Mail: SPF rejection"}
+    enabled: true
+
+  - id: 15925
+    level: 13
+    description: "Mail — message rejected by content filter for malware"
+    groups: [postfix, exim, mail, malware]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(amavis|clamav|spamassassin).*(INFECTED|VIRUS|MALWARE)"}
+    mitre:
+      - {tactic_id: "TA0001", technique_id: "T1566.001"}
+    alert: {title: "Mail: Antivirus detected malware in message"}
+    enabled: true
+
+  - id: 15926
+    level: 11
+    description: "Mail — high-volume sender from internal IP (likely compromised account)"
+    groups: [postfix, exim, mail, compromise]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(postfix|exim).*from=<\\S+@\\S+>.*queued"}
+    correlation:
+      window: "10m"
+      threshold: 300
+    mitre: [{tactic_id: "TA0011", technique_id: "T1071.003"}]
+    alert: {title: "Mail: Internal sender high volume"}
+    enabled: true
+
+  - id: 15927
+    level: 12
+    description: "Mail — connection to internal LDAP / authentication backend failed (auth backend abuse)"
+    groups: [postfix, exim, mail, ldap, auth]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(postfix|exim).*(LDAP search error|LDAP bind failed|auth backend unavailable)"}
+    mitre: [{tactic_id: "TA0006", technique_id: "T1110"}]
+    alert: {title: "Mail: Auth backend failure"}
+    enabled: true
+
+  - id: 15928
+    level: 12
+    description: "Mail — alias/forward file modified by non-admin (persistence)"
+    groups: [postfix, exim, mail, persistence]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(postfix.*alias_maps|aliases|/etc/aliases|\\.forward)"}
+    mitre: [{tactic_id: "TA0003", technique_id: "T1546"}]
+    alert: {title: "Mail: Alias/forward map modified"}
+    enabled: true
+
+  - id: 15929
+    level: 13
+    description: "Mail — phishing pattern: URL with IP-only host in HELO/From"
+    groups: [postfix, exim, mail, phishing]
+    match:
+      type: "log.file"
+      fields:
+        message: {regex: "(?i)(helo|from)=<\\S*@\\d+\\.\\d+\\.\\d+\\.\\d+>"}
+    mitre: [{tactic_id: "TA0001", technique_id: "T1566"}]
+    alert: {title: "Mail: IP-only sender domain (phishing)"}
+    enabled: true
