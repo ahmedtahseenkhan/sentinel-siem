@@ -108,13 +108,13 @@ func (c *Collector) runBaselineScan() {
 			if c.ignorePath(path, p.IgnorePatterns) {
 				return nil
 			}
-			hash, err := utils.SHA256File(path)
+			_, _, sha256sum, err := utils.FileHashes(path)
 			if err != nil {
 				return nil
 			}
 			uid, gid := fileOwner(info)
 			c.mu.Lock()
-			c.baseline[path] = hash
+			c.baseline[path] = sha256sum
 			c.permMap[path] = uint32(info.Mode().Perm())
 			c.ownerMap[path] = uid
 			c.groupMap[path] = gid
@@ -195,7 +195,7 @@ func (c *Collector) handleEvent(ev fsnotify.Event) {
 		c.groupMap[path] = newGroup
 		c.mu.Unlock()
 	case ev.Op&(fsnotify.Create|fsnotify.Write) != 0:
-		hash, err := utils.SHA256File(path)
+		md5sum, sha1sum, sha256sum, err := utils.FileHashes(path)
 		if err != nil {
 			c.emit(ts, "fim.modified", map[string]interface{}{"path": path, "error": err.Error()}, map[string]string{"path": path})
 			return
@@ -204,7 +204,13 @@ func (c *Collector) handleEvent(ev fsnotify.Event) {
 		if ev.Op&fsnotify.Create != 0 {
 			op = "added"
 		}
-		fields := map[string]interface{}{"path": path, "sha256": hash, "previous_hash": oldHash}
+		fields := map[string]interface{}{
+			"path":          path,
+			"md5":           md5sum,
+			"sha1":          sha1sum,
+			"sha256":        sha256sum,
+			"previous_hash": oldHash,
+		}
 		if st, err := os.Stat(path); err == nil {
 			fields["permissions"] = uint32(st.Mode().Perm())
 			uid, gid := fileOwner(st)
@@ -218,7 +224,7 @@ func (c *Collector) handleEvent(ev fsnotify.Event) {
 		}
 		c.emit(ts, "fim."+op, fields, map[string]string{"path": path})
 		c.mu.Lock()
-		c.baseline[path] = hash
+		c.baseline[path] = sha256sum
 		c.mu.Unlock()
 	}
 }
@@ -232,7 +238,7 @@ func (c *Collector) runIncrementalScan() {
 			if c.ignorePath(path, p.IgnorePatterns) {
 				return nil
 			}
-			hash, err := utils.SHA256File(path)
+			md5sum, sha1sum, sha256sum, err := utils.FileHashes(path)
 			if err != nil {
 				return nil
 			}
@@ -240,9 +246,15 @@ func (c *Collector) runIncrementalScan() {
 			old, ok := c.baseline[path]
 			oldPerm := c.permMap[path]
 			c.mu.Unlock()
-			if ok && old != hash {
+			if ok && old != sha256sum {
 				ts := time.Now()
-				c.emit(ts, "fim.modified", map[string]interface{}{"path": path, "sha256": hash, "previous_hash": old}, map[string]string{"path": path})
+				c.emit(ts, "fim.modified", map[string]interface{}{
+					"path":          path,
+					"md5":           md5sum,
+					"sha1":          sha1sum,
+					"sha256":        sha256sum,
+					"previous_hash": old,
+				}, map[string]string{"path": path})
 			}
 			newPerm := uint32(info.Mode().Perm())
 			if ok && oldPerm != 0 && oldPerm != newPerm {
@@ -255,7 +267,7 @@ func (c *Collector) runIncrementalScan() {
 			}
 			if !ok {
 				c.mu.Lock()
-				c.baseline[path] = hash
+				c.baseline[path] = sha256sum
 				c.permMap[path] = newPerm
 				c.mu.Unlock()
 			} else {

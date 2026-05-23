@@ -7,6 +7,7 @@ import (
 	"github.com/watchnode/watchnode/internal/agent"
 	"github.com/watchnode/watchnode/internal/models"
 	"github.com/shirou/gopsutil/v3/net"
+	"github.com/shirou/gopsutil/v3/process"
 )
 
 const CollectorName = "network"
@@ -67,16 +68,35 @@ func (c *Collector) collect() {
 	if err != nil {
 		return
 	}
+	// Cache process lookups by PID across this scan to avoid hammering
+	// /proc for each socket of a busy process.
+	procName := make(map[int32]string)
+	procExe := make(map[int32]string)
 	for _, conn := range conns {
+		pid := conn.Pid
+		name, ok := procName[pid]
+		if !ok && pid > 0 {
+			if p, err := process.NewProcess(pid); err == nil {
+				if n, err := p.Name(); err == nil {
+					name = n
+				}
+				if e, err := p.Exe(); err == nil {
+					procExe[pid] = e
+				}
+			}
+			procName[pid] = name
+		}
 		c.emit(ts, "network.connection", map[string]interface{}{
-			"family":   conn.Family,
-			"type":     conn.Type,
-			"laddr":    conn.Laddr.IP,
-			"lport":    conn.Laddr.Port,
-			"raddr":    conn.Raddr.IP,
-			"rport":    conn.Raddr.Port,
-			"status":   conn.Status,
-			"pid":      conn.Pid,
+			"family":       conn.Family,
+			"type":         conn.Type,
+			"laddr":        conn.Laddr.IP,
+			"lport":        conn.Laddr.Port,
+			"raddr":        conn.Raddr.IP,
+			"rport":        conn.Raddr.Port,
+			"status":       conn.Status,
+			"pid":          pid,
+			"process_name": name,
+			"process_exe":  procExe[pid],
 		}, map[string]string{"status": conn.Status})
 	}
 }

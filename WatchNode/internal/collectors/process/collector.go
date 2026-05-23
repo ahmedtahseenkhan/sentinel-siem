@@ -75,6 +75,10 @@ func (c *Collector) collect() {
 	ts := time.Now()
 	c.mu.Lock()
 	newPIDs := make(map[int32]struct{})
+	procByPid := make(map[int32]*process.Process, len(procs))
+	for _, p := range procs {
+		procByPid[p.Pid] = p
+	}
 	for _, p := range procs {
 		newPIDs[p.Pid] = struct{}{}
 		if _, seen := c.seenPIDs[p.Pid]; seen {
@@ -85,6 +89,8 @@ func (c *Collector) collect() {
 		ppid, _ := p.Ppid()
 		createTime, _ := p.CreateTime()
 		exe, _ := p.Exe()
+		username, _ := p.Username()
+		cwd, _ := p.Cwd()
 		fields := map[string]interface{}{
 			"pid":         p.Pid,
 			"ppid":        ppid,
@@ -92,11 +98,26 @@ func (c *Collector) collect() {
 			"cmdline":     cmdline,
 			"create_time": createTime,
 			"exe":         exe,
+			"user":        username,
+			"cwd":         cwd,
+		}
+		// Resolve parent process name and command line — lets detection rules
+		// match parent-child chains (e.g. winword.exe -> powershell.exe) without
+		// requiring Sysmon to be installed.
+		if parent, ok := procByPid[ppid]; ok {
+			if pn, err := parent.Name(); err == nil {
+				fields["parent_name"] = pn
+			}
+			if pc, err := parent.Cmdline(); err == nil {
+				fields["parent_cmdline"] = pc
+			}
 		}
 		if exe != "" {
 			if info, err := os.Stat(exe); err == nil && info.Size() < 10*1024*1024 {
-				if hash, err := utils.SHA256File(exe); err == nil {
-					fields["sha256"] = hash
+				if md5sum, sha1sum, sha256sum, err := utils.FileHashes(exe); err == nil {
+					fields["md5"] = md5sum
+					fields["sha1"] = sha1sum
+					fields["sha256"] = sha256sum
 				}
 			}
 		}

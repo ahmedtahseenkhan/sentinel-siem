@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -121,6 +122,10 @@ func parseJournalLine(line string) models.DataPoint {
 	}
 }
 
+// extractJSONField returns the unescaped string value of a top-level key from
+// a single-line JSON object. Honors JSON escapes (\", \\, \n, \t, \r, \/,
+// \uXXXX) so MESSAGE fields containing quoted text — common in sshd, sudo,
+// auditd output — are not truncated at the first embedded quote.
 func extractJSONField(json, key string) string {
 	needle := `"` + key + `":"`
 	idx := strings.Index(json, needle)
@@ -128,11 +133,43 @@ func extractJSONField(json, key string) string {
 		return ""
 	}
 	rest := json[idx+len(needle):]
-	end := strings.IndexByte(rest, '"')
-	if end == -1 {
-		return ""
+	var b strings.Builder
+	for i := 0; i < len(rest); i++ {
+		ch := rest[i]
+		if ch == '\\' && i+1 < len(rest) {
+			next := rest[i+1]
+			switch next {
+			case '"', '\\', '/':
+				b.WriteByte(next)
+			case 'n':
+				b.WriteByte('\n')
+			case 't':
+				b.WriteByte('\t')
+			case 'r':
+				b.WriteByte('\r')
+			case 'b':
+				b.WriteByte('\b')
+			case 'f':
+				b.WriteByte('\f')
+			case 'u':
+				if i+5 < len(rest) {
+					if cp, err := strconv.ParseUint(rest[i+2:i+6], 16, 32); err == nil {
+						b.WriteRune(rune(cp))
+						i += 4
+					}
+				}
+			default:
+				b.WriteByte(next)
+			}
+			i++
+			continue
+		}
+		if ch == '"' {
+			return b.String()
+		}
+		b.WriteByte(ch)
 	}
-	return rest[:end]
+	return b.String()
 }
 
 func journalPriorityName(p string) string {
