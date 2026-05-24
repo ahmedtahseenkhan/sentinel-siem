@@ -19,9 +19,19 @@ type RuleMatch struct {
 	Fields map[string]FieldMatch `yaml:"fields,omitempty" json:"fields,omitempty"`
 }
 
+// FieldMatch describes how to match one event field against a constraint.
+// Two equivalent spellings are accepted for exact-match because earlier
+// rule batches were written before the canonical "equals" key was settled:
+//
+//	field: {equals: 4624}      # canonical
+//	field: {value: 4624}       # legacy (batches 2300-2700, 1000-1900)
+//
+// The rule compiler normalises both into the same string comparison. If
+// both keys are set, Equals wins.
 type FieldMatch struct {
 	Regex    string `yaml:"regex,omitempty" json:"regex,omitempty"`
 	Equals   string `yaml:"equals,omitempty" json:"equals,omitempty"`
+	Value    string `yaml:"value,omitempty" json:"value,omitempty"`
 	Contains string `yaml:"contains,omitempty" json:"contains,omitempty"`
 }
 
