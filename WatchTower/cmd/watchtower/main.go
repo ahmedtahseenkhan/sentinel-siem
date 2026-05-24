@@ -21,6 +21,7 @@ import (
 	"github.com/watchtower/watchtower/internal/response"
 	"github.com/watchtower/watchtower/internal/server/api"
 	"github.com/watchtower/watchtower/internal/identity"
+	"github.com/watchtower/watchtower/internal/enrich"
 	"github.com/watchtower/watchtower/internal/notifier"
 	"github.com/watchtower/watchtower/internal/playbook"
 	"github.com/watchtower/watchtower/internal/rba"
@@ -164,6 +165,20 @@ func main() {
 	// Risk-Based Alerting engine
 	rbaEngine := rba.NewEngine(st, logger)
 	eng.SetRBAHook(rbaEngine)
+
+	// VirusTotal alert enrichment. Synchronous on the alert hot path, but
+	// rate-limited + TTL-cached so a busy ruleset can't burn the daily quota.
+	if cfg.Enrich.VirusTotal.Enabled && cfg.Enrich.VirusTotal.APIKey != "" {
+		vt := enrich.NewVirusTotal(enrich.VTConfig{
+			Enabled:      cfg.Enrich.VirusTotal.Enabled,
+			APIKey:       cfg.Enrich.VirusTotal.APIKey,
+			MinLevel:     cfg.Enrich.VirusTotal.MinLevel,
+			CacheTTLSecs: cfg.Enrich.VirusTotal.CacheTTLSecs,
+		}, logger)
+		eng.SetEnricherHook(vt)
+		logger.Info("virustotal enrichment enabled",
+			zap.Int("min_level", cfg.Enrich.VirusTotal.MinLevel))
+	}
 
 	// Outbound notifier (Slack/Teams/webhook/email)
 	if cfg.Notifier.Enabled {

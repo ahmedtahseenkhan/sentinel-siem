@@ -22,6 +22,24 @@ type Config struct {
 	Syslog      SyslogConfig      `yaml:"syslog"`
 	Identity    IdentityConfig    `yaml:"identity"`
 	Notifier    NotifierConfig    `yaml:"notifier"`
+	Enrich      EnrichConfig      `yaml:"enrich"`
+}
+
+// EnrichConfig groups alert-enrichment sources called between rule match
+// and alert storage. Sources should be cheap, network-tolerant, and
+// individually toggleable.
+type EnrichConfig struct {
+	VirusTotal VirusTotalConfig `yaml:"virustotal"`
+}
+
+// VirusTotalConfig — see internal/enrich/virustotal.go for behaviour.
+// Free public API tier defaults are 4 req/min, 500 req/day; the enricher's
+// in-process token bucket and TTL cache keep us within those.
+type VirusTotalConfig struct {
+	Enabled      bool   `yaml:"enabled"`
+	APIKey       string `yaml:"api_key"`
+	MinLevel     int    `yaml:"min_level"`
+	CacheTTLSecs int    `yaml:"cache_ttl_secs"`
 }
 
 // IdentityConfig configures LDAP/AD user synchronisation.

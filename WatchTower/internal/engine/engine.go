@@ -59,6 +59,15 @@ type NotifierHook interface {
 	OnAlert(alert *models.Alert, event *models.Event)
 }
 
+// EnricherHook is called BEFORE alert storage so any context attached
+// (VirusTotal reputation, GeoIP, etc.) lands in the stored alert and is
+// visible to forwarders, notifiers, and the dashboard. Implementations
+// must be reasonably fast (synchronous) and tolerant of network failures —
+// any panic or slow call will block the engine's hot path.
+type EnricherHook interface {
+	OnAlert(alert *models.Alert, event *models.Event)
+}
+
 // UebaHook is called for every raw event before rule matching,
 // allowing UEBA to build behavioral baselines from all event types.
 type UebaHook interface {
@@ -86,6 +95,7 @@ type Engine struct {
 	rbaHook      RBAHook
 	uebaHook     UebaHook
 	notifierHook NotifierHook
+	enricherHook EnricherHook
 	agentResolver AgentResolver
 	deduper      *dedup.Manager
 	correlation  *correlation.Manager
@@ -267,6 +277,12 @@ func (e *Engine) generateAlert(event *models.Event, rule *models.Rule) {
 		return
 	}
 
+	// Enrich BEFORE store/forward/notify so attached context (VT score,
+	// reputation, etc.) flows downstream with the alert.
+	if e.enricherHook != nil {
+		e.enricherHook.OnAlert(a, event)
+	}
+
 	if e.store != nil {
 		id, err := e.store.InsertAlert(a)
 		if err != nil {
@@ -320,6 +336,10 @@ func (e *Engine) SetRBAHook(h RBAHook) {
 
 func (e *Engine) SetUebaHook(h UebaHook) {
 	e.uebaHook = h
+}
+
+func (e *Engine) SetEnricherHook(h EnricherHook) {
+	e.enricherHook = h
 }
 
 func (e *Engine) SetNotifierHook(h NotifierHook) {
