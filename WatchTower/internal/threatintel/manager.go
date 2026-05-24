@@ -9,6 +9,8 @@
 //   - "feodotracker"  — abuse.ch botnet C2 IP blocklist (free, no key)
 //   - "abusech_hash"  — abuse.ch MalwareBazaar SHA256 hashes (free, no key)
 //   - "urlhaus"       — abuse.ch URLhaus malicious domains (free, no key)
+//   - "misp"          — MISP REST search (api_key required; splits output
+//                       into <prefix>_ips, _domains, _hashes, _urls)
 //
 // A configurable interval (default 6h) triggers each enabled source; failures
 // are logged but never fatal.
@@ -115,6 +117,11 @@ func (m *Manager) ingest(ctx context.Context, src config.SourceConfig) error {
 		entries, err = m.fetchAbusechHash(ctx, src)
 	case "urlhaus":
 		entries, err = m.fetchURLhaus(ctx, src)
+	case "misp":
+		// MISP produces multiple typed lists (ips / domains / hashes / urls)
+		// directly via cdbMgr; it does not return a single entries map and
+		// therefore short-circuits the generic single-list install below.
+		return m.ingestMISP(ctx, src)
 	default:
 		return fmt.Errorf("unknown source type: %s", src.Type)
 	}
