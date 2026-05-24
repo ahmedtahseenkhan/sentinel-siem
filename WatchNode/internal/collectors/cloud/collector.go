@@ -110,6 +110,9 @@ func (c *Collector) collect(ctx context.Context) {
 	if c.cfg.Workspace.Enabled {
 		c.collectWorkspace(ctx)
 	}
+	if c.cfg.Defender.Enabled {
+		c.collectDefender(ctx)
+	}
 }
 
 // cursorSince returns the high-water mark for provider, defaulting to

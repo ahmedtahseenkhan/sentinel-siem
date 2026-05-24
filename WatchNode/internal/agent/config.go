@@ -108,6 +108,23 @@ type CloudCollectorConfig struct {
 	GCP      GCPCloudConfig    `yaml:"gcp"`
 	O365     O365CloudConfig   `yaml:"o365"`
 	Workspace WorkspaceCloudConfig `yaml:"workspace"`
+	Defender  DefenderCloudConfig  `yaml:"defender"`
+}
+
+// DefenderCloudConfig for Microsoft Graph Security alerts (alerts_v2).
+// Same Azure AD app-credentials as the Azure connector but needs the
+// SecurityAlert.Read.All Graph permission. Pulls unified Defender alerts
+// (Endpoint, Office 365, Cloud Apps, Identity, plus Sentinel) since the
+// last cursor by lastUpdateDateTime.
+type DefenderCloudConfig struct {
+	Enabled      bool   `yaml:"enabled"`
+	TenantID     string `yaml:"tenant_id"`
+	ClientID     string `yaml:"client_id"`
+	ClientSecret string `yaml:"client_secret"`
+	// MinSeverity restricts the fetch filter. Defaults to "medium"
+	// (medium + high + critical via $filter in('high','medium')); set to
+	// "low" or "informational" to pull more.
+	MinSeverity  string `yaml:"min_severity"`
 }
 
 // WorkspaceCloudConfig for Google Workspace Admin Reports API. Reuses the
