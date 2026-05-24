@@ -107,6 +107,9 @@ func (c *Collector) collect(ctx context.Context) {
 	if c.cfg.O365.Enabled {
 		c.collectO365(ctx)
 	}
+	if c.cfg.Workspace.Enabled {
+		c.collectWorkspace(ctx)
+	}
 }
 
 // cursorSince returns the high-water mark for provider, defaulting to
@@ -634,6 +637,18 @@ type gcpKeyFile struct {
 }
 
 func (c *Collector) getGCPTokenFromKey(ctx context.Context, path string) (string, error) {
+	return c.getGCPTokenScoped(ctx, path, []string{
+		"https://www.googleapis.com/auth/logging.read",
+		"https://www.googleapis.com/auth/cloud-platform.read-only",
+	}, "")
+}
+
+// getGCPTokenScoped is the generic service-account JWT exchange. Lets each
+// caller specify the OAuth scopes it needs and, optionally, a `subject` to
+// impersonate via domain-wide delegation (required for Workspace Admin
+// Reports — the SA must have DWD enabled and `subject` set to an admin
+// email in the target Workspace tenant).
+func (c *Collector) getGCPTokenScoped(ctx context.Context, path string, scopes []string, subject string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", fmt.Errorf("read gcp key file: %w", err)
@@ -652,15 +667,19 @@ func (c *Collector) getGCPTokenFromKey(ctx context.Context, path string) (string
 
 	now := time.Now().Unix()
 	header := base64URL([]byte(`{"alg":"RS256","typ":"JWT"}`))
-	claimsJSON, _ := json.Marshal(map[string]interface{}{
+	claims := map[string]interface{}{
 		"iss":   key.ClientEmail,
-		"scope": "https://www.googleapis.com/auth/logging.read https://www.googleapis.com/auth/cloud-platform.read-only",
+		"scope": strings.Join(scopes, " "),
 		"aud":   tokenURI,
 		"exp":   now + 3600,
 		"iat":   now,
-	})
-	claims := base64URL(claimsJSON)
-	signingInput := header + "." + claims
+	}
+	if subject != "" {
+		claims["sub"] = subject
+	}
+	claimsJSON, _ := json.Marshal(claims)
+	claimsEnc := base64URL(claimsJSON)
+	signingInput := header + "." + claimsEnc
 
 	priv, err := parseRSAPrivateKey(key.PrivateKey)
 	if err != nil {

@@ -107,6 +107,17 @@ type CloudCollectorConfig struct {
 	Azure    AzureCloudConfig  `yaml:"azure"`
 	GCP      GCPCloudConfig    `yaml:"gcp"`
 	O365     O365CloudConfig   `yaml:"o365"`
+	Workspace WorkspaceCloudConfig `yaml:"workspace"`
+}
+
+// WorkspaceCloudConfig for Google Workspace Admin Reports API. Reuses the
+// GCP service-account key file but requires domain-wide delegation enabled
+// on the SA and impersonation of an admin user in the Workspace tenant.
+type WorkspaceCloudConfig struct {
+	Enabled         bool     `yaml:"enabled"`
+	CredentialsFile string   `yaml:"credentials_file"` // path to GCP SA key JSON
+	Subject         string   `yaml:"subject"`          // admin email to impersonate
+	Applications    []string `yaml:"applications"`     // default: admin, login, drive, token
 }
 
 // O365CloudConfig for Office 365 Management Activity API. Same Azure AD
