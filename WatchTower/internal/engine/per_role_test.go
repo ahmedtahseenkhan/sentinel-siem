@@ -64,7 +64,7 @@ func (s *captureStore) snapshot() []*models.Alert {
 // newTestEngine spins up an engine loaded with the production rule set.
 // rulesDir is resolved relative to the repo root so the test runs from any
 // CWD (`go test ./internal/engine/...` from the WatchTower dir works).
-func newTestEngine(t *testing.T) (*Engine, *captureStore) {
+func newTestEngine(t testing.TB) (*Engine, *captureStore) {
 	t.Helper()
 	rulesDir, err := findRulesDir()
 	if err != nil {
@@ -119,7 +119,7 @@ func waitForAlerts(store *captureStore, want int, timeout time.Duration) []*mode
 }
 
 // ingestFixtures pushes each event through the engine in order.
-func ingestFixtures(t *testing.T, eng *Engine, events []*models.Event) {
+func ingestFixtures(t testing.TB, eng *Engine, events []*models.Event) {
 	t.Helper()
 	for _, ev := range events {
 		eng.Ingest(ev)
