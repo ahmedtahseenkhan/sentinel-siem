@@ -104,6 +104,9 @@ func (c *Collector) collect(ctx context.Context) {
 	if c.cfg.GCP.Enabled {
 		c.collectGCP(ctx)
 	}
+	if c.cfg.O365.Enabled {
+		c.collectO365(ctx)
+	}
 }
 
 // cursorSince returns the high-water mark for provider, defaulting to
@@ -447,12 +450,27 @@ func (c *Collector) collectAzure(ctx context.Context) {
 }
 
 func (c *Collector) getAzureToken(ctx context.Context, cfg agent.AzureCloudConfig) (string, error) {
+	return c.getAzureTokenForResource(ctx, cfg.TenantID, cfg.ClientID, cfg.ClientSecret,
+		"https://management.azure.com/")
+}
+
+// getAzureTokenForResource is the generic Azure client-credentials OAuth
+// exchange parameterised by audience/resource. Used by:
+//   - collectAzure                  (resource = management.azure.com)
+//   - collectO365 / Defender Graph  (resource = manage.office.com /
+//                                    graph.microsoft.com)
+//
+// Centralised so all Azure-family sources share the same retry, error
+// shape, and v1.0-vs-v2.0 endpoint choice. We stay on v1.0 because
+// resource= is the only parameter format that works for the legacy
+// O365 Management Activity API; Graph endpoints accept both.
+func (c *Collector) getAzureTokenForResource(ctx context.Context, tenantID, clientID, clientSecret, resource string) (string, error) {
 	body := fmt.Sprintf(
-		"grant_type=client_credentials&client_id=%s&client_secret=%s&resource=https%%3A%%2F%%2Fmanagement.azure.com%%2F",
-		cfg.ClientID, cfg.ClientSecret,
+		"grant_type=client_credentials&client_id=%s&client_secret=%s&resource=%s",
+		clientID, clientSecret, url.QueryEscape(resource),
 	)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/token", cfg.TenantID),
+		fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/token", tenantID),
 		strings.NewReader(body))
 	if err != nil {
 		return "", err
@@ -465,14 +483,15 @@ func (c *Collector) getAzureToken(ctx context.Context, cfg agent.AzureCloudConfi
 	}
 	defer resp.Body.Close()
 	var result struct {
-		AccessToken string `json:"access_token"`
-		Error       string `json:"error"`
+		AccessToken      string `json:"access_token"`
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", err
 	}
 	if result.Error != "" {
-		return "", fmt.Errorf("azure token error: %s", result.Error)
+		return "", fmt.Errorf("azure token error: %s — %s", result.Error, result.ErrorDescription)
 	}
 	return result.AccessToken, nil
 }

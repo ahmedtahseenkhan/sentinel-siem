@@ -106,6 +106,21 @@ type CloudCollectorConfig struct {
 	AWS      AWSCloudConfig    `yaml:"aws"`
 	Azure    AzureCloudConfig  `yaml:"azure"`
 	GCP      GCPCloudConfig    `yaml:"gcp"`
+	O365     O365CloudConfig   `yaml:"o365"`
+}
+
+// O365CloudConfig for Office 365 Management Activity API. Same Azure AD
+// app credentials as the Azure connector; needs separate scope grant
+// (ActivityFeed.Read on the Office 365 Management APIs application).
+type O365CloudConfig struct {
+	Enabled      bool     `yaml:"enabled"`
+	TenantID     string   `yaml:"tenant_id"`
+	ClientID     string   `yaml:"client_id"`
+	ClientSecret string   `yaml:"client_secret"`
+	// ContentTypes restricts which audit streams to subscribe to. Defaults
+	// to all four standard streams: Audit.AzureActiveDirectory, Audit.Exchange,
+	// Audit.SharePoint, Audit.General. DLP.All requires an extra license.
+	ContentTypes []string `yaml:"content_types"`
 }
 
 // AWSCloudConfig for AWS CloudTrail and GuardDuty ingestion.
