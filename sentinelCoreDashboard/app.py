@@ -72,6 +72,11 @@ from watchtower_client import (
     get_discover_field_values,
     get_discover_field_stats,
     get_discover_correlate,
+    COMPLIANCE_FRAMEWORKS,
+    get_compliance_stats,
+    get_compliance_by_control,
+    get_compliance_by_agent,
+    get_compliance_evolution,
     get_hipaa_stats,
     get_hipaa_by_requirement,
     get_hipaa_requirements_high_level,
@@ -1698,6 +1703,32 @@ def api_hipaa_controls():
         return jsonify({
             "high_level": [{"key": h.get("key"), "count": h.get("doc_count", 0)} for h in high_level],
             "requirements": [{"key": r.get("key"), "count": r.get("doc_count", 0)} for r in detailed],
+        })
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/compliance/<framework>/dashboard")
+def api_compliance_dashboard(framework):
+    """Generic compliance dashboard endpoint for the 6 supported frameworks
+    (pci_dss, hipaa, gdpr, nist_800_53, soc2, cis_v8). Returns stats, top
+    controls, top agents, and an hourly evolution series — all driven by
+    rule.groups tagging on the native compliance rules in batches 7100-7600.
+
+    Replaces the gap where only HIPAA had a wired endpoint and that HIPAA
+    endpoint queried a Wazuh-specific rule.hipaa field that our native
+    rules don't emit."""
+    try:
+        if framework not in COMPLIANCE_FRAMEWORKS:
+            return jsonify({"error": f"unknown framework {framework}"}), 400
+        time_from = request.args.get("time_from", type=str) or None
+        time_to = request.args.get("time_to", type=str) or None
+        return jsonify({
+            "framework": framework,
+            "stats":     get_compliance_stats(framework, time_from, time_to),
+            "controls":  get_compliance_by_control(framework, size=20, time_from=time_from, time_to=time_to),
+            "agents":    get_compliance_by_agent(framework, size=10, time_from=time_from, time_to=time_to),
+            "evolution": get_compliance_evolution(framework, time_from=time_from, time_to=time_to),
         })
     except Exception as e:
         return _api_error(e)

@@ -1080,6 +1080,136 @@ def get_discover_field_values(field, size=25, time_from=None, time_to=None, inde
         return []
 
 
+# ----- Generic compliance (queries native rules tagged via rule.groups) -----
+#
+# Sentinel's 290 native compliance rules (batches 7100-7600) tag their
+# framework + control via the YAML `groups:` list:
+#     groups: [compliance, pci_dss, req_2]
+#     groups: [compliance, hipaa, technical]
+#     groups: [compliance, gdpr, art_5]
+#     groups: [compliance, nist_800_53, ac]
+#     groups: [compliance, soc2, cc6]
+#     groups: [compliance, cis_v8, control_6]
+#
+# These functions filter by rule.groups containing the framework name and
+# aggregate on the per-rule tags, dropping the generic "compliance" / the
+# framework name itself from the bucket list so the dashboard shows
+# meaningful control IDs instead of "compliance: 100, pci_dss: 100".
+
+# Map framework slug -> set of "generic" group tags to filter out of result
+# buckets so users see only the meaningful per-control tags.
+_COMPLIANCE_NOISE = {
+    "pci_dss":     {"compliance", "pci_dss"},
+    "hipaa":       {"compliance", "hipaa"},
+    "gdpr":        {"compliance", "gdpr"},
+    "nist_800_53": {"compliance", "nist_800_53"},
+    "soc2":        {"compliance", "soc2"},
+    "cis_v8":      {"compliance", "cis_v8"},
+}
+
+COMPLIANCE_FRAMEWORKS = list(_COMPLIANCE_NOISE.keys())
+
+
+def _compliance_base_query(framework, time_from=None, time_to=None):
+    from datetime import datetime, timezone, timedelta
+    must = [{"term": {"rule.groups": framework}}]
+    if time_from or time_to:
+        now = datetime.now(timezone.utc)
+        start = time_from or (now - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        end = time_to or now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        must.append({"range": {"timestamp": {"gte": start, "lte": end}}})
+    return must
+
+
+def get_compliance_stats(framework, time_from=None, time_to=None):
+    """Total alerts + max rule level for a compliance framework."""
+    if framework not in _COMPLIANCE_NOISE:
+        return {"total_alerts": 0, "max_rule_level": None}
+    body = {
+        "size": 0,
+        "query": {"bool": {"must": _compliance_base_query(framework, time_from, time_to)}},
+        "aggs": {
+            "total": {"value_count": {"field": "timestamp"}},
+            "max_level": {"max": {"field": "rule.level"}},
+        },
+    }
+    try:
+        res = indexer_request("/wazuh-alerts*/_search", method="POST", json_body=body)
+        aggs = res.get("aggregations") or {}
+        total = (aggs.get("total") or {}).get("value", 0)
+        max_level = (aggs.get("max_level") or {}).get("value")
+        return {"total_alerts": total, "max_rule_level": int(max_level) if max_level is not None else None}
+    except Exception:
+        return {"total_alerts": 0, "max_rule_level": None}
+
+
+def get_compliance_by_control(framework, size=20, time_from=None, time_to=None):
+    """Top per-control buckets — e.g. for PCI: req_2, req_8, req_10 with counts.
+    Strips the generic "compliance" and framework tags out of results."""
+    if framework not in _COMPLIANCE_NOISE:
+        return []
+    body = {
+        "size": 0,
+        "query": {"bool": {"must": _compliance_base_query(framework, time_from, time_to)}},
+        # Over-fetch then post-filter generic tags; we can't easily express
+        # an exclude-list in OpenSearch terms agg without painless.
+        "aggs": {"by_group": {"terms": {"field": "rule.groups", "size": size + 4, "order": {"_count": "desc"}}}},
+    }
+    try:
+        res = indexer_request("/wazuh-alerts*/_search", method="POST", json_body=body)
+        buckets = (res.get("aggregations") or {}).get("by_group", {}).get("buckets", [])
+        noise = _COMPLIANCE_NOISE[framework]
+        out = []
+        for b in buckets:
+            k = b.get("key")
+            if k in noise:
+                continue
+            out.append({"key": k, "doc_count": b.get("doc_count", 0)})
+            if len(out) >= size:
+                break
+        return out
+    except Exception:
+        return []
+
+
+def get_compliance_by_agent(framework, size=10, time_from=None, time_to=None):
+    """Top agents by alert count for this framework — for the per-host panel."""
+    if framework not in _COMPLIANCE_NOISE:
+        return []
+    body = {
+        "size": 0,
+        "query": {"bool": {"must": _compliance_base_query(framework, time_from, time_to)}},
+        "aggs": {"by_agent": {"terms": {"field": "agent.name", "size": size, "order": {"_count": "desc"}}}},
+    }
+    try:
+        res = indexer_request("/wazuh-alerts*/_search", method="POST", json_body=body)
+        buckets = (res.get("aggregations") or {}).get("by_agent", {}).get("buckets", [])
+        return [{"key": b.get("key"), "doc_count": b.get("doc_count", 0)} for b in buckets]
+    except Exception:
+        return []
+
+
+def get_compliance_evolution(framework, interval="1h", time_from=None, time_to=None):
+    """Date histogram for compliance alerts. Returns [{date, count}]."""
+    if framework not in _COMPLIANCE_NOISE:
+        return []
+    body = {
+        "size": 0,
+        "query": {"bool": {"must": _compliance_base_query(framework, time_from, time_to)}},
+        "aggs": {
+            "by_time": {
+                "date_histogram": {"field": "timestamp", "fixed_interval": interval, "min_doc_count": 0},
+            },
+        },
+    }
+    try:
+        res = indexer_request("/wazuh-alerts*/_search", method="POST", json_body=body)
+        buckets = (res.get("aggregations") or {}).get("by_time", {}).get("buckets", [])
+        return [{"date": b.get("key_as_string"), "doc_count": b.get("doc_count", 0)} for b in buckets]
+    except Exception:
+        return []
+
+
 # ----- HIPAA compliance (alerts with rule.hipaa) -----
 
 def _hipaa_base_query(time_from=None, time_to=None):
