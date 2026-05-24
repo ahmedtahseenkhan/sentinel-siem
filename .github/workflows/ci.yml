@@ -1,0 +1,147 @@
+# Sentinel SIEM CI
+#
+# Runs on every push and PR against main:
+#   - go test -race ./...    on WatchTower and WatchNode separately
+#   - cross-compile both target OSes for the agent (linux/amd64 + windows/amd64)
+#   - per-role rule-pipeline smoke (loads the real 3k rule set, fires canonical
+#     events, asserts at least one alert per role)
+#   - engine perf smoke test (asserts >= 1k EPS — full 850k benchmark runs
+#     locally on demand, see CHANGELOG)
+#   - syntax check on Python dashboard files (no full test suite there yet)
+#
+# Two CRITICAL bugs in Week 3 (compiler ignoring `value:` syntax;
+# loader rejecting bare-array YAML files — 800 rules silently absent) would
+# have been caught immediately by this workflow. Same logic for any
+# future regression in the rule pipeline or perf hot path.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  watchtower:
+    name: WatchTower (Go ${{ matrix.go }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ['1.23']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache-dependency-path: WatchTower/go.sum
+
+      - name: go vet
+        working-directory: WatchTower
+        run: go vet ./...
+
+      - name: go test -race
+        working-directory: WatchTower
+        run: go test -race -count=1 ./...
+
+      - name: per-role rule pipeline smoke
+        working-directory: WatchTower
+        run: go test -race -v -run TestRolePipeline ./internal/engine/
+
+      - name: engine perf smoke (>= 1k EPS floor)
+        working-directory: WatchTower
+        run: go test -v -run TestSustainedEPSSmoke ./internal/engine/
+
+  watchnode:
+    name: WatchNode (Go ${{ matrix.go }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ['1.21']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache-dependency-path: WatchNode/go.sum
+
+      - name: go vet
+        working-directory: WatchNode
+        run: go vet ./...
+
+      - name: go test -race
+        working-directory: WatchNode
+        run: go test -race -count=1 ./...
+
+      - name: cross-compile (linux/amd64)
+        working-directory: WatchNode
+        env:
+          GOOS: linux
+          GOARCH: amd64
+        run: go build -o /tmp/watchnode-linux ./cmd/agent
+
+      - name: cross-compile (windows/amd64)
+        working-directory: WatchNode
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: go build -o /tmp/watchnode.exe ./cmd/agent
+
+  dashboard:
+    name: Dashboard syntax check (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: AST-parse Flask app + dashboard helpers
+        working-directory: sentinelCoreDashboard
+        run: |
+          python <<'EOF'
+          import ast, glob, sys
+          errors = 0
+          for f in sorted(glob.glob('*.py')):
+              try:
+                  ast.parse(open(f).read())
+                  print(f'OK   {f}')
+              except SyntaxError as e:
+                  print(f'FAIL {f}: {e}')
+                  errors += 1
+          sys.exit(1 if errors else 0)
+          EOF
+
+  rules-loadable:
+    name: All rule files load cleanly
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: install pyyaml
+        run: pip install pyyaml
+
+      - name: verify every rules/*.yaml parses
+        run: |
+          python <<'EOF'
+          import yaml, glob, sys
+          ok, bad = 0, []
+          for f in sorted(glob.glob('WatchTower/rules/*.yaml')):
+              try:
+                  rs = yaml.safe_load(open(f))
+                  ok += 1
+              except Exception as e:
+                  bad.append((f, str(e)))
+          print(f'{ok} rule files parsed clean')
+          if bad:
+              for f, e in bad:
+                  print(f'FAIL {f}: {e}')
+              sys.exit(1)
+          EOF
