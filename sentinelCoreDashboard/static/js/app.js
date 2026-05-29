@@ -1026,81 +1026,6 @@ const GEO_CONTINENTS = [
     }
   }
 
-  // ── demo data (shown when APIs return empty) ─────────────────────
-  const OV_DEMO = {
-    kpis: {
-      events:   { value:'24,847', sub:'+12.4% vs prev 24h',  tag:'+12.4%', tagKind:'up',   spark:[12,18,15,22,19,28,24,31,29,34,28,42], sparkColor:'#38BDF8' },
-      critical: { value:'3',      sub:'2 escalated to cases', tag:'ATTN',   tagKind:'crit', spark:[0,0,1,0,2,1,0,1,3,2,1,3],            sparkColor:'#F25555' },
-      agents:   { value:'142',    sub:'of 146 · 4 offline',   tag:'97.3%',  tagKind:'ok',   spark:[142,143,142,144,143,142,141,142,142,143,142,142], sparkColor:'#34D399' },
-      cases:    { value:'7',      sub:'3 in triage · 1 IR',   tag:'+2',     tagKind:'up',   spark:[4,5,4,6,5,5,6,7,6,7,7,7],            sparkColor:'#2DD4BF' },
-      ueba:     { value:'12',     sub:'4 entities flagged',   tag:'+50%',   tagKind:'up',   spark:[2,3,5,4,6,5,8,7,9,10,11,12],         sparkColor:'#a78bfa' },
-      rba:      { value:'5',      sub:'risk score ≥ 80',      tag:'+1',     tagKind:'up',   spark:[1,2,2,3,3,4,3,4,5,5,4,5],            sparkColor:'#F59E0B' },
-    },
-    feed: [
-      { time:'16:42:08', agent:'prod-edge-04',  desc:'Suspicious PowerShell encoded payload',  tactic:'TA0002 · Execution',     sev:'crit' },
-      { time:'16:41:55', agent:'dc-east-01',    desc:'Brute-force attempt on domain admin',    tactic:'TA0006 · Cred. Access',  sev:'high' },
-      { time:'16:41:12', agent:'prod-app-12',   desc:'Anomalous outbound to 185.220.101.7',    tactic:'TA0011 · C2',            sev:'high' },
-      { time:'16:39:47', agent:'web-fr-02',     desc:'Unusual login geo for u/jane.k',         tactic:'TA0001 · Init. Access',  sev:'med'  },
-      { time:'16:38:21', agent:'jumpbox-prod',  desc:'New scheduled task created by SYSTEM',   tactic:'TA0003 · Persistence',   sev:'med'  },
-      { time:'16:37:03', agent:'dev-laptop-09', desc:'New network connection established',      tactic:'TA0011 · C2',            sev:'low'  },
-    ],
-    sourceIPs: [
-      { ip:'185.220.101.7',  asn:'AS208294 · Tor exit · NL', count:1284, sev:'crit' },
-      { ip:'45.95.169.143',  asn:'AS44477 · STARK · RU',     count:412,  sev:'high' },
-      { ip:'103.74.192.18',  asn:'AS131090 · CHINANET · CN', count:219,  sev:'high' },
-      { ip:'91.240.118.172', asn:'AS207812 · M247 · DE',     count:140,  sev:'med'  },
-      { ip:'198.98.51.189',  asn:'AS53667 · FRANTECH · US',  count:88,   sev:'med'  },
-    ],
-    atRisk: [
-      { host:'prod-edge-04',  score:94, sev:'crit' },
-      { host:'dc-east-01',    score:81, sev:'high' },
-      { host:'prod-app-12',   score:73, sev:'high' },
-      { host:'web-fr-02',     score:58, sev:'med'  },
-      { host:'jumpbox-prod',  score:47, sev:'med'  },
-      { host:'dev-laptop-09', score:34, sev:'low'  },
-    ],
-    mitre: [
-      { tactic:'Initial Access',   count:4, level:'warm' },
-      { tactic:'Execution',        count:9, level:'hot3' },
-      { tactic:'Persistence',      count:3, level:'warm' },
-      { tactic:'Priv. Escalation', count:1, level:'warm' },
-      { tactic:'Defense Evasion',  count:5, level:'hot1' },
-      { tactic:'Cred. Access',     count:6, level:'hot2' },
-      { tactic:'Discovery',        count:2, level:'warm' },
-      { tactic:'Lateral Movement', count:4, level:'hot1' },
-      { tactic:'Collection',       count:0, level:''     },
-      { tactic:'C2',               count:7, level:'hot2' },
-      { tactic:'Exfiltration',     count:0, level:''     },
-      { tactic:'Impact',           count:1, level:'warm' },
-    ],
-    cases: [
-      { title:'PowerShell ransomware staging',    id:'CASE-2041', owner:'M. Reyes', age:'2h',  sev:'crit' },
-      { title:'Suspected lateral movement · DC',  id:'CASE-2039', owner:'A. Park',  age:'5h',  sev:'high' },
-      { title:'Tor exit-node beaconing',           id:'CASE-2037', owner:'M. Reyes', age:'9h',  sev:'high' },
-      { title:'IAM key exposure · GitHub',         id:'CASE-2036', owner:'L. Chen',  age:'14h', sev:'med'  },
-    ],
-    ueba: [
-      { id:'jane.k@corp',      label:'identity',     score:9, badge:'JK', color:'#fb7185' },
-      { id:'svc-deploy-prod',  label:'service acct', score:7, badge:'SD', color:'#fbbf24' },
-      { id:'prod-edge-04',     label:'host',         score:6, badge:'P4', color:'#60a5fa' },
-      { id:'admin.root',       label:'identity',     score:5, badge:'AR', color:'#a78bfa' },
-    ],
-    rba: [
-      { id:'RBA-9421', title:'Risk score 94 · jane.k',       sev:'crit', score:94 },
-      { id:'RBA-9418', title:'Risk score 87 · svc-deploy',   sev:'high', score:87 },
-      { id:'RBA-9412', title:'Risk score 83 · prod-edge-04', sev:'high', score:83 },
-      { id:'RBA-9405', title:'Risk score 81 · admin.root',   sev:'high', score:81 },
-    ],
-    hosts: [
-      { name:'prod-edge-04',  state:'compromised',  dotCls:'crit' },
-      { name:'dc-east-01',    state:'high-cpu',      dotCls:'warn' },
-      { name:'web-fr-02',     state:'running',       dotCls:'ok'   },
-      { name:'jumpbox-prod',  state:'running',       dotCls:'ok'   },
-      { name:'node-local-02', state:'disconnected',  dotCls:'crit' },
-    ],
-    agentHealth: { running:142, disconnected:4, total:146 },
-    trendTotal: 712, trendPeak: 53,
-  };
 
   // ── sparkline SVG builder ─────────────────────────────────────────
   function buildSparklineSVG(data, color, w=70, h=22) {
@@ -1199,8 +1124,8 @@ const GEO_CONTINENTS = [
   async function loadOverview() {
     const data = await fetchJson(API.dashboardOverview).catch(e => ({ error: e }));
     if (data.error) {
-      // On error still show demo data so the dashboard looks good
-      _ov2ApplyDemo();
+      // API unavailable — render an honest empty/zero state, never demo data.
+      _ov2RenderEmpty();
       _loadOvCases(); _loadOvUeba(); _loadOvRba(); _loadOvCompliance(); _loadOvCloud();
       return;
     }
@@ -1210,35 +1135,26 @@ const GEO_CONTINENTS = [
     const totalAgents   = (agentsSummary.total != null && agentsSummary.total !== '') ? agentsSummary.total : (data.agent_status_list || []).length;
     const critVal       = data.critical_incidents ?? 0;
 
-    // Detect empty: use demo data when nothing has arrived yet
-    const isDemo = (totalEvents === 0 && critVal === 0);
-
-    if (isDemo) {
-      _ov2ApplyDemo();
-    } else {
-      // KPIs from real data — counts from API, sparklines from real timeline_24h
-      // Use ?? not || so zero active agents is not treated as falsy and replaced
-      // with totalAgents — that was what made Overview show "1 online / 100%"
-      // when Agents page correctly showed "0 connected / 1 disconnected".
-      const agentsOnline = agentsSummary.active ?? agentsSummary.connected ?? 0;
-      const agentsTotal  = agentsSummary.total ?? totalAgents ?? 0;
-      const agentsPct    = agentsTotal > 0 ? Math.round((agentsOnline / agentsTotal) * 100) : 0;
-      // Real sparklines: extract hourly counts from timeline_24h
-      const tl24 = (data.timeline_24h || []).map(t => t.count || 0);
-      const _spkEvents = tl24.length >= 2 ? tl24 : [18,22,19,25,28,24,31,27,35,30,38,34,42,39,45];
-      // For severity-split sparklines use timeline_24h_by_severity if present
-      const tl24sev = data.timeline_24h_by_severity || [];
-      const _spkCrit   = tl24sev.length >= 2 ? tl24sev.map(t=>(t.critical||0)+(t.high||0)) : [1,0,2,1,0,3,1,4,2,1,3,0,2,4,3];
-      const _spkAgents = tl24.length >= 2 ? tl24.map(() => agentsPct) : Array(15).fill(agentsPct);
-      _ov2SetKpi({ val:'kpiTotalEvents',   sub:'kpiEventsSub',  tag:'kpiEventsTag',  spark:'kpiEventsSpark'  },
-        { value: totalEvents.toLocaleString(), sub:'+events · 24h window', tag:totalEvents>0?'+'+totalEvents:'IDLE', tagKind:totalEvents>1000?'up':'ok', spark: _spkEvents, sparkColor:'#38BDF8' });
-      _ov2SetKpi({ val:'criticalCount',    sub:'kpiAlertsSub',  tag:'kpiAlertsTag',  spark:'kpiAlertsSpark'  },
-        { value: String(critVal), sub: critVal > 0 ? critVal + ' need attention' : 'no escalations', tag: critVal > 0 ? 'ATTN' : 'CLEAR', tagKind: critVal > 0 ? 'crit' : 'ok', spark: _spkCrit, sparkColor:'#F25555' });
-      _ov2SetKpi({ val:'kpiMonitoredAssets', sub:'kpiAgentsSub', tag:'kpiAgentsTag', spark:'kpiAgentsSpark' },
-        { value: String(agentsOnline), sub: `of ${agentsTotal} · ${Math.max(0, agentsTotal - agentsOnline)} offline`, tag: agentsPct + '%', tagKind: agentsPct >= 95 ? 'ok' : 'crit', spark: _spkAgents, sparkColor:'#34D399' });
-      const alertBadge = document.getElementById('navBadgeAlerts');
-      if (alertBadge) { alertBadge.textContent = critVal > 0 ? (critVal > 99 ? '99+' : critVal) : ''; alertBadge.style.display = critVal > 0 ? '' : 'none'; }
-    }
+    // KPIs from real data only — counts from API, sparklines from real
+    // timeline_24h. No demo/sample fallback: empty data renders zeros and a
+    // flat sparkline, which is the honest state for a quiet/new deployment.
+    // Use ?? not || so zero active agents is not treated as falsy.
+    const agentsOnline = agentsSummary.active ?? agentsSummary.connected ?? 0;
+    const agentsTotal  = agentsSummary.total ?? totalAgents ?? 0;
+    const agentsPct    = agentsTotal > 0 ? Math.round((agentsOnline / agentsTotal) * 100) : 0;
+    const tl24 = (data.timeline_24h || []).map(t => t.count || 0);
+    const _spkEvents = tl24;
+    const tl24sev = data.timeline_24h_by_severity || [];
+    const _spkCrit   = tl24sev.map(t => (t.critical||0)+(t.high||0));
+    const _spkAgents = agentsTotal > 0 ? tl24.map(() => agentsPct) : [];
+    _ov2SetKpi({ val:'kpiTotalEvents',   sub:'kpiEventsSub',  tag:'kpiEventsTag',  spark:'kpiEventsSpark'  },
+      { value: totalEvents.toLocaleString(), sub:'events · 24h window', tag:totalEvents>0?'+'+totalEvents:'IDLE', tagKind:totalEvents>1000?'up':'ok', spark: _spkEvents, sparkColor:'#38BDF8' });
+    _ov2SetKpi({ val:'criticalCount',    sub:'kpiAlertsSub',  tag:'kpiAlertsTag',  spark:'kpiAlertsSpark'  },
+      { value: String(critVal), sub: critVal > 0 ? critVal + ' need attention' : 'no escalations', tag: critVal > 0 ? 'ATTN' : 'CLEAR', tagKind: critVal > 0 ? 'crit' : 'ok', spark: _spkCrit, sparkColor:'#F25555' });
+    _ov2SetKpi({ val:'kpiMonitoredAssets', sub:'kpiAgentsSub', tag:'kpiAgentsTag', spark:'kpiAgentsSpark' },
+      { value: String(agentsOnline), sub: `of ${agentsTotal} · ${Math.max(0, agentsTotal - agentsOnline)} offline`, tag: agentsPct + '%', tagKind: agentsPct >= 95 ? 'ok' : 'crit', spark: _spkAgents, sparkColor:'#34D399' });
+    const alertBadge = document.getElementById('navBadgeAlerts');
+    if (alertBadge) { alertBadge.textContent = critVal > 0 ? (critVal > 99 ? '99+' : critVal) : ''; alertBadge.style.display = critVal > 0 ? '' : 'none'; }
 
     // Charts (real data always)
     const sev24 = data.alert_severity_24h || {};
@@ -1254,29 +1170,30 @@ const GEO_CONTINENTS = [
 
     // MITRE
     const mitreData = data.mitre || [];
-    _ov2RenderMitre(isDemo ? OV_DEMO.mitre : mitreData);
+    _ov2RenderMitre(mitreData);
 
-    // Response metrics
+    // Response metrics — real values only; show "—" when the API doesn't
+    // provide them rather than inventing 18 min / 94% / 78%.
     const mttrEl = document.getElementById('responseMttr');
     const triageEl = document.getElementById('responseTriage');
     const containmentPctEl = document.getElementById('responseContainmentPct');
     const containmentEl = document.getElementById('responseContainment');
-    if (mttrEl) mttrEl.textContent = data.mttr_min ?? 18;
-    if (triageEl) triageEl.textContent = data.triage_rate ?? 94;
-    const containmentVal = data.containment_pct ?? 78;
+    if (mttrEl) mttrEl.textContent = data.mttr_min != null ? data.mttr_min : '—';
+    if (triageEl) triageEl.textContent = data.triage_rate != null ? data.triage_rate : '—';
+    const containmentVal = data.containment_pct ?? 0;
     if (containmentEl) containmentEl.style.width = containmentVal + '%';
-    if (containmentPctEl) containmentPctEl.textContent = containmentVal;
+    if (containmentPctEl) containmentPctEl.textContent = data.containment_pct != null ? containmentVal : '—';
 
     // Alert feed
     const alerts      = data.recent_alerts || [];
     const totalAlerts = data.recent_alerts_total ?? alerts.length;
-    _ov2RenderFeed(isDemo ? OV_DEMO.feed : alerts, isDemo ? OV_DEMO.feed.length : totalAlerts, isDemo);
+    _ov2RenderFeed(alerts, totalAlerts);
 
     // Top source IPs
     const sources   = data.top_sources || [];
     const ipListEl  = document.getElementById('topSourcesList');
     const ipEmptyEl = document.getElementById('topSourcesEmpty');
-    const ipData    = (sources.length === 0 && isDemo) ? OV_DEMO.sourceIPs : sources;
+    const ipData    = sources;
     if (ipListEl) {
       if (ipData.length === 0) {
         ipListEl.innerHTML = '';
@@ -1291,7 +1208,7 @@ const GEO_CONTINENTS = [
 
     // At-risk agents
     const devices = data.at_risk_devices || [];
-    const devData = (devices.length === 0 && isDemo) ? OV_DEMO.atRisk : devices;
+    const devData = devices;
     const devEl   = document.getElementById('atRiskDevices');
     if (devEl) {
       if (devData.length === 0) {
@@ -1309,7 +1226,7 @@ const GEO_CONTINENTS = [
 
     // Agent health host list (v2)
     const agentList = (data.agent_status_list || []);
-    const hostData  = agentList.length === 0 && isDemo ? OV_DEMO.hosts : agentList.slice(0, 6).map(a => ({
+    const hostData  = agentList.slice(0, 6).map(a => ({
       name: a.name || a.id || '—',
       state: (a.status || 'pending').toLowerCase(),
       dotCls: (a.status||'').toLowerCase() === 'active' ? 'ok' : (a.status||'').toLowerCase() === 'disconnected' ? 'crit' : 'warn',
@@ -1328,7 +1245,7 @@ const GEO_CONTINENTS = [
     _loadOvCases(); _loadOvUeba(); _loadOvRba(); _loadOvCompliance(); _loadOvCloud();
   }
 
-  function _ov2RenderFeed(alerts, total, isDemo) {
+  function _ov2RenderFeed(alerts, total) {
     const emptyEl = document.getElementById('ov2FeedEmpty');
     const tableEl = document.getElementById('ov2FeedTable');
     const bodyEl  = document.getElementById('liveAlertStream');
@@ -1345,21 +1262,15 @@ const GEO_CONTINENTS = [
     if (emptyEl) emptyEl.style.display = 'none';
     if (tableEl) tableEl.style.display = '';
     if (dotEl)   dotEl.style.background = 'var(--d-low)';
-    if (statEl)  statEl.textContent = (isDemo ? 'DEMO · ' : '') + alerts.length + ' alerts · streaming';
+    if (statEl)  statEl.textContent = alerts.length + ' alerts · streaming';
 
     bodyEl.innerHTML = alerts.map(a => {
-      let time, agent, desc, tactic, sevCls;
-      if (typeof a.time === 'string') {
-        // demo row
-        time = a.time; agent = a.agent; desc = a.desc; tactic = a.tactic; sevCls = a.sev;
-      } else {
-        time    = a.timestamp ? new Date(a.timestamp).toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '—';
-        const lvl = parseInt(a.rule_level, 10);
-        sevCls  = lvl >= 13 ? 'crit' : lvl >= 10 ? 'high' : lvl >= 5 ? 'med' : 'low';
-        desc    = (a.rule_description || a.rule_id || 'Alert').slice(0, 70);
-        agent   = (a.agent_name || a.agent_id || '—').slice(0, 18);
-        tactic  = a.mitre_tactic ? `${a.mitre_tactic}` : '—';
-      }
+      const time    = a.timestamp ? new Date(a.timestamp).toLocaleTimeString(undefined, { hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '—';
+      const lvl     = parseInt(a.rule_level, 10);
+      const sevCls  = lvl >= 13 ? 'crit' : lvl >= 10 ? 'high' : lvl >= 5 ? 'med' : 'low';
+      const desc    = (a.rule_description || a.rule_id || 'Alert').slice(0, 70);
+      const agent   = (a.agent_name || a.agent_id || '—').slice(0, 18);
+      const tactic  = a.mitre_tactic ? `${a.mitre_tactic}` : '—';
       const sevLabel = { crit:'Critical', high:'High', med:'Medium', low:'Low' }[sevCls] || sevCls;
       return `<tr>
         <td class="ov2-feed-time">${escapeHtml(time)}</td>
@@ -1372,57 +1283,18 @@ const GEO_CONTINENTS = [
     }).join('');
   }
 
-  function _ov2ApplyDemo() {
-    const D = OV_DEMO;
-    _ov2SetKpi({ val:'kpiTotalEvents',    sub:'kpiEventsSub',  tag:'kpiEventsTag',  spark:'kpiEventsSpark'  }, D.kpis.events, true);
-    _ov2SetKpi({ val:'criticalCount',     sub:'kpiAlertsSub',  tag:'kpiAlertsTag',  spark:'kpiAlertsSpark'  }, D.kpis.critical, true);
-    _ov2SetKpi({ val:'kpiMonitoredAssets',sub:'kpiAgentsSub',  tag:'kpiAgentsTag',  spark:'kpiAgentsSpark'  }, D.kpis.agents, true);
-    _ov2SetKpi({ val:'kpiOpenCases',      sub:'kpiCasesSub',   tag:'kpiCasesTag',   spark:'kpiCasesSpark'   }, D.kpis.cases, true);
-    _ov2SetKpi({ val:'kpiUebaAnomalies',  sub:'kpiUebaSub',    tag:'kpiUebaTag',    spark:'kpiUebaSpark'    }, D.kpis.ueba, true);
-    _ov2SetKpi({ val:'kpiRbaNotables',    sub:'kpiRbaSub',     tag:'kpiRbaTag',     spark:'kpiRbaSpark'     }, D.kpis.rba, true);
-    const statsEl = document.getElementById('timelineStats');
-    if (statsEl) statsEl.textContent = `Total ${D.trendTotal.toLocaleString()} · peak ${D.trendPeak}`;
-    const dot = document.getElementById('trendDot');
-    if (dot) dot.style.background = 'var(--d-low)';
-    // Draw charts with demo data
-    drawTimeline('timelineCanvas', null, D.trend);
-    drawThreatSummaryDonut('threatSummaryDonutCanvas','threatSummaryTotal','threatSummaryLegend',
-      {}, { critical:3, high:28, medium:94, low:587 });
-    drawAgentsSummaryDonut('agentsSummaryDonutCanvas','agentsSummaryDonutLegend',
-      { active:142, disconnected:4, pending:0, never_connected:0 });
-    const tbStatus = document.getElementById('tb2Status');
-    if (tbStatus) { tbStatus.className = 'tb2-status crit'; tbStatus.querySelector('.tb2-status-dot') && (tbStatus.querySelector('.tb2-status-dot').style.background = ''); tbStatus.lastChild.textContent = ' active incidents'; }
-    _ov2RenderMitre(D.mitre);
-    _ov2RenderFeed(D.feed, D.feed.length, true);
-    // source IPs
-    const ipListEl  = document.getElementById('topSourcesList');
-    const ipEmptyEl = document.getElementById('topSourcesEmpty');
-    if (ipListEl) {
-      if (ipEmptyEl) ipEmptyEl.classList.add('hidden');
-      const maxC = Math.max(...D.sourceIPs.map(s => s.count), 1);
-      ipListEl.innerHTML = D.sourceIPs.map((r, i) => _ov2RenderSourceRow(r, i, maxC)).join('');
-      const ipDot = document.getElementById('ipsDot');
-      if (ipDot) ipDot.style.background = 'var(--d-crit)';
-    }
-    // at-risk agents
-    const devEl = document.getElementById('atRiskDevices');
-    if (devEl) {
-      const maxS = Math.max(...D.atRisk.map(d => d.score), 1);
-      devEl.innerHTML = D.atRisk.map((r, i) => _ov2RenderAgentRiskRow(r, i, maxS)).join('');
-      const rDot = document.getElementById('riskDot');
-      if (rDot) rDot.style.background = 'var(--d-high)';
-    }
-    // host list
-    const liveAssets2 = document.getElementById('liveAssetsBody2');
-    if (liveAssets2) {
-      liveAssets2.innerHTML = D.hosts.map(h =>
-        `<div class="ov2-host-row">
-          <span class="ov2-hdot ${h.dotCls}"></span>
-          <span class="ov2-host-name">${escapeHtml(h.name)}</span>
-          <span class="ov2-host-state">${escapeHtml(h.state)}</span>
-        </div>`
-      ).join('');
-    }
+  // Honest empty/zero state used when the overview API is unavailable.
+  // Never renders sample data — zeros + flat sparklines + empty lists.
+  function _ov2RenderEmpty() {
+    const zero = { value:'0', sub:'no data', tag:'IDLE', tagKind:'ok', spark:[], sparkColor:'#38BDF8' };
+    _ov2SetKpi({ val:'kpiTotalEvents',    sub:'kpiEventsSub', tag:'kpiEventsTag', spark:'kpiEventsSpark' }, zero);
+    _ov2SetKpi({ val:'criticalCount',     sub:'kpiAlertsSub', tag:'kpiAlertsTag', spark:'kpiAlertsSpark' }, { ...zero, tag:'CLEAR' });
+    _ov2SetKpi({ val:'kpiMonitoredAssets',sub:'kpiAgentsSub', tag:'kpiAgentsTag', spark:'kpiAgentsSpark' }, { ...zero, tag:'0%' });
+    drawTimeline('timelineCanvas', []);
+    drawThreatSummaryDonut('threatSummaryDonutCanvas','threatSummaryTotal','threatSummaryLegend', {});
+    drawAgentsSummaryDonut('agentsSummaryDonutCanvas','agentsSummaryDonutLegend', {});
+    _ov2RenderMitre([]);
+    _ov2RenderFeed([], 0);
   }
 
   async function _loadOvCases() {
@@ -1440,7 +1312,7 @@ const GEO_CONTINENTS = [
       if (kpi)   kpi.textContent   = total;
       if (subEl) subEl.textContent = total === 1 ? '1 open case' : total > 0 ? total + ' open cases' : 'queue empty';
       if (tagEl) { tagEl.textContent = total > 0 ? '+' + total : 'CLEAR'; tagEl.className = `ov2-kpi-tag ${total > 0 ? 'up' : 'ok'}`; }
-      if (spkEl) spkEl.innerHTML    = buildSparklineSVG([2,3,2,4,3,5,4,6,5,7,6,7,8,7,9], '#2DD4BF');
+      if (spkEl) spkEl.innerHTML    = buildSparklineSVG([], '#2DD4BF');
       if (badge) { badge.textContent = total > 0 ? (total > 99 ? '99+' : total) : ''; badge.style.display = total > 0 ? '' : 'none'; }
 
       if (cases.length === 0) {
@@ -1449,17 +1321,6 @@ const GEO_CONTINENTS = [
         </div><div class="ov2-empty-msg">No open cases</div><div class="ov2-empty-sub">Inbox zero · nice work</div></div>`;
         const cDot = document.getElementById('casesDot');
         if (cDot) cDot.style.background = 'var(--d-ok)';
-        // Show demo cases if empty
-        const demoCases = OV_DEMO.cases;
-        el.innerHTML = demoCases.map(c =>
-          `<div class="ov2-row">
-            <div class="ov2-row-main">
-              <span class="ov2-row-pri mono">${escapeHtml(c.title)}</span>
-              <span class="ov2-row-sec">${escapeHtml(c.id)} · ${escapeHtml(c.owner)} · ${escapeHtml(c.age)}</span>
-            </div>
-            <span class="ov2-pill ${c.sev}">${c.sev === 'crit' ? 'Crit' : c.sev === 'high' ? 'High' : 'Med'}</span>
-          </div>`
-        ).join('');
         return;
       }
       const cDot = document.getElementById('casesDot');
@@ -1497,9 +1358,15 @@ const GEO_CONTINENTS = [
       if (kpi)   kpi.textContent   = anomalyCount;
       if (subEl) subEl.textContent = anomalyCount > 0 ? anomalyCount + ' anomalies detected' : 'within baseline';
       if (tagEl) { tagEl.textContent = anomalyCount > 0 ? '+' + anomalyCount : 'OK'; tagEl.className = `ov2-kpi-tag ${anomalyCount > 0 ? 'up' : 'ok'}`; }
-      if (spkEl) spkEl.innerHTML    = buildSparklineSVG([0,1,0,2,1,3,2,4,3,5,4,6,5,7,8], '#a78bfa');
+      if (spkEl) spkEl.innerHTML    = buildSparklineSVG([], '#a78bfa');
 
-      const uebaData = scores.length === 0 ? OV_DEMO.ueba : scores.slice(0, 5);
+      if (scores.length === 0) {
+        el.innerHTML = `<div class="ov2-empty"><div class="ov2-empty-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg>
+        </div><div class="ov2-empty-msg">No risk-scored entities</div><div class="ov2-empty-sub">UEBA baselines still forming</div></div>`;
+        return;
+      }
+      const uebaData = scores.slice(0, 5);
       el.innerHTML = uebaData.map(s => {
         const score  = s.risk_score || s.score || 0;
         const label  = s.label || s.entity_type || 'agent';
@@ -1535,7 +1402,7 @@ const GEO_CONTINENTS = [
       if (kpi)   kpi.textContent   = total;
       if (subEl) subEl.textContent = total > 0 ? 'risk score ≥ threshold' : 'no risk-scored events';
       if (tagEl) { tagEl.textContent = total > 0 ? '+' + total : 'OK'; tagEl.className = `ov2-kpi-tag ${total > 0 ? 'up' : 'ok'}`; }
-      if (spkEl) spkEl.innerHTML    = buildSparklineSVG([1,2,1,3,2,4,3,4,5,4,6,5,7,6,8], '#F59E0B');
+      if (spkEl) spkEl.innerHTML    = buildSparklineSVG([], '#F59E0B');
       const rbaDot = document.getElementById('rbaDot');
 
       if (notables.length === 0) {
@@ -1543,17 +1410,6 @@ const GEO_CONTINENTS = [
         el.innerHTML = `<div class="ov2-empty"><div class="ov2-empty-icon">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
         </div><div class="ov2-empty-msg">No notable events</div><div class="ov2-empty-sub">Risk-based alerting is calibrated</div></div>`;
-        // Show demo RBA
-        el.innerHTML = OV_DEMO.rba.map(r => {
-          const scoreColor = r.score >= 90 ? 'var(--d-crit)' : 'var(--d-high)';
-          return `<div class="ov2-row">
-            <div class="ov2-row-main">
-              <span class="ov2-row-pri mono">${escapeHtml(r.title)}</span>
-              <span class="ov2-row-sec">${escapeHtml(r.id)}</span>
-            </div>
-            <span style="font-size:12px;font-family:var(--d-font-mono);font-weight:600;color:${scoreColor};flex-shrink:0;min-width:22px;text-align:right">${r.score}</span>
-          </div>`;
-        }).join('');
         return;
       }
       if (rbaDot) rbaDot.style.background = 'var(--d-high)';
@@ -2000,28 +1856,6 @@ const GEO_CONTINENTS = [
     return out;
   }
 
-  // ── Demo data for views2 ─────────────────────────────────────────
-  const HUNT_DEMO = {
-    byAgent:   [{ name:'prod-edge-04', mono:false, count:47, sev:'crit', meta:'production · edge tier' },{ name:'dc-east-01', mono:false, count:32, sev:'high', meta:'domain controller' },{ name:'prod-app-12', mono:false, count:28, sev:'high', meta:'app server' },{ name:'web-fr-02', mono:false, count:18, sev:'med', meta:'web front · EU' },{ name:'jumpbox-prod', mono:false, count:12, sev:'med', meta:'bastion' }],
-    bySev:     [{ name:'Critical', count:4, sev:'crit', share:.07 },{ name:'High', count:18, sev:'high', share:.31 },{ name:'Medium', count:24, sev:'med', share:.41 },{ name:'Low', count:12, sev:'low', share:.21 }],
-    byRule:    [{ name:'Suspicious PowerShell encoded payload', count:14, sev:'crit', meta:'rule 92213' },{ name:'Brute-force authentication · domain admin', count:12, sev:'high', meta:'rule 60106' },{ name:'Outbound to known C2 endpoint', count:9, sev:'high', meta:'rule 86601' },{ name:'Unusual login geographic location', count:7, sev:'med', meta:'rule 60204' },{ name:'New scheduled task by SYSTEM', count:4, sev:'med', meta:'rule 92402' },{ name:'New network connection established', count:2, sev:'low', meta:'rule 40101' }],
-    savedHunts:[{ name:'PowerShell encoded commands', meta:'24h · 4 hits' },{ name:'Anomalous DNS to new domains', meta:'7d · 12 hits' },{ name:'Lateral movement · WMI', meta:'24h · 1 hit' },{ name:'Off-hours admin logons', meta:'7d · 9 hits' },{ name:'New service installs', meta:'24h · 0' },{ name:'Sysmon T1059 + parent powershell.exe', meta:'7d · 6 hits' }],
-  };
-  const GEO_DEMO = {
-    countries:[{ flag:'🇷🇺', name:'Russian Federation', count:412, share:.32, sev:'crit' },{ flag:'🇨🇳', name:'China', count:1284, share:1, sev:'crit' },{ flag:'🇺🇸', name:'United States', count:88, share:.10, sev:'med' },{ flag:'🇩🇪', name:'Germany', count:140, share:.18, sev:'high' },{ flag:'🇧🇷', name:'Brazil', count:54, share:.08, sev:'med' },{ flag:'🇮🇩', name:'Indonesia', count:76, share:.09, sev:'high' },{ flag:'🇳🇬', name:'Nigeria', count:42, share:.06, sev:'low' }],
-    ips:      [{ ip:'185.220.101.7', country:'NL', city:'Amsterdam', isp:'Tor Exit · AS208294', alerts:1284, max:14, last:'16:42:08' },{ ip:'45.95.169.143', country:'RU', city:'Moscow', isp:'STARK-INDUSTRIES · AS44477', alerts:412, max:12, last:'16:41:55' },{ ip:'103.74.192.18', country:'CN', city:'Beijing', isp:'CHINANET · AS131090', alerts:219, max:11, last:'16:41:12' },{ ip:'91.240.118.172', country:'DE', city:'Frankfurt', isp:'M247 · AS207812', alerts:140, max:9, last:'16:38:21' },{ ip:'198.98.51.189', country:'US', city:'Dallas', isp:'FRANTECH · AS53667', alerts:88, max:9, last:'16:37:03' }],
-    origins:  [{ x:705, y:175, n:412, s:'high' },{ x:770, y:200, n:1284, s:'crit' },{ x:195, y:195, n:88, s:'med' },{ x:510, y:130, n:140, s:'med' },{ x:280, y:360, n:54, s:'med' },{ x:720, y:300, n:76, s:'high' },{ x:540, y:230, n:42, s:'low' },{ x:870, y:390, n:23, s:'low' }],
-  };
-  // GEO_CONTINENTS moved to global scope (used by loadGeoMap which is outside IIFE)
-  const UEBA_DEMO = {
-    entities:[{ rank:1,id:'jane.k@corp',type:'identity',score:87,alerts:12,crit:2,anom:9,last:'16:42',badge:'JK',color:'#fb7185' },{ rank:2,id:'svc-deploy-prod',type:'service',score:76,alerts:8,crit:1,anom:7,last:'16:18',badge:'SD',color:'#fbbf24' },{ rank:3,id:'prod-edge-04',type:'host',score:68,alerts:14,crit:3,anom:6,last:'16:42',badge:'P4',color:'#60a5fa' },{ rank:4,id:'admin.root',type:'identity',score:54,alerts:5,crit:0,anom:5,last:'15:21',badge:'AR',color:'#a78bfa' },{ rank:5,id:'dc-east-01',type:'host',score:41,alerts:9,crit:1,anom:4,last:'16:41',badge:'DC',color:'#34d399' },{ rank:6,id:'web-fr-02',type:'host',score:28,alerts:3,crit:0,anom:2,last:'16:39',badge:'WF',color:'#22d3ee' }],
-    anomalies:[{ name:'Unusual login geography',count:18,sev:'high' },{ name:'Process-spawn baseline',count:14,sev:'high' },{ name:'Unusual data volume',count:11,sev:'med' },{ name:'Off-hours activity',count:9,sev:'med' },{ name:'Privilege escalation',count:6,sev:'crit' },{ name:'New service account',count:4,sev:'low' }],
-  };
-  const RBA_DEMO = {
-    entities:[{ id:'jane.k@corp',badge:'JK',color:'#fb7185',score:142,threshold:100,alerts:18,notables:2,last:'16:42' },{ id:'svc-deploy-prod',badge:'SD',color:'#fbbf24',score:118,threshold:100,alerts:12,notables:1,last:'16:18' },{ id:'prod-edge-04',badge:'P4',color:'#60a5fa',score:96,threshold:100,alerts:14,notables:0,last:'16:42' },{ id:'admin.root',badge:'AR',color:'#a78bfa',score:82,threshold:100,alerts:8,notables:0,last:'15:21' },{ id:'dc-east-01',badge:'DC',color:'#34d399',score:64,threshold:100,alerts:9,notables:0,last:'16:41' },{ id:'web-fr-02',badge:'WF',color:'#22d3ee',score:41,threshold:100,alerts:3,notables:0,last:'16:39' },{ id:'jumpbox-prod',badge:'JB',color:'#f472b6',score:22,threshold:100,alerts:2,notables:0,last:'14:08' }],
-    notables:[{ id:'RBA-9421',entity:'jane.k@corp',score:142,sev:'crit',triggered:'16:42:08',summary:'Crossed threshold · 18 alerts in 24h' },{ id:'RBA-9418',entity:'svc-deploy-prod',score:118,sev:'crit',triggered:'16:18:32',summary:'Crossed threshold · 12 alerts in 24h' }],
-    weights: [{ rule:'Suspicious PowerShell encoded payload',weight:24,fires:14 },{ rule:'Brute-force domain admin',weight:20,fires:12 },{ rule:'Outbound to known C2',weight:18,fires:9 },{ rule:'Unusual login geo',weight:10,fires:7 },{ rule:'New scheduled task by SYSTEM',weight:8,fires:4 },{ rule:'New outbound connection',weight:3,fires:2 }],
-  };
 
   function _renderBigbars(containerId, rows, dotId, metaId, dotColor) {
     const el = document.getElementById(containerId);
@@ -2161,60 +1995,7 @@ const GEO_CONTINENTS = [
     }, 0);
   });
 
-  // ── Demo data for Alerts / Discover / MITRE (shown when APIs return empty) ──
-  const ALERTS_DEMO = {
-    kpis: {
-      total: { value:'712',  sub:'+18% vs prev 24h',  tag:'+18%',  tagKind:'up',   spark:[12,18,22,19,28,34,29,42,38,48,52,58], color:'var(--low)'  },
-      crit:  { value:'3',    sub:'2 escalated',        tag:'ATTN',  tagKind:'crit', spark:[0,0,1,0,1,2,1,3,2,2,3,3],            color:'var(--crit)' },
-      high:  { value:'28',   sub:'6 open',             tag:'+9',    tagKind:'up',   spark:[2,3,1,4,3,5,4,6,3,4,5,5],            color:'var(--high)' },
-      med:   { value:'681',  sub:'94% auto-closed',    tag:'OK',    tagKind:'ok',   spark:[11,16,18,15,24,28,24,33,33,42,44,50], color:'var(--med)'  },
-    },
-    categories: [
-      { name:'Web Application Attack',  count:142, sev:'high' },
-      { name:'Brute Force · SSH',        count:98,  sev:'high' },
-      { name:'Anomalous Process Spawn',  count:84,  sev:'med'  },
-      { name:'Suspicious DNS',           count:67,  sev:'med'  },
-      { name:'New Outbound Connection',  count:61,  sev:'low'  },
-      { name:'Failed Authentication',    count:54,  sev:'low'  },
-    ],
-    affected: [
-      { host:'prod-edge-04',  count:89, sev:'crit' },
-      { host:'dc-east-01',    count:71, sev:'high' },
-      { host:'prod-app-12',   count:58, sev:'high' },
-      { host:'web-fr-02',     count:47, sev:'med'  },
-      { host:'jumpbox-prod',  count:34, sev:'med'  },
-      { host:'mail-relay-02', count:22, sev:'low'  },
-    ],
-    incidents: [
-      { time:'16:42:08', sev:'crit', title:'PowerShell ransomware staging on prod-edge-04', affected:'prod-edge-04',  status:'in-triage'     },
-      { time:'16:41:55', sev:'high', title:'Brute-force domain admin on dc-east-01',        affected:'dc-east-01',    status:'investigating'  },
-      { time:'16:41:12', sev:'high', title:'Anomalous outbound to 185.220.101.7',           affected:'prod-app-12',   status:'investigating'  },
-      { time:'16:39:47', sev:'med',  title:'Unusual login geo · jane.k',                    affected:'web-fr-02',     status:'acknowledged'   },
-      { time:'16:38:21', sev:'med',  title:'Scheduled task created by SYSTEM',              affected:'jumpbox-prod',  status:'acknowledged'   },
-    ],
-    trend: [
-      {crit:0,high:1,med:2,low:4},{crit:0,high:0,med:1,low:3},{crit:0,high:0,med:1,low:2},
-      {crit:0,high:1,med:3,low:5},{crit:1,high:2,med:4,low:8},{crit:0,high:1,med:3,low:6},
-      {crit:0,high:0,med:2,low:4},{crit:0,high:0,med:1,low:3},{crit:0,high:1,med:2,low:5},
-      {crit:1,high:3,med:5,low:9},{crit:2,high:4,med:7,low:12},{crit:1,high:3,med:6,low:14},
-      {crit:0,high:2,med:5,low:11},{crit:0,high:1,med:4,low:9},{crit:0,high:2,med:6,low:13},
-      {crit:1,high:4,med:8,low:16},{crit:2,high:6,med:11,low:22},{crit:3,high:8,med:14,low:28},
-      {crit:2,high:5,med:10,low:21},{crit:1,high:3,med:8,low:17},{crit:1,high:2,med:6,low:13},
-      {crit:0,high:2,med:5,low:11},{crit:1,high:3,med:7,low:14},{crit:2,high:4,med:9,low:18},
-      {crit:1,high:3,med:7,low:15},
-    ],
-  };
 
-  const DISCOVER_DEMO_EVENTS = [
-    { t:'16:42:08.231', lvl:14, rid:'92213', desc:'Suspicious PowerShell encoded payload',     agent:'prod-edge-04',  type:'process_creation' },
-    { t:'16:41:55.108', lvl:12, rid:'60106', desc:'Multiple authentication failures · admin',  agent:'dc-east-01',    type:'authentication'   },
-    { t:'16:41:12.840', lvl:11, rid:'86601', desc:'Outbound connection to known C2 endpoint',  agent:'prod-app-12',   type:'network'          },
-    { t:'16:39:47.502', lvl: 9, rid:'60204', desc:'Login from unusual geographic location',    agent:'web-fr-02',     type:'authentication'   },
-    { t:'16:38:21.110', lvl: 9, rid:'92402', desc:'New scheduled task created by SYSTEM',      agent:'jumpbox-prod',  type:'persistence'      },
-    { t:'16:37:03.998', lvl: 5, rid:'40101', desc:'New network connection established',        agent:'dev-laptop-09', type:'network'          },
-    { t:'16:36:48.221', lvl: 4, rid:'40102', desc:'DNS query to newly observed domain',        agent:'web-fr-02',     type:'dns'              },
-    { t:'16:36:12.040', lvl: 3, rid:'31100', desc:'File integrity baseline updated',           agent:'mail-relay-02', type:'fim'              },
-  ];
 
   const MITRE_TACTICS = [
     { id:'TA0043', name:'Reconnaissance',    short:'Recon'     },
@@ -2230,20 +2011,6 @@ const GEO_CONTINENTS = [
     { id:'TA0009', name:'Collection',        short:'Collect'   },
     { id:'TA0011', name:'C2',                short:'C2'        },
   ];
-  const MITRE_DEMO_CELLS = {
-    TA0043:[{id:'T1595',n:'Active Scanning',        c:2,lvl:'warm'},{id:'T1592',n:'Victim Host Info',     c:1,lvl:'warm'}],
-    TA0042:[{id:'T1583',n:'Acquire Infrastructure', c:0,lvl:''    }],
-    TA0001:[{id:'T1078',n:'Valid Accounts',         c:6,lvl:'hot2'},{id:'T1190',n:'Public-facing App',   c:3,lvl:'warm'},{id:'T1133',n:'External Remote',   c:1,lvl:'warm'}],
-    TA0002:[{id:'T1059',n:'Cmd & Script · PS',      c:9,lvl:'hot3'},{id:'T1053',n:'Scheduled Task',      c:4,lvl:'hot1'},{id:'T1106',n:'Native API',         c:2,lvl:'warm'}],
-    TA0003:[{id:'T1547',n:'Boot/Logon Autostart',   c:3,lvl:'warm'},{id:'T1098',n:'Account Manipulate',  c:2,lvl:'warm'}],
-    TA0004:[{id:'T1068',n:'Exploit · Priv Esc',     c:1,lvl:'warm'}],
-    TA0005:[{id:'T1027',n:'Obfuscated Files',        c:5,lvl:'hot1'},{id:'T1070',n:'Indicator Removal',   c:3,lvl:'warm'},{id:'T1562',n:'Impair Defenses',   c:2,lvl:'warm'}],
-    TA0006:[{id:'T1110',n:'Brute Force',             c:8,lvl:'hot2'},{id:'T1003',n:'OS Credential Dump',  c:4,lvl:'hot1'},{id:'T1555',n:'Password Stores',   c:1,lvl:'warm'}],
-    TA0007:[{id:'T1018',n:'Remote System Disc',      c:2,lvl:'warm'},{id:'T1083',n:'File & Directory',    c:1,lvl:'warm'}],
-    TA0008:[{id:'T1021',n:'Remote Services',         c:4,lvl:'hot1'},{id:'T1570',n:'Lateral Tool Xfer',   c:2,lvl:'warm'}],
-    TA0009:[{id:'T1005',n:'Local System Data',       c:0,lvl:''    }],
-    TA0011:[{id:'T1071',n:'App Layer Protocol',      c:7,lvl:'hot2'},{id:'T1095',n:'Non-App Layer',       c:3,lvl:'warm'},{id:'T1090',n:'Proxy',              c:2,lvl:'warm'}],
-  };
 
   // ── Sparkline helper (reuse from overview) ────────────────────────
   function _spark(data, color, w=70, h=22) {
@@ -3176,7 +2943,7 @@ const GEO_CONTINENTS = [
 
     // Use demo trend if histogram is empty
     const raw = Array.isArray(histogram) && histogram.length > 0 ? histogram : null;
-    const buckets = raw || (DISCOVER_DEMO_EVENTS.length > 0 ? OV_DEMO?.trend : null);
+    const buckets = raw || null;
 
     const P = {l:32,r:8,t:6,b:18};
     const cW = W-P.l-P.r, cH = H-P.t-P.b;

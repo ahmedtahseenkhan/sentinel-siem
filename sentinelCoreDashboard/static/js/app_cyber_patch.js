@@ -41,12 +41,14 @@ window.drawTimeline = function(canvasId, timeline24h) {
     ctx.fillText(Math.floor((maxVal/5)*i), 5, y + 4);
   }
 
-  // Draw area chart for total logs (simulated as 5x alerts for visual)
+  // Draw area chart for total event volume. Uses the real per-bucket value
+  // (b.total when the API provides total log volume, else the alert count) —
+  // no simulated/random inflation.
   ctx.beginPath();
   buckets.forEach((b, i) => {
-    const val = b.count * 5 + Math.random() * b.count; // Simulated volume
+    const val = (b.total != null ? b.total : b.count) || 0;
     const x = padding.left + i * step + step / 2;
-    const y = padding.top + chartH - (val / (maxVal*6)) * chartH;
+    const y = padding.top + chartH - (val / maxVal) * chartH;
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   });
@@ -87,14 +89,9 @@ window.drawThreatSummaryDonut = function(canvasId, centerId, legendId, sev24) {
   ].filter(s => s.count > 0);
   
   let total = segments.reduce((s, x) => s + x.count, 0);
-  if (total === 0) {
-      // Dummy data if empty so it matches the screenshot visually for the user
-      segments.push({label: 'CRITICAL', count: 18, color: '#ff3333'});
-      segments.push({label: 'HIGH', count: 35, color: '#ff9900'});
-      segments.push({label: 'MEDIUM', count: 47, color: '#ffcc00'});
-      total = 100;
-  }
-  
+  // No dummy fallback: when there are no alerts the donut renders empty and
+  // the centre shows 0, which is the honest state for a quiet window.
+
   if (centerEl) centerEl.textContent = total;
 
   const ctx = canvas.getContext('2d');
