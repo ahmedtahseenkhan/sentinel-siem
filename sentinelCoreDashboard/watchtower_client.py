@@ -1466,6 +1466,123 @@ def get_vulnerabilities_kpis(time_from=None, time_to=None):
 
 
 # ---------------------------------------------------------------------------
+# Generic compliance — queries watchvault-alerts-* by rule_groups for any of
+# the 6 supported frameworks. Sentinel's native compliance rules (batches
+# 7100-7600) tag framework + control via the rule groups list, e.g.
+#   [compliance, pci_dss, req_2] / [compliance, hipaa, technical] / ...
+# These functions filter on rule_groups == <framework> and aggregate on the
+# per-control sub-tags, dropping the generic "compliance"/framework tags so
+# the dashboard shows meaningful control IDs.
+# ---------------------------------------------------------------------------
+
+_COMPLIANCE_NOISE = {
+    "pci_dss":     {"compliance", "pci_dss"},
+    "hipaa":       {"compliance", "hipaa"},
+    "gdpr":        {"compliance", "gdpr"},
+    "nist_800_53": {"compliance", "nist_800_53"},
+    "soc2":        {"compliance", "soc2"},
+    "cis_v8":      {"compliance", "cis_v8"},
+}
+
+COMPLIANCE_FRAMEWORKS = list(_COMPLIANCE_NOISE.keys())
+
+
+def _compliance_base_query(framework, time_from=None, time_to=None):
+    from datetime import datetime, timezone, timedelta
+    must = [{"term": {"rule_groups": framework}}]
+    if time_from or time_to:
+        now = datetime.now(timezone.utc)
+        start = _to_epoch_ms(time_from) if time_from else int((now - timedelta(hours=24)).timestamp() * 1000)
+        end = _to_epoch_ms(time_to) if time_to else int(now.timestamp() * 1000)
+        must.append({"range": {"timestamp": {"gte": start, "lte": end}}})
+    return must
+
+
+def get_compliance_stats(framework, time_from=None, time_to=None):
+    if framework not in _COMPLIANCE_NOISE:
+        return {"total_alerts": 0, "max_rule_level": None}
+    body = {
+        "size": 0,
+        "query": {"bool": {"must": _compliance_base_query(framework, time_from, time_to)}},
+        "aggs": {
+            "total": {"value_count": {"field": "timestamp"}},
+            "max_level": {"max": {"field": "rule_level"}},
+        },
+    }
+    try:
+        res = indexer_search(ALERTS_INDEX, body)
+        aggs = res.get("aggregations") or {}
+        total = (aggs.get("total") or {}).get("value", 0)
+        max_level = (aggs.get("max_level") or {}).get("value")
+        return {"total_alerts": total, "max_rule_level": int(max_level) if max_level is not None else None}
+    except Exception:
+        return {"total_alerts": 0, "max_rule_level": None}
+
+
+def get_compliance_by_control(framework, size=20, time_from=None, time_to=None):
+    """Top per-control buckets (e.g. PCI: req_2, req_8...) by alert count,
+    with the generic compliance/framework tags stripped out."""
+    if framework not in _COMPLIANCE_NOISE:
+        return []
+    body = {
+        "size": 0,
+        "query": {"bool": {"must": _compliance_base_query(framework, time_from, time_to)}},
+        "aggs": {"by_group": {"terms": {"field": "rule_groups", "size": size + 4, "order": {"_count": "desc"}}}},
+    }
+    try:
+        res = indexer_search(ALERTS_INDEX, body)
+        buckets = (res.get("aggregations") or {}).get("by_group", {}).get("buckets", [])
+        noise = _COMPLIANCE_NOISE[framework]
+        out = []
+        for b in buckets:
+            k = b.get("key")
+            if k in noise:
+                continue
+            out.append({"key": k, "doc_count": b.get("doc_count", 0)})
+            if len(out) >= size:
+                break
+        return out
+    except Exception:
+        return []
+
+
+def get_compliance_by_agent(framework, size=10, time_from=None, time_to=None):
+    if framework not in _COMPLIANCE_NOISE:
+        return []
+    body = {
+        "size": 0,
+        "query": {"bool": {"must": _compliance_base_query(framework, time_from, time_to)}},
+        "aggs": {"by_agent": {"terms": {"field": "agent_name", "size": size, "order": {"_count": "desc"}}}},
+    }
+    try:
+        res = indexer_search(ALERTS_INDEX, body)
+        buckets = (res.get("aggregations") or {}).get("by_agent", {}).get("buckets", [])
+        return [{"key": b.get("key"), "doc_count": b.get("doc_count", 0)} for b in buckets]
+    except Exception:
+        return []
+
+
+def get_compliance_evolution(framework, interval="1h", time_from=None, time_to=None):
+    if framework not in _COMPLIANCE_NOISE:
+        return []
+    body = {
+        "size": 0,
+        "query": {"bool": {"must": _compliance_base_query(framework, time_from, time_to)}},
+        "aggs": {
+            "by_time": {
+                "date_histogram": {"field": "timestamp", "fixed_interval": interval, "min_doc_count": 0},
+            },
+        },
+    }
+    try:
+        res = indexer_search(ALERTS_INDEX, body)
+        buckets = (res.get("aggregations") or {}).get("by_time", {}).get("buckets", [])
+        return [{"date": b.get("key_as_string"), "doc_count": b.get("doc_count", 0)} for b in buckets]
+    except Exception:
+        return []
+
+
+# ---------------------------------------------------------------------------
 # HIPAA compliance — queries watchvault-alerts-* for rule_groups containing "hipaa"
 # (Since WatchTower doesn't have a dedicated rule.hipaa field, we use rule_groups)
 # ---------------------------------------------------------------------------
