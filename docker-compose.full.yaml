@@ -36,6 +36,12 @@ x-watchtower-common: &watchtower-common
       condition: service_healthy
     kafka:
       condition: service_healthy
+    # Wait for topics to exist before producing. Without this, WatchTower
+    # races kafka-init and DLQs every event/alert with UNKNOWN_TOPIC until
+    # a manual restart. service_completed_successfully blocks startup until
+    # kafka-init has created sentinel.events / sentinel.alerts.
+    kafka-init:
+      condition: service_completed_successfully
   restart: unless-stopped
 
 # Shared OpenSearch cluster environment
@@ -202,6 +208,9 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      # Same as WatchTower — don't start the consumer before topics exist.
+      kafka-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   haproxy:
