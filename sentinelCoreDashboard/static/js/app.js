@@ -2182,12 +2182,17 @@ const GEO_CONTINENTS = [
 
   function getDiscoverParams() {
     const sel = document.getElementById('discoverTimeRange');
-    let range = sel?.value || '24h';
+    // Default 7d (was 24h). Discover reads from OpenSearch via the Kafka
+    // pipeline; alerts take a few seconds to index and operators usually want
+    // to see "what happened recently", not just today. The Alerts page already
+    // covers live 24h. A wider Discover default also avoids the "0 hits but
+    // there's data 25h ago" confusion users hit on day-1.
+    let range = sel?.value || '7d';
     if (range === 'custom') {
       const from = sel.getAttribute('data-custom-from');
       const to   = sel.getAttribute('data-custom-to');
       if (from && to) range = `custom:${from}|${to}`;
-      else range = '24h';
+      else range = '7d';
     }
     const b = getTimeRangeBounds(range);
     const time_from = b.time_from;
@@ -2863,6 +2868,34 @@ const GEO_CONTINENTS = [
     discoverDropdownsLoaded = true;
   }
 
+  // Probe: same DSL but with the timestamp range replaced by "last 30 days".
+  // Used by the empty-state hint to tell the operator that data exists outside
+  // the chosen time window so they don't conclude "no data" when really it's
+  // "no data in this 24-hour slice".
+  async function probeOutsideTimeWindow(currentDsl, index) {
+    try {
+      const probe = JSON.parse(JSON.stringify(currentDsl));
+      if (probe && probe.query && probe.query.bool && Array.isArray(probe.query.bool.must)) {
+        probe.query.bool.must = probe.query.bool.must.filter(c => !(c && c.range && c.range.timestamp));
+        probe.query.bool.must.unshift({ range: { timestamp: { gte: 'now-30d' } } });
+        if (probe.query.bool.must.length === 1) {
+          // collapsed back to time-only — keep as bool so server is happy
+        }
+      } else {
+        probe.query = { bool: { must: [{ range: { timestamp: { gte: 'now-30d' } } }] } };
+      }
+      const q = new URLSearchParams({ size: '0', offset: '0' });
+      const r = await fetch(API.alertsList + '?' + q.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dsl: probe, index }),
+      }).then(r => r.json()).catch(() => ({ total: 0 }));
+      return r && typeof r.total === 'number' ? r.total : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+
   async function loadDiscover() {
     if (discoverAvailableFieldsList.length === 0) await loadDiscoverFields();
     if (!discoverDropdownsLoaded) initDiscoverDropdowns();
@@ -2900,7 +2933,19 @@ const GEO_CONTINENTS = [
     const resWrap = document.getElementById('discoverResultsWrap');
     if (resWrap) {
       if (displayTotal === 0) {
-        resWrap.innerHTML = `<div class="sigil-block"><div class="sigil" style="background:radial-gradient(circle,rgba(255,255,255,0.04),transparent 70%);color:var(--fg-3)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></div><div class="sigil-text"><h4>No events found</h4><p>No events match the current filters and time range. Try widening the time window or removing filters.</p></div><div style="flex:1"></div><button class="act-btn" onclick="discoverDslFilters=[];renderDiscoverFilterPills();loadDiscover()">Reset filters</button></div>`;
+        // Honest empty state + async probe: if data exists OUTSIDE the chosen
+        // time window the operator usually just needs to widen it. Tell them
+        // exactly how many they'd see at 30d so the next action is obvious.
+        const hintId = 'dsHint_' + Math.random().toString(36).slice(2,8);
+        resWrap.innerHTML = `<div class="sigil-block"><div class="sigil" style="background:radial-gradient(circle,rgba(255,255,255,0.04),transparent 70%);color:var(--fg-3)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></div><div class="sigil-text"><h4>No events found</h4><p>No events match the current filters and time range. Try widening the time window or removing filters.</p><p id="${hintId}" style="margin-top:8px;color:var(--med);font-size:12px;display:none"></p></div><div style="flex:1"></div><button class="act-btn" onclick="discoverDslFilters=[];renderDiscoverFilterPills();loadDiscover()">Reset filters</button></div>`;
+        probeOutsideTimeWindow(dsl, selectedIndex).then((n) => {
+          if (n > 0) {
+            const el = document.getElementById(hintId);
+            if (!el) return;
+            el.innerHTML = `${n.toLocaleString()} event${n===1?'':'s'} exist outside this window. <a href="#" style="color:var(--accent);text-decoration:underline" onclick="event.preventDefault();var t=document.getElementById('discoverTimeRange');if(t){t.value='30d';loadDiscover();}">Widen to Last 30d →</a>`;
+            el.style.display = '';
+          }
+        });
       } else {
         resWrap.innerHTML = `<div class="tbl"><div class="tbl-h" id="discoverThead"></div><div id="discoverBody">${renderDiscoverRows(displayAlerts)}</div></div>`;
         renderDiscoverThead();
