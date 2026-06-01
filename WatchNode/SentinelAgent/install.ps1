@@ -206,18 +206,19 @@ function Set-InstallDirACL {
 if ($Uninstall) {
     Write-Banner
     Write-Step "Stopping and removing Sentinel agent..."
-    # Scheduled task (current install method).
-    & schtasks.exe /query /tn $ServiceName *> $null
-    if ($LASTEXITCODE -eq 0) {
-        & schtasks.exe /end /tn $ServiceName *> $null
-        & schtasks.exe /delete /tn $ServiceName /f *> $null
+    # Scheduled task (current install method). Use cmdlets, not schtasks.exe —
+    # a native command writing to stderr aborts the script under -EA Stop.
+    if (Get-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue) {
+        Stop-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue
+        Unregister-ScheduledTask -TaskName $ServiceName -Confirm:$false -ErrorAction SilentlyContinue
         Write-OK "Scheduled task removed."
     }
-    # Any leftover SCM service from an older install.
+    # Any leftover SCM service from an older install (only delete if it exists,
+    # so sc.exe never errors).
     $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
     if ($svc) {
         if ($svc.Status -eq "Running") { Stop-Service -Name $ServiceName -Force; Start-Sleep -Seconds 2 }
-        & sc.exe delete $ServiceName | Out-Null
+        cmd.exe /c "sc delete $ServiceName 2>nul" | Out-Null
         Write-OK "Service removed."
     }
     Get-Process -Name "watchnode" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -271,7 +272,7 @@ if ($existing) {
         Stop-Service -Name $ServiceName -Force
         Start-Sleep -Seconds 2
     }
-    & sc.exe delete $ServiceName | Out-Null
+    cmd.exe /c "sc delete $ServiceName 2>nul" | Out-Null
     Start-Sleep -Seconds 1
     Write-OK "Old service removed."
 }
@@ -475,13 +476,16 @@ Set-InstallDirACL
 Write-Step "Registering Sentinel agent (scheduled task, runs as SYSTEM)..."
 
 # Clean up any prior task / leftover SCM service / running process from earlier
-# attempts so this is idempotent.
-& schtasks.exe /query /tn $ServiceName *> $null
-if ($LASTEXITCODE -eq 0) { & schtasks.exe /delete /tn $ServiceName /f *> $null }
+# attempts so this is idempotent. Use cmdlets (they honour -EA SilentlyContinue);
+# schtasks.exe writes to stderr when the task is absent, which aborts the script
+# under $ErrorActionPreference = "Stop".
+if (Get-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue) {
+    Unregister-ScheduledTask -TaskName $ServiceName -Confirm:$false -ErrorAction SilentlyContinue
+}
 $leftoverSvc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($leftoverSvc) {
     if ($leftoverSvc.Status -ne 'Stopped') { Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue }
-    & sc.exe delete $ServiceName *> $null
+    cmd.exe /c "sc delete $ServiceName 2>nul" | Out-Null
     Start-Sleep -Seconds 1
 }
 Get-Process -Name "watchnode" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
