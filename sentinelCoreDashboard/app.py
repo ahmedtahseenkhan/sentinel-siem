@@ -789,19 +789,65 @@ def api_agent_detail(agent_id):
         last_keep = raw.get("lastKeepAlive") or raw.get("last_keep_alive")
         date_added = raw.get("dateAdd") or raw.get("date_add")
         hostname = (raw.get("hostname") or (os_info.get("hostname") if isinstance(os_info.get("hostname"), str) else "") or "").strip()
+
+        # Humanised last-seen + offline duration
+        now = datetime.now(timezone.utc)
+        last_seen_label = "Never"
+        offline_minutes = None
+        if last_keep:
+            try:
+                t = datetime.fromisoformat(str(last_keep).replace("Z", "+00:00"))
+                if t.tzinfo is None:
+                    t = t.replace(tzinfo=timezone.utc)
+                delta = (now - t).total_seconds()
+                if delta < 60:
+                    last_seen_label = "Just now"
+                elif delta < 3600:
+                    last_seen_label = f"{int(delta // 60)}m ago"
+                elif delta < 86400:
+                    last_seen_label = f"{int(delta // 3600)}h {int((delta % 3600) // 60)}m ago"
+                else:
+                    last_seen_label = f"{int(delta // 86400)}d {int((delta % 86400) // 3600)}h ago"
+                if status == "disconnected":
+                    offline_minutes = int(delta // 60)
+            except Exception:
+                last_seen_label = "—"
+
+        # Per-agent alert + critical counts from OpenSearch
+        alert_count = 0
+        critical_count = 0
+        try:
+            cnt_body = {
+                "size": 0,
+                "query": {"term": {"agent_id": raw.get("id")}},
+                "aggs": {"crit": {"filter": {"range": {"rule_level": {"gte": 10}}}}},
+            }
+            cnt_res = _os_search(f"{INDEX_PREFIX}-alerts-*", cnt_body)
+            alert_count = ((cnt_res.get("hits") or {}).get("total") or {}).get("value", 0) or 0
+            critical_count = ((cnt_res.get("aggregations") or {}).get("crit") or {}).get("doc_count", 0) or 0
+        except Exception:
+            pass
+
         return jsonify({
             "id": raw.get("id"),
             "name": raw.get("name") or raw.get("id"),
             "ip": raw.get("ip") or "any",
             "status": status,
             "os_label": os_label,
+            "os_name": os_name or None,
+            "platform": os_info.get("platform") or None,
             "version": version,
             "group": group_label,
             "groups": groups,
             "node_name": node_name,
             "last_keep_alive": last_keep,
+            "last_seen_label": last_seen_label,
+            "offline_minutes": offline_minutes,
             "date_added": date_added,
             "hostname": hostname or None,
+            "labels": raw.get("labels") or {},
+            "alert_count": alert_count,
+            "critical_count": critical_count,
         })
     except Exception as e:
         return _api_error(e)
@@ -3734,6 +3780,15 @@ def api_rba_set_weight(rule_id):
     except Exception as e:
         return _api_error(e)
 
+@app.route("/api/rba/weights/<int:rule_id>", methods=["DELETE"])
+def api_rba_delete_weight(rule_id):
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request(f"/api/v1/rba/weights/{rule_id}", method="DELETE")
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
 
 # ── UEBA ──────────────────────────────────────────────────────────────────────
 
@@ -3860,8 +3915,12 @@ def api_rv_history():
 def api_rv_content():
     try:
         from watchtower_client import watchtower_request
-        params = {"file": request.args.get("file", ""), "version": request.args.get("version", "")}
-        res = watchtower_request("/api/v1/rule-versions/content", method="GET", params=params)
+        file = request.args.get("file", "").strip()
+        version = request.args.get("version", "").strip()
+        if not file or not version:
+            return jsonify({"error": "both 'file' and 'version' query params are required"}), 400
+        res = watchtower_request("/api/v1/rule-versions/content", method="GET",
+                                 params={"file": file, "version": version})
         return jsonify(res or {})
     except Exception as e:
         return _api_error(e)

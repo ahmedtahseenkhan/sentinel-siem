@@ -97,6 +97,20 @@ func (h *RbaHandler) SetWeight(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"data": rw})
 }
 
+// DeleteWeight DELETE /api/v1/rba/weights/:rule_id
+func (h *RbaHandler) DeleteWeight(w http.ResponseWriter, r *http.Request) {
+	ruleID, err := strconv.Atoi(chi.URLParam(r, "rule_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid rule_id")
+		return
+	}
+	if err := h.store.DeleteRbaRuleWeight(ruleID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"data": map[string]int{"rule_id": ruleID}, "deleted": true})
+}
+
 // SetThreshold PUT /api/v1/rba/entities/:id/threshold
 func (h *RbaHandler) SetThreshold(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")

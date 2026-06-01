@@ -236,7 +236,7 @@
             <div class="sb2-user-name" id="sidebarUserName">superadmin</div>
             <div class="sb2-user-sub" id="sidebarUserSub">Super Admin · SOC-1</div>
           </div>
-          <button class="sb2-settings-btn" title="Settings" onclick="navigateTo('settings')">
+          <button class="sb2-settings-btn" title="Settings" onclick="goToPage('data-sources')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
           </button>
           <!-- hidden compat element -->
@@ -1326,31 +1326,28 @@
             </button>
           </div>
 
-          <!-- Agent cards grid -->
-          <div id="agentCardsGrid" class="ag2-cards-grid"></div>
-
-          <!-- All agents table -->
-          <div class="ag2-table-section">
-            <div class="ag2-table-head">
-              <span class="ag2-table-dot crit"></span>
-              ALL AGENTS · <span id="agentsTableCount">0</span>
+          <!-- All agents datatable (single source of truth — click any row for full detail) -->
+          <div class="adt-wrap">
+            <div class="adt-head">
+              <span class="adt-head-title">All agents</span>
+              <span class="adt-head-count" id="agentsTableCount">0</span>
+              <span class="adt-head-hint">click a row to open the node detail page</span>
             </div>
-            <div class="tbl">
-              <div class="tbl-h" style="grid-template-columns:120px 1fr 160px 80px 80px 80px 80px 120px 44px">
-                <span>STATUS</span><span>NAME / HOSTNAME</span><span>AGENT ID</span>
-                <span>OS</span><span>VERSION</span><span>ALERTS</span><span>CRITICAL</span><span>LAST SEEN</span><span></span>
+            <div class="adt" role="table">
+              <div class="adt-row adt-hrow" role="row">
+                <span role="columnheader">Status</span>
+                <span role="columnheader">Name / Hostname</span>
+                <span role="columnheader">IP address</span>
+                <span role="columnheader">Agent ID</span>
+                <span role="columnheader">OS</span>
+                <span role="columnheader">Version</span>
+                <span role="columnheader" class="adt-num">Alerts</span>
+                <span role="columnheader" class="adt-num">Critical</span>
+                <span role="columnheader">Last seen</span>
+                <span role="columnheader" aria-label="Actions"></span>
               </div>
               <div id="agentsBody"></div>
             </div>
-          </div>
-
-          <!-- Agent detail slide-in panel -->
-          <div id="agentDetailPanel" class="agent-detail-panel hidden">
-            <div class="agent-detail-header">
-              <h2 id="agentDetailTitle">Agent Detail</h2>
-              <button type="button" id="agentDetailClose" class="agent-detail-close">×</button>
-            </div>
-            <div id="agentDetailContent" class="agent-detail-content"><p class="empty-msg">Loading…</p></div>
           </div>
 
           <!-- Add New Agent modal -->
@@ -1409,77 +1406,130 @@
 
         </section>
 
+        <!-- ============ Agent / Node detail (full page) ============ -->
+        <section id="page-agent-detail" class="page">
+          <!-- Back + breadcrumb -->
+          <button type="button" class="nd-back" id="agentDetailBack">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            Back to Agents
+          </button>
+
+          <div id="agentDetailBody">
+            <p class="empty-msg">Loading…</p>
+          </div>
+        </section>
+
         <section id="page-threat-hunting" class="page page-v2">
           <div class="page-h">
             <div class="page-h-title">
-              <h1>Threat Hunting <span class="accent">Hunt mode</span></h1>
-              <p>Pivot through raw events with KQL, save queries, and surface what rules miss</p>
+              <h1>Threat Hunting <span class="accent">Security events</span></h1>
+              <p>Explore every detection across your fleet — alert volume, top agents, rules and techniques, with a full event explorer</p>
             </div>
             <div class="page-h-actions">
-              <span class="page-h-meta"><b id="huntHitsMeta">0</b><span class="sep">·</span>hits · last 24h</span>
-              <button class="act-btn" id="huntSaveBtn">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>
-                Save hunt
-              </button>
-              <button class="act-btn primary" id="huntRunBtn">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
-                Run hunt
+              <span class="page-h-meta"><b id="huntHitsMeta">0</b><span class="sep">·</span>alerts</span>
+              <select id="huntTimeRange" class="fld">
+                <option value="24h">Last 24h</option>
+                <option value="7d" selected>Last 7 days</option>
+              </select>
+              <button class="act-btn" id="huntRefreshBtn">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>
+                Refresh
               </button>
             </div>
           </div>
 
-          <!-- KQL query bar -->
-          <div class="toolbar filter-bar">
-            <span style="font-family:var(--font-mono);font-size:11px;color:var(--accent);padding:0 8px;background:var(--accent-soft);border-radius:5px;height:28px;display:inline-flex;align-items:center;flex-shrink:0">KQL</span>
-            <input id="huntQuery" class="fld" style="flex:1;font-family:var(--font-mono);font-size:11.5px;min-width:240px" value='event.type:"process_creation" and proc.cmdline:*encoded*' />
-            <select id="huntTimeRange" class="fld">
-              <option>Last 15m</option>
-              <option value="24h" selected>Last 24h</option>
-              <option>Last 7d</option>
-            </select>
+          <!-- KPI row -->
+          <div class="th-kpis">
+            <div class="th-kpi">
+              <div class="th-kpi-top"><span class="th-kpi-ico crit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span><span class="th-kpi-lbl">Total alerts</span></div>
+              <div class="th-kpi-val" id="thKpiTotal">—</div>
+              <div class="th-kpi-sub" id="thKpiTotalSub">in selected window</div>
+            </div>
+            <div class="th-kpi">
+              <div class="th-kpi-top"><span class="th-kpi-ico high"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h0"/></svg></span><span class="th-kpi-lbl">Elevated (lvl ≥ 8)</span></div>
+              <div class="th-kpi-val" id="thKpiHigh">—</div>
+              <div class="th-kpi-sub" id="thKpiHighSub">high &amp; critical</div>
+            </div>
+            <div class="th-kpi">
+              <div class="th-kpi-top"><span class="th-kpi-ico ok"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span><span class="th-kpi-lbl">Agents reporting</span></div>
+              <div class="th-kpi-val" id="thKpiAgents">—</div>
+              <div class="th-kpi-sub" id="thKpiAgentsSub">unique sources</div>
+            </div>
+            <div class="th-kpi">
+              <div class="th-kpi-top"><span class="th-kpi-ico accent"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg></span><span class="th-kpi-lbl">Distinct rules</span></div>
+              <div class="th-kpi-val" id="thKpiRules">—</div>
+              <div class="th-kpi-sub" id="thKpiRulesSub">fired</div>
+            </div>
           </div>
 
-          <!-- Two-column: saved hunts rail + result cards -->
-          <div class="disc-grid">
-            <!-- Saved hunts rail -->
-            <div class="card field-panel">
-              <div class="field-h">
-                <span>Saved Hunts</span>
-                <span class="count">6</span>
-              </div>
-              <div id="huntSavedList"></div>
-              <div class="field-h" style="margin-top:6px">
-                <span>Public Library</span>
-              </div>
-              <div class="field-row hunt-row" style="flex-direction:row;align-items:center">
-                <span class="hunt-name">Browse community hunts</span>
-                <svg style="margin-left:auto;flex-shrink:0;color:var(--fg-4)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 17 17 7M9 7h8v8"/></svg>
+          <!-- Alerts over time histogram -->
+          <div class="card th-hist-card">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--crit)"></span>Alerts over time</h3>
+              <div class="th-hist-legend">
+                <span class="th-leg crit"><i></i>Critical</span>
+                <span class="th-leg high"><i></i>High</span>
+                <span class="th-leg med"><i></i>Medium</span>
+                <span class="th-leg low"><i></i>Low</span>
               </div>
             </div>
+            <div id="thHistogram" class="th-hist"></div>
+          </div>
 
-            <!-- Result cards -->
-            <div style="display:flex;flex-direction:column;gap:var(--gap)">
-              <div class="card">
-                <div class="card-h">
-                  <h3 class="card-h-title"><span class="dot" id="huntAgentDot" style="background:var(--low)"></span>Alerts by Agent</h3>
-                  <span class="card-h-action" id="huntAgentMeta"></span>
-                </div>
-                <div id="chartByAgent"></div>
+          <!-- Breakdown panels -->
+          <div class="th-panels">
+            <div class="card">
+              <div class="card-h">
+                <h3 class="card-h-title"><span class="dot" style="background:var(--crit)"></span>Top agents</h3>
+                <span class="card-h-action" id="huntAgentMeta"></span>
               </div>
-              <div class="card">
-                <div class="card-h">
-                  <h3 class="card-h-title"><span class="dot" id="huntSevDot" style="background:var(--ok)"></span>Alerts by Severity</h3>
-                  <span class="card-h-action" id="huntSevMeta"></span>
-                </div>
-                <div id="chartSeverity"></div>
+              <div id="chartByAgent"></div>
+            </div>
+            <div class="card">
+              <div class="card-h">
+                <h3 class="card-h-title"><span class="dot" style="background:var(--high)"></span>Top rules</h3>
+                <span class="card-h-action" id="huntRulesMeta"></span>
               </div>
-              <div class="card">
-                <div class="card-h">
-                  <h3 class="card-h-title"><span class="dot" id="huntRulesDot" style="background:var(--high)"></span>Top Rules</h3>
-                  <span class="card-h-action" id="huntRulesMeta"></span>
-                </div>
-                <div id="chartRules"></div>
+              <div id="chartRules"></div>
+            </div>
+            <div class="card">
+              <div class="card-h">
+                <h3 class="card-h-title"><span class="dot" style="background:var(--accent)"></span>Top MITRE tactics</h3>
+                <span class="card-h-action" id="huntMitreMeta"></span>
               </div>
+              <div id="chartMitre"></div>
+            </div>
+            <div class="card">
+              <div class="card-h">
+                <h3 class="card-h-title"><span class="dot" style="background:var(--ok)"></span>Severity split</h3>
+                <span class="card-h-action" id="huntSevMeta"></span>
+              </div>
+              <div id="chartSeverity"></div>
+            </div>
+          </div>
+
+          <!-- Alerts explorer -->
+          <div class="card th-explorer">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--accent)"></span>Alerts explorer</h3>
+              <span class="card-h-action"><span id="thExplorerCount">0</span> shown</span>
+            </div>
+            <div class="th-explorer-bar">
+              <div class="fld-wrap" style="flex:1">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                <input id="thExplorerSearch" class="fld search" style="width:100%" placeholder="Filter by rule, agent, group, source IP, level…">
+              </div>
+            </div>
+            <div class="adt" role="table">
+              <div class="adt-row th-exp-row th-exp-hrow" role="row">
+                <span role="columnheader">Time</span>
+                <span role="columnheader">Agent</span>
+                <span role="columnheader">Rule</span>
+                <span role="columnheader">Groups</span>
+                <span role="columnheader" class="adt-num">Level</span>
+                <span role="columnheader">Rule ID</span>
+              </div>
+              <div id="thExplorerBody"></div>
             </div>
           </div>
         </section>
@@ -2489,6 +2539,16 @@
             <button type="button" class="act-btn primary" id="dashboardApply">Apply</button>
           </div>
 
+          <!-- Workflow hint -->
+          <div class="wf-banner">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
+            <span>A ready-made security overview. Filter it above, or <b>build your own charts</b> in Visualizations and pin them to a custom dashboard.</span>
+            <span class="wf-spacer"></span>
+            <a href="#" class="wf-link" data-page="visualize">Open Visualizations
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </a>
+          </div>
+
           <!-- Charts grid -->
           <div class="grid grid-2" style="margin-bottom:12px">
             <div class="card">
@@ -3293,10 +3353,19 @@
 
           <!-- Saved visualization list -->
           <div id="vizListView">
+            <div class="wf-banner">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
+              <span>Build reusable widgets here — a <b>metric</b>, <b>chart</b>, or <b>table</b> over your alert data. Saved widgets become available to drop onto your dashboards.</span>
+              <span class="wf-spacer"></span>
+              <a href="#" class="wf-link" data-page="custom-dashboards">Go to My Dashboards
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </a>
+            </div>
             <div id="vizList" class="grid grid-4" style="gap:12px"></div>
-            <div id="vizListEmpty" class="hidden" style="text-align:center;padding:60px 20px">
-              <div style="font-size:40px;margin-bottom:12px">📊</div>
-              <p style="color:var(--fg-3);font-size:13px">No visualizations yet.<br>Click <strong>New Visualization</strong> to build your first widget.</p>
+            <div id="vizListEmpty" class="hidden viz-empty">
+              <div class="viz-empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 20V10M18 20V4M6 20v-4"/></svg></div>
+              <p>No visualizations yet.<br>Click <strong>New Visualization</strong> to build your first widget.</p>
+              <button type="button" class="act-btn primary" onclick="document.getElementById('vizCreateNew').click()">New Visualization</button>
             </div>
           </div>
 
@@ -3333,23 +3402,23 @@
                   <div>
                     <label style="font-size:11px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px">Chart Type</label>
                     <div id="vizTypeGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
-                      <button type="button" class="viz-type-btn active" data-type="metric" style="padding:10px 6px;border:1px solid var(--border);border-radius:8px;background:var(--bg-2);cursor:pointer;font-size:11px;text-align:center;color:var(--fg-2)">
-                        <div style="font-size:18px;margin-bottom:4px">🔢</div>Metric
+                      <button type="button" class="viz-type-btn active" data-type="metric">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 19V5M4 19h16M8 16V9M12 16v-5M16 16v-9M20 16V6"/></svg>Metric
                       </button>
-                      <button type="button" class="viz-type-btn" data-type="area" style="padding:10px 6px;border:1px solid var(--border);border-radius:8px;background:var(--bg-2);cursor:pointer;font-size:11px;text-align:center;color:var(--fg-2)">
-                        <div style="font-size:18px;margin-bottom:4px">📈</div>Area
+                      <button type="button" class="viz-type-btn" data-type="area">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 20V4M3 20h18M21 20v-8l-5 2-4-6-4 4-2-1v9z"/></svg>Area
                       </button>
-                      <button type="button" class="viz-type-btn" data-type="bar" style="padding:10px 6px;border:1px solid var(--border);border-radius:8px;background:var(--bg-2);cursor:pointer;font-size:11px;text-align:center;color:var(--fg-2)">
-                        <div style="font-size:18px;margin-bottom:4px">📊</div>Bar
+                      <button type="button" class="viz-type-btn" data-type="bar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20V4M4 20h16"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="8" width="3" height="9"/><rect x="17" y="13" width="3" height="4"/></svg>Bar
                       </button>
-                      <button type="button" class="viz-type-btn" data-type="pie" style="padding:10px 6px;border:1px solid var(--border);border-radius:8px;background:var(--bg-2);cursor:pointer;font-size:11px;text-align:center;color:var(--fg-2)">
-                        <div style="font-size:18px;margin-bottom:4px">🥧</div>Pie
+                      <button type="button" class="viz-type-btn" data-type="pie">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3a9 9 0 1 0 9 9h-9V3z"/><path d="M12 3v9h9A9 9 0 0 0 12 3z" opacity=".5"/></svg>Pie
                       </button>
-                      <button type="button" class="viz-type-btn" data-type="table" style="padding:10px 6px;border:1px solid var(--border);border-radius:8px;background:var(--bg-2);cursor:pointer;font-size:11px;text-align:center;color:var(--fg-2)">
-                        <div style="font-size:18px;margin-bottom:4px">📋</div>Table
+                      <button type="button" class="viz-type-btn" data-type="table">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 10h18M3 15h18M9 4v16"/></svg>Table
                       </button>
-                      <button type="button" class="viz-type-btn" data-type="markdown" style="padding:10px 6px;border:1px solid var(--border);border-radius:8px;background:var(--bg-2);cursor:pointer;font-size:11px;text-align:center;color:var(--fg-2)">
-                        <div style="font-size:18px;margin-bottom:4px">📝</div>Text
+                      <button type="button" class="viz-type-btn" data-type="markdown">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7V5h16v2M9 19h6M12 5v14"/></svg>Text
                       </button>
                     </div>
                   </div>
@@ -3476,8 +3545,8 @@
                 <div class="card-h"><h3 class="card-h-title"><span class="dot" style="background:var(--low)"></span>LIVE PREVIEW</h3></div>
                 <div id="vizPreviewArea" class="card-body" style="padding:24px;min-height:300px;display:flex;align-items:center;justify-content:center">
                   <div style="text-align:center;color:var(--fg-4);font-size:13px">
-                    <div style="font-size:32px;margin-bottom:8px">▶</div>
-                    Configure and click Preview to see your widget.
+                    <div class="viz-empty-ico" style="margin-bottom:10px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polygon points="6 4 20 12 6 20 6 4"/></svg></div>
+                    Configure on the left, then click <strong>Preview</strong> to see your widget.
                   </div>
                 </div>
               </div>
@@ -3514,11 +3583,19 @@
               </div>
             </div>
 
+            <div class="wf-banner">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+              <span>Assemble your saved widgets into shareable views. Create a dashboard, then <b>Add Widget</b> to drop in visualizations you built.</span>
+              <span class="wf-spacer"></span>
+              <a href="#" class="wf-link" data-page="visualize">Build a visualization
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </a>
+            </div>
             <div id="dashList" class="grid grid-3" style="gap:12px"></div>
-            <div id="dashListEmpty" class="hidden" style="text-align:center;padding:60px 20px">
-              <div style="font-size:40px;margin-bottom:12px">🗂</div>
-              <p style="color:var(--fg-3);font-size:13px">No dashboards yet.<br>Click <strong>New Dashboard</strong> to create your first one.</p>
-              <button type="button" class="act-btn primary" style="margin-top:16px" onclick="document.getElementById('dashNewBtn').click()">Create Dashboard</button>
+            <div id="dashListEmpty" class="hidden viz-empty">
+              <div class="viz-empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg></div>
+              <p>No dashboards yet.<br>Click <strong>New Dashboard</strong> to create your first one.</p>
+              <button type="button" class="act-btn primary" onclick="document.getElementById('dashNewBtn').click()">Create Dashboard</button>
             </div>
           </div>
 
@@ -3918,7 +3995,7 @@ CLOUD_SYNC_INTERVAL=15m</pre>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5"/></svg>
                 Refresh
               </button>
-              <button class="act-btn">
+              <button class="act-btn" id="rbaConfigBtn" onclick="openRbaThresholds()">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
                 Configure thresholds
               </button>
@@ -3970,12 +4047,26 @@ CLOUD_SYNC_INTERVAL=15m</pre>
                 Risk notables <span class="count" id="rbaTabNotablesCount">0</span>
               </button>
               <button id="rbaTabWeights" class="tab" onclick="switchRbaTab('weights')">
-                Rule weights <span class="count">6</span>
+                Rule weights <span class="count" id="rbaTabWeightsCount">0</span>
               </button>
             </div>
             <div id="rbaPaneEntities"><div style="color:var(--fg-4);padding:32px;text-align:center;font-size:12px">Loading…</div></div>
             <div id="rbaPaneNotables" style="display:none"><div style="color:var(--fg-4);padding:32px;text-align:center;font-size:12px">Loading…</div></div>
             <div id="rbaPaneWeights"  style="display:none"><div style="color:var(--fg-4);padding:32px;text-align:center;font-size:12px">Loading…</div></div>
+          </div>
+
+          <!-- Per-entity threshold config modal -->
+          <div id="rbaThresholdModal" class="modal-overlay hidden">
+            <div class="modal" style="max-width:560px">
+              <div class="modal-header">
+                <h3>Configure entity thresholds</h3>
+                <button type="button" class="modal-close" onclick="closeRbaThresholds()">✕</button>
+              </div>
+              <div class="modal-body">
+                <p style="font-size:12px;color:var(--fg-3);margin:0 0 14px">A risk notable fires when an entity's accumulated score crosses its threshold. Lower it to be alerted sooner; raise it to reduce noise.</p>
+                <div id="rbaThresholdList" style="display:flex;flex-direction:column;gap:8px;max-height:420px;overflow-y:auto"></div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -3988,9 +4079,7 @@ CLOUD_SYNC_INTERVAL=15m</pre>
             </div>
             <div class="page-h-actions">
               <span class="page-h-meta"><b id="uebaEntitiesMeta">0</b><span class="sep">·</span>entities monitored</span>
-              <select class="fld" id="uebaTimeRange">
-                <option>Last 24h</option><option value="7d" selected>Last 7 days</option><option>Last 30d</option>
-              </select>
+              <span class="page-h-meta">last 7 days</span>
               <button class="act-btn primary" id="uebaRunBtn" onclick="triggerUebaAnalysis()">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
                 <span>Run analysis</span>
@@ -4020,9 +4109,9 @@ CLOUD_SYNC_INTERVAL=15m</pre>
             </div>
             <div class="kpi">
               <span class="kpi-band kpi-band" style="background:var(--ok)"></span>
-              <div class="kpi-h"><span class="kpi-label" style="color:var(--ok)">Baselines Healthy</span><span class="kpi-tag ok" id="uebaKpiBaseTag">OK</span></div>
-              <div class="kpi-value" id="uebaKpiBaselines">100%</div>
-              <div class="kpi-foot"><span class="kpi-sub" id="uebaKpiBaseSub">all models stable</span><span class="kpi-spark" id="uebaKpiBaseSpark"></span></div>
+              <div class="kpi-h"><span class="kpi-label" style="color:var(--ok)">Baselines Profiled</span><span class="kpi-tag ok" id="uebaKpiBaseTag">—</span></div>
+              <div class="kpi-value" id="uebaKpiBaselines">—</div>
+              <div class="kpi-foot"><span class="kpi-sub" id="uebaKpiBaseSub">entities with activity</span><span class="kpi-spark" id="uebaKpiBaseSpark"></span></div>
             </div>
           </div>
 
@@ -4170,7 +4259,7 @@ CLOUD_SYNC_INTERVAL=15m</pre>
         <section id="page-rule-versions" class="page page-v2">
           <div class="page-h">
             <div class="page-h-title">
-              <h1>Detection Studio <span class="accent">· Sigma Rules</span></h1>
+              <h1>Detection Studio <span class="accent">· Native YAML Rules</span></h1>
               <p>Version-controlled rule management — edit, validate, diff, and rollback detection logic</p>
             </div>
             <div class="page-h-actions">
@@ -4197,8 +4286,8 @@ CLOUD_SYNC_INTERVAL=15m</pre>
               <div class="studio-main-header">
                 <span id="rvSelectedFile" class="studio-file-label">Select a rule file →</span>
                 <div id="rvActionBar" class="studio-actions" style="display:none">
-                  <button onclick="showRvEditor()" class="act-btn">✎ Edit</button>
-                  <button onclick="showRvDiff()" class="act-btn">⇄ Diff</button>
+                  <button onclick="showRvEditor()" class="act-btn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Edit</button>
+                  <button onclick="showRvDiff()" class="act-btn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 16V4M7 4 3 8M7 4l4 4M17 8v12M17 20l4-4M17 20l-4-4"/></svg>Diff</button>
                 </div>
               </div>
 

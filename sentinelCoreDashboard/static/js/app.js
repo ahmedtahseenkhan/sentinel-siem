@@ -162,6 +162,7 @@ const GEO_CONTINENTS = [
     'data-sources': { title: 'Data Sources', desc: 'Manager API and index patterns' },
     'index-management': { title: 'Index Management', desc: 'View and manage indexer indices' },
     agents: { title: 'Agent Health', desc: 'Agent status and connectivity' },
+    'agent-detail': { title: 'Node Detail', desc: 'Full detail for a single WatchNode agent' },
     'threat-hunting': { title: 'Threat Hunting', desc: 'Top threats and alert patterns' },
     alerts: { title: 'Alerts', desc: 'Recent security alerts' },
     discover: { title: 'Discover', desc: 'Alert table with search and full details' },
@@ -288,11 +289,14 @@ const GEO_CONTINENTS = [
   }
 
   function setNav(pageId) {
+    // Drill-down pages keep their parent nav item highlighted.
+    const NAV_PARENT = { 'agent-detail': 'agents' };
+    const navId = NAV_PARENT[pageId] || pageId;
     document.querySelectorAll('.nav-item').forEach(el => {
-      el.classList.toggle('active', el.getAttribute('data-page') === pageId);
+      el.classList.toggle('active', el.getAttribute('data-page') === navId);
     });
     document.querySelectorAll('.nav-tab').forEach(el => {
-      el.classList.toggle('active', el.getAttribute('data-page') === pageId);
+      el.classList.toggle('active', el.getAttribute('data-page') === navId);
     });
     document.querySelectorAll('.page').forEach(el => {
       el.classList.toggle('active', el.id === 'page-' + pageId);
@@ -570,7 +574,7 @@ const GEO_CONTINENTS = [
 
   function renderVulnTable(vulns) {
     const colW = 'grid-template-columns:120px 130px 90px 120px 1fr 70px 100px';
-    if (!vulns || vulns.length === 0) return `<div class="sigil-block"><div class="sigil" style="background:radial-gradient(circle,rgba(45,212,191,0.08),transparent 70%);color:var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" width="32" height="32"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div><div class="sigil-text"><h4>No vulnerabilities found</h4><p>Enable vulnerability scanning on your agents to populate CVE data. Scans run on a schedule and emit CVE alerts when new advisories drop.</p></div><div style="flex:1"></div><button class="act-btn" onclick="goToPage('settings')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg> Configure scanning</button></div>`;
+    if (!vulns || vulns.length === 0) return `<div class="sigil-block"><div class="sigil" style="background:radial-gradient(circle,rgba(45,212,191,0.08),transparent 70%);color:var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" width="32" height="32"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div><div class="sigil-text"><h4>No vulnerabilities found</h4><p>Enable vulnerability scanning on your agents to populate CVE data. Scans run on a schedule and emit CVE alerts when new advisories drop.</p></div><div style="flex:1"></div><button class="act-btn" onclick="goToPage('agents')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg> Configure scanning</button></div>`;
     return vulns.map(v => {
       const detected = v.detected_at ? new Date(v.detected_at).toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: '2-digit' }) : '—';
       const pkg = [v.package_name, v.package_version].filter(Boolean).join(' @ ') || '—';
@@ -1704,64 +1708,40 @@ const GEO_CONTINENTS = [
     return { dot:'crit', label:'Disconnected' };
   }
 
-  function renderAgentCards(agents) {
-    const grid = document.getElementById('agentCardsGrid');
-    if (!grid) return;
-    if (!agents || agents.length === 0) {
-      grid.innerHTML = `<div class="sigil-block"><div class="sigil-text"><h4>No agents enrolled</h4><p>Click <strong>Add new agent</strong> to deploy WatchNode to your first machine.</p></div></div>`;
-      return;
-    }
-    grid.innerHTML = agents.map(a => {
-      const { dot, label } = _agStatusMeta(a.status);
-      const hostname = escapeHtml(a.hostname || a.name || a.id || '—');
-      const agId = escapeHtml((a.id || '').slice(0, 25));
-      const os = _agOsLabel(a.os_label);
-      const alerts = (a.alert_count || 0);
-      const crits = a.critical_count || 0;
-      const ver = escapeHtml(a.version || '1.0.0');
-      const lastSeen = escapeHtml(a.last_seen_label || '—');
-      return `<div class="ag2-card" data-agent-id="${escapeHtml(String(a.id))}">
-        <div class="ag2-card-top">
-          <span class="ag2-card-status ${dot}"><span class="ag2-sum-dot ${dot}"></span>${label}</span>
-          <button type="button" class="ag2-card-inspect btn-agent-view" data-agent-id="${escapeHtml(String(a.id))}" title="Inspect agent">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-          </button>
-        </div>
-        <div class="ag2-card-hostname">${hostname}</div>
-        <div class="ag2-card-id">${agId}…</div>
-        <div class="ag2-card-os"><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z"/></svg> ${os}</div>
-        <div class="ag2-card-stats">
-          <div class="ag2-card-stat"><span class="ag2-stat-val">${alerts}</span><span class="ag2-stat-lbl">ALERTS</span></div>
-          <div class="ag2-card-stat"><span class="ag2-stat-val ${crits>0?'crit':''}">${crits}</span><span class="ag2-stat-lbl">CRITICAL</span></div>
-          <div class="ag2-card-stat"><span class="ag2-stat-val">${ver}</span><span class="ag2-stat-lbl">VERSION</span></div>
-        </div>
-        <div class="ag2-card-footer">${lastSeen}</div>
-      </div>`;
-    }).join('');
-  }
 
   function renderAgentsTableFromHealth(agents) {
-    if (!agents || agents.length === 0) return `<div class="tbl-r" style="grid-template-columns:1fr"><span class="empty-msg">No agents found.</span></div>`;
-    const colW = 'grid-template-columns:120px 1fr 160px 80px 80px 80px 80px 120px 44px';
+    if (!agents || agents.length === 0) {
+      return `<div class="adt-empty">No agents match this view.</div>`;
+    }
     return agents.map(a => {
       const { dot, label } = _agStatusMeta(a.status);
       const hostname = escapeHtml(a.name || a.hostname || '—');
-      const agId = escapeHtml((a.id || '').slice(0, 18)) + '…';
+      const fullId = String(a.id || '');
+      const agId = escapeHtml(fullId.slice(0, 14)) + (fullId.length > 14 ? '…' : '');
       const os = _agOsLabel(a.os_label);
+      const osIcon = _ndOsIcon(a.os_label);
       const alerts = (a.alert_count || 0);
       const crits = a.critical_count || 0;
       const ver = escapeHtml(a.version || '—');
       const lastSeen = escapeHtml(a.last_seen_label || '—');
-      return `<div class="tbl-r" style="${colW}">
-        <span><span class="ag2-tbl-badge ${dot}"><span class="ag2-sum-dot ${dot}"></span>${label}</span></span>
-        <span class="tbl-pri">${hostname}</span>
-        <span class="tbl-mono" style="font-size:11px">${agId}</span>
-        <span class="tbl-mono">${os}</span>
-        <span class="tbl-mono">${ver}</span>
-        <span class="tbl-mono">${alerts}</span>
-        <span class="tbl-mono" style="color:${crits>0?'var(--crit)':'var(--fg-4)'}">${crits}</span>
-        <span class="tbl-time">${lastSeen}</span>
-        <span><button type="button" class="btn-disc-detail btn-agent-view" data-agent-id="${escapeHtml(String(a.id))}" title="View">⋯</button></span>
+      const rawIp = String(a.ip || '').trim();
+      const hasIp = rawIp && rawIp.toLowerCase() !== 'any';
+      const ipCell = hasIp
+        ? `<span role="cell" class="adt-mono adt-ip">${escapeHtml(rawIp)}</span>`
+        : `<span role="cell" class="adt-mono adt-ip none">—</span>`;
+      return `<div class="adt-row adt-brow" role="row" data-agent-id="${escapeHtml(fullId)}" title="Open node detail">
+        <span role="cell"><span class="adt-badge ${dot}"><span class="adt-dot ${dot}"></span>${label}</span></span>
+        <span role="cell" class="adt-name">${hostname}</span>
+        ${ipCell}
+        <span role="cell" class="adt-mono" title="${escapeHtml(fullId)}">${agId}</span>
+        <span role="cell" class="adt-os"><span class="adt-os-ico">${osIcon}</span>${os}</span>
+        <span role="cell" class="adt-mono">${ver}</span>
+        <span role="cell" class="adt-num">${alerts}</span>
+        <span role="cell" class="adt-num ${crits>0?'crit':'zero'}">${crits}</span>
+        <span role="cell" class="adt-time">${lastSeen}</span>
+        <span role="cell" class="adt-act"><button type="button" class="adt-act-btn btn-agent-view" data-agent-id="${escapeHtml(fullId)}" title="Open node detail" aria-label="Open node detail">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+        </button></span>
       </div>`;
     }).join('');
   }
@@ -1797,49 +1777,137 @@ const GEO_CONTINENTS = [
     setTxt('agTabConnected', active);
     setTxt('agTabDisconnected', disconn);
     setTxt('agTabPending', pending);
-    renderAgentCards(agents);
     const filtered = filterAgentsTable(agents);
     if (el('agentsBody')) el('agentsBody').innerHTML = renderAgentsTableFromHealth(filtered);
     if (el('agentsTableCount')) el('agentsTableCount').textContent = filtered.length;
   }
 
-  async function openAgentDetail(agentId) {
-    const panel = document.getElementById('agentDetailPanel');
-    const titleEl = document.getElementById('agentDetailTitle');
-    const contentEl = document.getElementById('agentDetailContent');
-    if (!panel || !contentEl) return;
-    panel.classList.remove('hidden');
-    titleEl.textContent = 'Agent ' + (agentId || '');
-    contentEl.innerHTML = '<p class="empty-msg">Loading…</p>';
-    const data = await fetchJson('/api/agents/' + encodeURIComponent(agentId)).catch(e => ({ error: e }));
-    if (data.error) {
-      contentEl.innerHTML = '<p class="error-msg">' + escapeHtml(data.error.message || 'Failed to load agent') + '</p>';
-      return;
-    }
-    const fmt = (v) => v ? new Date(v.replace('Z', '+00:00')).toLocaleString() : '—';
-    const statusDot = data.status === 'active' ? '🟢' : data.status === 'disconnected' ? '🔴' : '🟡';
-    let html = '<div class="agent-detail-info">';
-    html += '<div class="agent-detail-grid"><span class="key">ID</span><span>' + escapeHtml(String(data.id || '—')) + '</span>';
-    html += '<span class="key">Status</span><span>' + statusDot + ' ' + escapeHtml((data.status || '—')) + '</span>';
-    html += '<span class="key">IP address</span><span>' + escapeHtml(data.ip || '—') + '</span>';
-    html += '<span class="key">Version</span><span>' + escapeHtml(data.version || '—') + '</span>';
-    html += '<span class="key">Group</span><span>' + escapeHtml(data.group || '—') + '</span>';
-    html += '<span class="key">Operating system</span><span>' + escapeHtml(data.os_label || '—') + '</span>';
-    html += '<span class="key">Cluster node</span><span>' + escapeHtml(data.node_name || '—') + '</span>';
-    html += '<span class="key">Registration date</span><span>' + fmt(data.date_added) + '</span>';
-    html += '<span class="key">Last keep alive</span><span>' + fmt(data.last_keep_alive) + '</span>';
-    html += '<span class="key">Host name</span><span>' + escapeHtml(data.hostname || '—') + '</span></div></div>';
-    html += '<div class="agent-detail-widgets"><div class="panel"><h4>Events &amp; alerts</h4><p class="text-muted">View alerts for this agent on the <a href="#" class="nav-link" data-page="alerts">Alerts</a> page and filter by agent.</p></div>';
-    html += '<div class="panel"><h4>Vulnerabilities</h4><p class="text-muted">See <a href="#" class="nav-link" data-page="vulnerabilities">Vulnerabilities</a> and filter by agent.</p></div>';
-    html += '<div class="panel"><h4>Compliance</h4><p class="text-muted">HIPAA and other frameworks are available under <a href="#" class="nav-link" data-page="compliance">Compliance</a>.</p></div></div>';
-    contentEl.innerHTML = html;
-    contentEl.querySelectorAll('.nav-link').forEach(el => {
-      el.addEventListener('click', (e) => { e.preventDefault(); document.getElementById('agentDetailClose').click(); setTimeout(() => goToPage(el.getAttribute('data-page')), 100); });
-    });
+  // Currently-open node on the full detail page.
+  let _agentDetailId = null;
+
+  // Entry point from the fleet table → navigate to the full node detail page.
+  function openAgentDetail(agentId) {
+    _agentDetailId = agentId;
+    goToPage('agent-detail');
   }
 
-  function closeAgentDetail() {
-    document.getElementById('agentDetailPanel')?.classList.add('hidden');
+  function _ndOsIcon(osLabel) {
+    const s = (osLabel || '').toLowerCase();
+    if (s.includes('win')) return '🪟';
+    if (s.includes('mac') || s.includes('darwin')) return '🍎';
+    return '🐧';
+  }
+  function _ndStatusMeta(s) {
+    if (s === 'active') return { dot: 'ok', label: 'Connected', sub: 'sending events' };
+    if (s === 'pending') return { dot: 'warn', label: 'Pending', sub: 'awaiting first heartbeat' };
+    if (s === 'never_connected') return { dot: 'warn', label: 'Never connected', sub: 'enrolled, never checked in' };
+    return { dot: 'crit', label: 'Disconnected', sub: 'no recent heartbeat' };
+  }
+  function _ndRow(key, val, mono) {
+    return '<div class="nd-row"><span class="nd-key">' + escapeHtml(key) + '</span><span class="nd-val' +
+      (mono ? ' mono' : '') + '">' + (val == null || val === '' ? '—' : escapeHtml(String(val))) + '</span></div>';
+  }
+
+  async function loadAgentDetailPage() {
+    const body = document.getElementById('agentDetailBody');
+    if (!body) return;
+    const agentId = _agentDetailId;
+    if (!agentId) { body.innerHTML = '<p class="empty-msg">No agent selected.</p>'; return; }
+    body.innerHTML = '<p class="empty-msg">Loading node…</p>';
+    const data = await fetchJson('/api/agents/' + encodeURIComponent(agentId)).catch(e => ({ error: e }));
+    if (data.error) {
+      body.innerHTML = '<p class="error-msg">' + escapeHtml(data.error.message || 'Failed to load agent') + '</p>';
+      return;
+    }
+    const fmt = (v) => { try { return v ? new Date(String(v).replace('Z', '+00:00')).toLocaleString() : '—'; } catch (e) { return '—'; } };
+    const meta = _ndStatusMeta(data.status);
+    const hostname = data.hostname || data.name || data.id || '—';
+    const alerts = data.alert_count || 0;
+    const crits = data.critical_count || 0;
+    const offline = data.offline_minutes != null
+      ? (data.offline_minutes < 60 ? data.offline_minutes + 'm' : Math.floor(data.offline_minutes / 60) + 'h ' + (data.offline_minutes % 60) + 'm')
+      : null;
+    const labels = data.labels && typeof data.labels === 'object' ? data.labels : {};
+    const labelKeys = Object.keys(labels);
+
+    // --- Hero header ---
+    let html = '<div class="nd-hero">' +
+      '<div class="nd-hero-icon">' + _ndOsIcon(data.os_label) + '</div>' +
+      '<div class="nd-hero-main">' +
+        '<div class="nd-hero-name">' + escapeHtml(hostname) + '</div>' +
+        '<div class="nd-hero-id mono">' + escapeHtml(String(data.id || '—')) + '</div>' +
+      '</div>' +
+      '<div class="nd-hero-status ' + meta.dot + '">' +
+        '<span class="ag2-sum-dot ' + meta.dot + '"></span>' +
+        '<div class="nd-hero-status-txt"><span class="nd-hero-status-lbl">' + meta.label + '</span>' +
+        '<span class="nd-hero-status-sub">' + escapeHtml(meta.sub) + (offline ? ' · offline ' + offline : '') + '</span></div>' +
+      '</div>' +
+    '</div>';
+
+    // --- KPI strip ---
+    html += '<div class="nd-kpis">' +
+      '<div class="nd-kpi"><span class="nd-kpi-val">' + alerts + '</span><span class="nd-kpi-lbl">Total alerts</span></div>' +
+      '<div class="nd-kpi"><span class="nd-kpi-val ' + (crits > 0 ? 'crit' : '') + '">' + crits + '</span><span class="nd-kpi-lbl">Critical</span></div>' +
+      '<div class="nd-kpi"><span class="nd-kpi-val">' + escapeHtml(data.version || '—') + '</span><span class="nd-kpi-lbl">Agent version</span></div>' +
+      '<div class="nd-kpi"><span class="nd-kpi-val">' + escapeHtml(data.last_seen_label || '—') + '</span><span class="nd-kpi-lbl">Last seen</span></div>' +
+    '</div>';
+
+    // --- Two info cards: Identity + System ---
+    html += '<div class="nd-grid">';
+    html += '<div class="nd-card"><div class="nd-card-h">Identity</div>' +
+      _ndRow('Hostname', data.hostname || data.name) +
+      _ndRow('Agent ID', data.id, true) +
+      _ndRow('IP address', data.ip, true) +
+      _ndRow('Group', data.group) +
+      _ndRow('Cluster node', data.node_name) +
+    '</div>';
+    html += '<div class="nd-card"><div class="nd-card-h">System &amp; enrollment</div>' +
+      _ndRow('Operating system', data.os_label) +
+      _ndRow('Platform', data.platform || data.os_name) +
+      _ndRow('Agent version', data.version) +
+      _ndRow('Registered', fmt(data.date_added)) +
+      _ndRow('Last keep-alive', fmt(data.last_keep_alive)) +
+    '</div>';
+    html += '</div>';
+
+    // --- Labels (if any) ---
+    if (labelKeys.length) {
+      html += '<div class="nd-card"><div class="nd-card-h">Labels</div><div class="nd-labels">' +
+        labelKeys.map(k => '<span class="nd-label-chip"><b>' + escapeHtml(k) + '</b>' + escapeHtml(String(labels[k])) + '</span>').join('') +
+        '</div></div>';
+    }
+
+    // --- Quick pivots ---
+    const pivots = [
+      { page: 'alerts', icon: '🔔', title: 'Alerts', desc: 'Detections raised on this node' },
+      { page: 'discover', icon: '🔎', title: 'Investigate events', desc: 'Pivot raw events in Discover' },
+      { page: 'vulnerabilities', icon: '🛡️', title: 'Vulnerabilities', desc: 'CVEs matched on installed packages' },
+      { page: 'fim', icon: '📁', title: 'File integrity', desc: 'Who changed which files (whodata)' },
+      { page: 'sca', icon: '✅', title: 'Configuration (SCA)', desc: 'Security config assessment results' },
+      { page: 'compliance', icon: '📋', title: 'Compliance', desc: 'HIPAA / PCI / NIST posture' },
+    ];
+    html += '<div class="nd-card"><div class="nd-card-h">Investigate this node</div><div class="nd-pivots">' +
+      pivots.map(p => '<button type="button" class="nd-pivot" data-pivot="' + p.page + '">' +
+        '<span class="nd-pivot-icon">' + p.icon + '</span>' +
+        '<span class="nd-pivot-txt"><span class="nd-pivot-title">' + p.title + '</span>' +
+        '<span class="nd-pivot-desc">' + p.desc + '</span></span>' +
+        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>' +
+      '</button>').join('') +
+    '</div></div>';
+
+    body.innerHTML = html;
+
+    // Wire pivots — pre-filter by agent_id where the target page supports it.
+    body.querySelectorAll('.nd-pivot').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const page = btn.getAttribute('data-pivot');
+        if (page === 'discover' && typeof window.investigateIncident === 'function') {
+          window.investigateIncident(data.id, null);
+          return;
+        }
+        goToPage(page);
+      });
+    });
   }
 
   function filterAgentsTable(agents) {
@@ -1879,32 +1947,185 @@ const GEO_CONTINENTS = [
     }).join('');
   }
 
-  async function loadThreatHunting() {
-    // Wire saved hunts list (populated when user saves a hunt)
-    const huntList = document.getElementById('huntSavedList');
-    if (huntList && !huntList.innerHTML.trim()) {
-      huntList.innerHTML = `<div class="chart-empty"><div class="chart-empty-msg">No saved hunts yet</div><div class="chart-empty-sub">Build a query in Discover and save it as a hunt</div></div>`;
+  // ── Agent id → hostname resolver (cached) ──────────────────────────────
+  let _agentNameMap = null;
+  async function getAgentNameMap() {
+    if (_agentNameMap) return _agentNameMap;
+    const map = {};
+    try {
+      const data = window._agentsHealthData || await fetchJson(API.agentsHealth);
+      (data.agents || []).forEach(a => { if (a.id) map[a.id] = a.name || a.hostname || a.id; });
+    } catch (e) { /* fall back to raw ids */ }
+    _agentNameMap = map;
+    return map;
+  }
+  function resolveAgent(idOrName, map) {
+    if (idOrName && map && map[idOrName]) return map[idOrName];
+    const s = String(idOrName || '');
+    // Looks like a raw hex id → shorten so it doesn't dominate the row
+    if (/^[0-9a-f]{16,}$/i.test(s)) return s.slice(0, 10) + '…';
+    return s || '—';
+  }
+
+  // ── Severity helpers ───────────────────────────────────────────────────
+  function _levelBand(l) { l = +l || 0; if (l >= 12) return 'crit'; if (l >= 8) return 'high'; if (l >= 4) return 'med'; return 'low'; }
+  function _levelLabel(l) { return ({ crit: 'Critical', high: 'High', med: 'Medium', low: 'Low' })[_levelBand(l)]; }
+
+  // ── Alerts-over-time histogram (gap-filled, stacked by severity) ────────
+  function renderHuntHistogram(series, range) {
+    const el = document.getElementById('thHistogram');
+    if (!el) return;
+    const interval = range === '7d' ? 86400000 : 3600000;
+    const count = range === '7d' ? 7 : 24;
+    // Bucket populated counts by their interval-aligned start
+    const byStart = {};
+    (series || []).forEach(s => {
+      const start = Math.floor(Number(s.date) / interval) * interval;
+      const segs = byStart[start] || (byStart[start] = { crit: 0, high: 0, med: 0, low: 0 });
+      (s.buckets || []).forEach(b => { segs[_levelBand(b.key)] += (b.doc_count || 0); });
+    });
+    const nowStart = Math.floor(Date.now() / interval) * interval;
+    const bins = [];
+    for (let i = count - 1; i >= 0; i--) {
+      const start = nowStart - i * interval;
+      const segs = byStart[start] || { crit: 0, high: 0, med: 0, low: 0 };
+      bins.push({ start, segs, total: segs.crit + segs.high + segs.med + segs.low });
     }
+    const max = Math.max(1, ...bins.map(b => b.total));
+    if (bins.every(b => b.total === 0)) {
+      el.innerHTML = `<div class="th-hist-empty"><div class="chart-empty-msg">No alerts in this window</div><div class="chart-empty-sub">Detections will plot here as agents report events</div></div>`;
+      return;
+    }
+    const H = 156;
+    const fmtTime = (ms) => {
+      const d = new Date(ms);
+      return range === '7d'
+        ? ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()] + ' ' + d.getDate()
+        : String(d.getHours()).padStart(2, '0') + ':00';
+    };
+    const labelEvery = range === '7d' ? 1 : 4;
+    const order = ['crit', 'high', 'med', 'low'];
+    const cols = bins.map((b, i) => {
+      const segHtml = order.map(k => b.segs[k] > 0
+        ? `<i class="th-seg ${k}" style="height:${(b.segs[k] / max) * H}px"></i>` : '').join('');
+      const tip = fmtTime(b.start) + ' — ' + b.total + ' alert' + (b.total === 1 ? '' : 's') +
+        (b.total ? ` (C${b.segs.crit} H${b.segs.high} M${b.segs.med} L${b.segs.low})` : '');
+      const lbl = (i % labelEvery === 0) ? fmtTime(b.start) : '';
+      return `<div class="th-hcol" title="${escapeHtml(tip)}">
+        <div class="th-hbar">${segHtml}</div>
+        <span class="th-hx">${escapeHtml(lbl)}</span>
+      </div>`;
+    }).join('');
+    el.innerHTML = `<div class="th-hist-bars" style="--th-h:${H}px">${cols}</div>`;
+  }
 
-    const [byAgent, bySev, byRule] = await Promise.all([
-      fetchJson(API.alertsByAgent).catch(() => ({})),
+  // ── Alerts explorer table ──────────────────────────────────────────────
+  let _huntExplorerData = [];
+  function renderHuntExplorer(alerts, nameMap) {
+    const body = document.getElementById('thExplorerBody');
+    const countEl = document.getElementById('thExplorerCount');
+    if (!body) return;
+    if (countEl) countEl.textContent = alerts.length;
+    if (!alerts.length) {
+      body.innerHTML = `<div class="adt-empty">No alerts match your filter.</div>`;
+      return;
+    }
+    body.innerHTML = alerts.slice(0, 100).map(a => {
+      const band = _levelBand(a.rule_level);
+      const ts = a.timestamp ? new Date(a.timestamp) : null;
+      const tlabel = ts ? ts.toLocaleString([], { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+      const agent = escapeHtml(a.agent_name && a.agent_name.trim() ? a.agent_name : resolveAgent(a.agent_id, nameMap));
+      const desc = escapeHtml(a.rule_description || '—');
+      const groups = (a.rule_groups || []).slice(0, 2).map(g => `<span class="th-grp">${escapeHtml(g)}</span>`).join('');
+      const rid = escapeHtml(String(a.rule_id ?? '—'));
+      return `<div class="adt-row th-exp-row" role="row">
+        <span role="cell" class="th-exp-time">${escapeHtml(tlabel)}</span>
+        <span role="cell" class="th-exp-agent" title="${escapeHtml(String(a.agent_id||''))}">${agent}</span>
+        <span role="cell" class="th-exp-rule" title="${desc}">${desc}</span>
+        <span role="cell" class="th-exp-groups">${groups || '<span class="th-grp muted">—</span>'}</span>
+        <span role="cell" class="adt-num"><span class="th-lvl ${band}">${escapeHtml(String(a.rule_level ?? '—'))}</span></span>
+        <span role="cell" class="adt-mono">${rid}</span>
+      </div>`;
+    }).join('');
+  }
+  function filterHuntExplorer() {
+    const q = (document.getElementById('thExplorerSearch')?.value || '').trim().toLowerCase();
+    let rows = _huntExplorerData;
+    if (q) rows = rows.filter(a =>
+      (a.rule_description || '').toLowerCase().includes(q) ||
+      (a.agent_name || '').toLowerCase().includes(q) ||
+      (a.agent_id || '').toLowerCase().includes(q) ||
+      String(a.rule_level || '').includes(q) ||
+      String(a.rule_id || '').includes(q) ||
+      (a.srcip || '').toLowerCase().includes(q) ||
+      (a.rule_groups || []).join(' ').toLowerCase().includes(q));
+    renderHuntExplorer(rows, _agentNameMap || {});
+  }
+
+  async function loadThreatHunting() {
+    const range = document.getElementById('huntTimeRange')?.value || '24h';
+    const days = range === '7d' ? 7 : 1;
+    const interval = range === '7d' ? '1d' : '1h';
+    const nameMap = await getAgentNameMap();
+
+    const [stats, sevTime, byAgent, byRule, byTactic, bySev, listRes] = await Promise.all([
+      fetchJson(API.dashboardStats || '/api/dashboard/stats').catch(() => ({})),
+      fetchJson(`/api/alerts/severity-over-time?days=${days}&interval=${interval}`).catch(() => ({ series: [] })),
+      fetchJson(API.alertsByAgent + '?size=8').catch(() => ({})),
+      fetchJson(API.alertsByRule + '?size=8').catch(() => ({})),
+      fetchJson(API.mitreTactics + '?size=8').catch(() => ({})),
       fetchJson(API.alertsBySeverity).catch(() => ({})),
-      fetchJson(API.alertsByRule).catch(() => ({})),
+      fetchJson(`${API.alertsList}?limit=200&range=${range === '7d' ? '7d' : '24h'}`).catch(() => ({ alerts: [] })),
     ]);
-    const agentBuckets = byAgent?.buckets || [];
-    const sevBuckets   = bySev?.buckets   || [];
-    const ruleBuckets  = byRule?.buckets  || [];
 
-    const agentRows = agentBuckets.slice(0,6).map(b => ({ name: b.key||'—', count: b.count||0, sev: (b.count||0)>50?'crit':(b.count||0)>20?'high':'med', mono: false }));
-    const sevRows   = sevBuckets.map(b => ({ name: b.key||'—', count: b.count||0, sev: String(b.key||'').toLowerCase()||'low', share: 1 }));
-    const ruleRows  = ruleBuckets.slice(0,6).map(b => ({ name: (b.key||'—').slice(0,50), count: b.count||0, sev: (b.count||0)>10?'crit':(b.count||0)>5?'high':'med' }));
+    // KPIs
+    const sevBuckets = bySev?.buckets || [];
+    const total = sevBuckets.reduce((s, b) => s + (b.count || 0), 0) || (stats.total_events || 0);
+    const elevated = (listRes.alerts || []).filter(a => (+a.rule_level || 0) >= 8).length;
+    const distinctRules = new Set((listRes.alerts || []).map(a => a.rule_id)).size || (byRule?.buckets || []).length;
+    const setT = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+    setT('thKpiTotal', total);
+    setT('huntHitsMeta', total);
+    setT('thKpiHigh', elevated);
+    setT('thKpiAgents', stats.unique_agents ?? (byAgent?.buckets || []).length);
+    setT('thKpiRules', distinctRules);
 
-    const total = agentRows.reduce((s,r)=>s+r.count,0);
-    const metaEl = document.getElementById('huntHitsMeta'); if (metaEl) metaEl.textContent = total;
+    // Histogram
+    renderHuntHistogram(sevTime?.series || [], range);
 
-    _renderBigbars('chartByAgent',  agentRows, 'huntAgentDot', 'huntAgentMeta', 'var(--crit)');
-    _renderBigbars('chartSeverity', sevRows.map((r,i) => ({ ...r, name: r.name, count: r.count, sev: r.sev || ['crit','high','med','low'][i]||'low' })), 'huntSevDot',   'huntSevMeta',   'var(--crit)');
-    _renderBigbars('chartRules',    ruleRows,  'huntRulesDot', 'huntRulesMeta', 'var(--high)');
+    // Breakdown panels
+    const agentRows = (byAgent?.buckets || []).slice(0, 6).map(b => ({
+      name: resolveAgent(b.key, nameMap), count: b.count || 0,
+      sev: (b.count || 0) > 50 ? 'crit' : (b.count || 0) > 20 ? 'high' : 'med',
+      mono: !nameMap[b.key],
+    }));
+    const ruleRows = (byRule?.buckets || []).slice(0, 6).map(b => ({
+      name: (b.key || '—').slice(0, 52), count: b.count || 0,
+      sev: (b.count || 0) > 50 ? 'crit' : (b.count || 0) > 10 ? 'high' : 'med',
+    }));
+    const tacticRows = (byTactic?.buckets || []).slice(0, 6).map(b => ({
+      name: b.key || '—', count: b.count || b.doc_count || 0, sev: 'high',
+    }));
+    const sevRows = sevBuckets.map(b => ({
+      name: b.key || '—', count: b.count || 0, sev: String(b.key || '').toLowerCase().includes('crit') ? 'crit'
+        : String(b.key || '').toLowerCase().includes('high') ? 'high'
+        : String(b.key || '').toLowerCase().includes('med') ? 'med' : 'low',
+    }));
+
+    _renderBigbars('chartByAgent', agentRows, null, 'huntAgentMeta', 'var(--crit)');
+    _renderBigbars('chartRules', ruleRows, null, 'huntRulesMeta', 'var(--high)');
+    if (tacticRows.length) {
+      _renderBigbars('chartMitre', tacticRows, null, 'huntMitreMeta', 'var(--accent)');
+    } else {
+      const m = document.getElementById('chartMitre');
+      if (m) m.innerHTML = `<div class="chart-empty"><div class="chart-empty-msg">No MITRE-tagged alerts</div><div class="chart-empty-sub">Rules with a mitre: block will populate this</div></div>`;
+      setT('huntMitreMeta', '0 tactics');
+    }
+    _renderBigbars('chartSeverity', sevRows, null, 'huntSevMeta', 'var(--ok)');
+
+    // Explorer
+    _huntExplorerData = listRes.alerts || [];
+    filterHuntExplorer();
   }
 
   const ALERTS_PAGE_SIZE = 25;
@@ -4189,6 +4410,7 @@ const GEO_CONTINENTS = [
 
   async function loadVulnerabilities() {
     const { params, bounds } = getVulnParams();
+    const _vulnNameMap = await getAgentNameMap();
     const pageSize = parseInt(document.getElementById('vulnPageSize')?.value || '25', 10);
     const offset = vulnCurrentPage * pageSize;
     params.set('size', pageSize);
@@ -4229,16 +4451,17 @@ const GEO_CONTINENTS = [
     else {
       const buckets = topAgentsRes.buckets || [];
       if (document.getElementById('vulnAgent') && document.getElementById('vulnAgent').options.length <= 1) {
-        document.getElementById('vulnAgent').innerHTML = '<option value="">All agents</option>' + buckets.map(b => `<option value="${escapeHtml(b.key || '')}">${escapeHtml(b.key || '—')}</option>`).join('');
+        document.getElementById('vulnAgent').innerHTML = '<option value="">All agents</option>' + buckets.map(b => `<option value="${escapeHtml(b.key || '')}">${escapeHtml(resolveAgent(b.key, _vulnNameMap))}</option>`).join('');
       }
       const maxA = Math.max(...buckets.map(b => b.doc_count), 1);
       agentsEl.innerHTML = buckets.length === 0 ? '<span class="empty-msg">No data</span>' : buckets.map((b, i) => {
         const pct = (b.doc_count / maxA) * 100;
         const rank = i + 1;
         const isFirst = rank === 1;
+        const _aname = resolveAgent(b.key, _vulnNameMap);
         return `<div class="vuln-bar-row ${isFirst ? 'vuln-bar-row--top' : ''}" data-rank="${rank}">
           <span class="vuln-bar-rank">${rank}</span>
-          <span class="vuln-bar-label" title="${escapeHtml(b.key || '—')}">${escapeHtml((b.key || '—').slice(0, 22))}${(b.key || '').length > 22 ? '…' : ''}</span>
+          <span class="vuln-bar-label" title="${escapeHtml(b.key || '—')}">${escapeHtml(_aname.slice(0, 22))}${_aname.length > 22 ? '…' : ''}</span>
           <div class="vuln-bar-track vuln-bar-track--rounded"><div class="vuln-bar-fill vuln-bar-fill--gradient" style="width:${pct}%"></div></div>
           <span class="vuln-bar-count">${b.doc_count.toLocaleString()}</span>
         </div>`;
@@ -4289,9 +4512,10 @@ const GEO_CONTINENTS = [
     if (!buckets || buckets.length === 0) return '<span class="empty-msg">No data</span>';
     const top5 = buckets.slice(0, 5);
     const max = Math.max(...top5.map(b => b.doc_count), 1);
+    const nameMap = options && options.nameMap;
     return top5.map(b => {
       const pct = (b.doc_count / max) * 100;
-      const name = (b.key || '—').slice(0, 20);
+      const name = (nameMap ? resolveAgent(b.key, nameMap) : (b.key || '—')).slice(0, 24);
       const agentId = b.agent_id != null ? String(b.agent_id) : '';
       const cls = drillDown ? 'viz-hbar drill-down' : 'viz-hbar';
       const attrs = drillDown ? ` data-agent-name="${escapeHtml(b.key || '')}" data-agent-id="${escapeHtml(agentId)}"` : '';
@@ -4441,6 +4665,7 @@ const GEO_CONTINENTS = [
   async function loadDashboard() {
     const { params, bounds, saved } = getDashboardParams();
     const q = params.toString();
+    const nameMap = await getAgentNameMap();
 
     const agentEl = document.getElementById('dashboardAgent');
     const ruleGroupEl = document.getElementById('dashboardRuleGroup');
@@ -4451,7 +4676,7 @@ const GEO_CONTINENTS = [
       const buckets = agentRes.buckets || [];
       agentEl.innerHTML = '<option value="">All agents</option>' + buckets.map(b => {
         const aid = b.agent_id != null ? String(b.agent_id) : '';
-        return `<option value="${escapeHtml(b.key || '')}" data-agent-id="${escapeHtml(aid)}">${escapeHtml((b.key || '—').slice(0, 40))}</option>`;
+        return `<option value="${escapeHtml(b.key || '')}" data-agent-id="${escapeHtml(aid)}">${escapeHtml(resolveAgent(b.key, nameMap).slice(0, 40))}</option>`;
       }).join('');
       if (saved.agent_name) agentEl.value = saved.agent_name;
     }
@@ -4476,7 +4701,7 @@ const GEO_CONTINENTS = [
 
     const top5El = document.getElementById('dashTop5Agents');
     if (top5Res.error) top5El.innerHTML = '<span class="error-msg">' + escapeHtml(top5Res.error.message) + '</span>';
-    else top5El.innerHTML = renderTop5AgentsBar(top5Res.buckets || [], { drillDown: true });
+    else top5El.innerHTML = renderTop5AgentsBar(top5Res.buckets || [], { drillDown: true, nameMap });
 
     const badgeEl = document.getElementById('dashboardFilterBadge');
     const clearBtn = document.getElementById('dashboardClearFilter');
@@ -4692,6 +4917,7 @@ const GEO_CONTINENTS = [
     'data-sources': loadDataSources,
     'index-management': loadIndexManagement,
     agents: loadAgents,
+    'agent-detail': loadAgentDetailPage,
     fim: loadFimPage,
     mitre: loadMitrePage,
     audit: loadAuditPage,
@@ -4752,6 +4978,9 @@ const GEO_CONTINENTS = [
       const ms = parseInt(refreshEl?.value || '30', 10) * 1000;
       if (typeof startOverviewRefresh === 'function') startOverviewRefresh(ms);
     }
+    // Start/stop per-page auto-refresh timers based on the active page
+    if (typeof window.startAgentsRefresh === 'function') window.startAgentsRefresh();
+    if (typeof window.startAlertsRefresh === 'function') window.startAlertsRefresh();
   }
   window.goToPage = goToPage;
 
@@ -4916,7 +5145,6 @@ const GEO_CONTINENTS = [
     if (bodyEl) bodyEl.innerHTML = renderAgentsTableFromHealth(filtered);
     const countEl = document.getElementById('agentsTableCount');
     if (countEl) countEl.textContent = filtered.length;
-    renderAgentCards(filtered);
   };
   if (agentsSearchEl) agentsSearchEl.addEventListener('input', _refilterAgents);
   document.querySelectorAll('.ag2-tab').forEach(tab => {
@@ -4928,10 +5156,38 @@ const GEO_CONTINENTS = [
   });
 
   document.getElementById('agentsBody')?.addEventListener('click', (e) => {
-    const btn = e.target.closest('.btn-agent-view');
-    if (btn && btn.getAttribute('data-agent-id')) openAgentDetail(btn.getAttribute('data-agent-id'));
+    // Whole row is clickable; the chevron button works too (both carry data-agent-id).
+    const target = e.target.closest('.btn-agent-view, .adt-brow');
+    if (target && target.getAttribute('data-agent-id')) openAgentDetail(target.getAttribute('data-agent-id'));
   });
-  document.getElementById('agentDetailClose')?.addEventListener('click', closeAgentDetail);
+  document.getElementById('agentDetailBack')?.addEventListener('click', () => goToPage('agents'));
+
+  // Threat Hunting controls
+  document.getElementById('huntTimeRange')?.addEventListener('change', () => loadThreatHunting());
+  document.getElementById('huntRefreshBtn')?.addEventListener('click', () => loadThreatHunting());
+  document.getElementById('thExplorerSearch')?.addEventListener('input', () => filterHuntExplorer());
+
+  // Agents auto-refresh (the dropdown was previously decorative)
+  window._agentsRefreshTimer = window._agentsRefreshTimer || null;
+  window.startAgentsRefresh = function () {
+    if (window._agentsRefreshTimer) { clearInterval(window._agentsRefreshTimer); window._agentsRefreshTimer = null; }
+    const sec = parseInt(document.getElementById('agentsRefresh')?.value || '0', 10);
+    if (sec > 0) window._agentsRefreshTimer = setInterval(() => {
+      if (document.querySelector('.page.active')?.id === 'page-agents') loadAgents();
+    }, sec * 1000);
+  };
+  document.getElementById('agentsRefresh')?.addEventListener('change', window.startAgentsRefresh);
+
+  // Alerts auto-refresh (the dropdown + "auto-refreshing" subtitle were previously decorative)
+  window._alertsRefreshTimer = window._alertsRefreshTimer || null;
+  window.startAlertsRefresh = function () {
+    if (window._alertsRefreshTimer) { clearInterval(window._alertsRefreshTimer); window._alertsRefreshTimer = null; }
+    const sec = parseInt(document.getElementById('alertsRefresh')?.value || '0', 10);
+    if (sec > 0) window._alertsRefreshTimer = setInterval(() => {
+      if (document.querySelector('.page.active')?.id === 'page-alerts') loadAlerts();
+    }, sec * 1000);
+  };
+  document.getElementById('alertsRefresh')?.addEventListener('change', window.startAlertsRefresh);
 
   document.querySelector('.agents-breakdown-tablist')?.addEventListener('click', (e) => {
     const tab = e.target.closest('.agents-breakdown-tab[data-tab]');
@@ -5527,21 +5783,40 @@ const GEO_CONTINENTS = [
     const matrixWrap = document.getElementById('mitreMatrixWrap');
     const matrixDot  = document.getElementById('mitreMatrixDot');
     const matrixMeta = document.getElementById('mitreMatrixMeta');
+    // Techniques that carry no recognised tactic mapping — surfaced separately
+    // so their detections stay visible instead of vanishing from the matrix.
+    const knownTacticIds = new Set(MITRE_TACTICS.map(t => t.id));
+    const unmappedTechs = apiTechs
+      .filter(a => !knownTacticIds.has(a.tactic || ''))
+      .map(a => ({ id: a.technique_id, n: a.technique_name, c: a.count, lvl: a.count >= 8 ? 'hot3' : a.count >= 5 ? 'hot2' : a.count >= 3 ? 'hot1' : 'warm' }));
+    const unmappedTotal = unmappedTechs.reduce((a, c) => a + (c.c || 0), 0);
+
     if (matrixDot) matrixDot.style.background = totalA > 0 ? 'var(--crit)' : 'var(--ok)';
-    if (matrixMeta) matrixMeta.textContent = totalA > 0 ? `${techCount} techniques · ${tacsCovered}/12 tactics` : 'Configure rules → MITRE mappings';
+    if (matrixMeta) matrixMeta.textContent = totalA > 0
+      ? `${techCount} techniques · ${tacsCovered}/12 tactics` + (unmappedTotal ? ` · ${unmappedTechs.length} unmapped` : '')
+      : 'Configure rules → MITRE mappings';
     if (matrixWrap) {
       if (totalA === 0) {
         matrixWrap.innerHTML = `<div class="sigil-block"><div class="sigil" style="background:radial-gradient(circle,rgba(45,212,191,0.10),transparent 70%);color:var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="m16 8-6 2-2 6 6-2 2-6z"/></svg></div><div class="sigil-text"><h4>No MITRE ATT&amp;CK data yet</h4><p>Alerts with MITRE technique mappings will populate this matrix. Add MITRE IDs to your detection rules to see coverage here.</p></div><div style="flex:1"></div><button class="act-btn" onclick="goToPage('rule-versions')">Detection Studio</button></div>`;
       } else {
-        matrixWrap.innerHTML = `<div class="matrix-wrap"><div class="matrix">` +
-          MITRE_TACTICS.map(t => {
-            const techs = apiTechs.filter(a => (a.tactic||'') === t.id).map(a => ({id:a.technique_id,n:a.technique_name,c:a.count,lvl:a.count>=8?'hot3':a.count>=5?'hot2':a.count>=3?'hot1':'warm'}));
-            const ttl   = techs.reduce((a,c) => a+(c.c||0), 0);
-            const isHot = ttl >= 5;
-            return `<div class="matrix-col"><div class="matrix-col-h${isHot?' hot':''}">${escapeHtml(t.short)}<span class="count">${ttl} · ${t.id}</span></div>` +
-              techs.map(tech => `<div class="matrix-cell ${tech.lvl||''}" title="${escapeHtml(tech.id||'')} · ${escapeHtml(tech.n||'')} · ${tech.c} detections"><span class="matrix-cell-name">${escapeHtml(tech.n||tech.id||'')}</span><span class="n">${tech.c}</span></div>`).join('') +
+        // Banner shown when alerts exist but lack tactic data (explains 0/12)
+        const banner = (tacsCovered === 0 && unmappedTotal > 0)
+          ? `<div class="mitre-note"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg><span><b>${unmappedTotal} detections</b> carry a technique but no ATT&CK <b>tactic</b> — that's why tactic coverage reads 0/12. Add a <code>tactic</code> to these rules' <code>mitre:</code> blocks to map them onto the matrix.</span></div>`
+          : '';
+        const cols = MITRE_TACTICS.map(t => {
+          const techs = apiTechs.filter(a => (a.tactic || '') === t.id).map(a => ({ id: a.technique_id, n: a.technique_name, c: a.count, lvl: a.count >= 8 ? 'hot3' : a.count >= 5 ? 'hot2' : a.count >= 3 ? 'hot1' : 'warm' }));
+          const ttl = techs.reduce((a, c) => a + (c.c || 0), 0);
+          const isHot = ttl >= 5;
+          return `<div class="matrix-col"><div class="matrix-col-h${isHot ? ' hot' : ''}">${escapeHtml(t.short)}<span class="count">${ttl} · ${t.id}</span></div>` +
+            techs.map(tech => `<div class="matrix-cell ${tech.lvl || ''}" title="${escapeHtml(tech.id || '')} · ${escapeHtml(tech.n || '')} · ${tech.c} detections"><span class="matrix-cell-name">${escapeHtml(tech.n || tech.id || '')}</span><span class="n">${tech.c}</span></div>`).join('') +
             `</div>`;
-          }).join('') + `</div></div>`;
+        }).join('');
+        const unmappedCol = unmappedTechs.length
+          ? `<div class="matrix-col unmapped"><div class="matrix-col-h hot">Unmapped<span class="count">${unmappedTotal} · no tactic</span></div>` +
+              unmappedTechs.map(tech => `<div class="matrix-cell ${tech.lvl || ''}" title="${escapeHtml(tech.id || '')} · ${escapeHtml(tech.n || '')} · ${tech.c} detections · no tactic mapping"><span class="matrix-cell-name">${escapeHtml(tech.n || tech.id || '')}</span><span class="n">${tech.c}</span></div>`).join('') +
+            `</div>`
+          : '';
+        matrixWrap.innerHTML = banner + `<div class="matrix-wrap"><div class="matrix">` + cols + unmappedCol + `</div></div>`;
       }
     }
 
@@ -7040,6 +7315,19 @@ const GEO_CONTINENTS = [
 
   // -------------- Visualize Page -------------------------------------------
 
+  // Shared SVG glyphs for visualization types (cohesive with the rest of the UI)
+  const VIZ_TYPE_SVG = {
+    metric: '<path d="M4 19V5M4 19h16M8 16V9M12 16v-5M16 16v-9M20 16V6"/>',
+    area: '<path d="M3 20V4M3 20h18M21 20v-8l-5 2-4-6-4 4-2-1v9z"/>',
+    bar: '<path d="M4 20V4M4 20h16"/><rect x="7" y="11" width="3" height="6"/><rect x="12" y="8" width="3" height="9"/><rect x="17" y="13" width="3" height="4"/>',
+    pie: '<path d="M12 3a9 9 0 1 0 9 9h-9V3z"/><path d="M12 3v9h9A9 9 0 0 0 12 3z" opacity=".5"/>',
+    table: '<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 10h18M3 15h18M9 4v16"/>',
+    markdown: '<path d="M4 7V5h16v2M9 19h6M12 5v14"/>',
+  };
+  function vizTypeIcon(type) {
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">${VIZ_TYPE_SVG[type] || VIZ_TYPE_SVG.bar}</svg>`;
+  }
+
   async function loadVisualizePage() {
     document.getElementById('vizBuilderPanel')?.classList.add('hidden');
     document.getElementById('vizListView')?.classList.remove('hidden');
@@ -7057,20 +7345,16 @@ const GEO_CONTINENTS = [
       return;
     }
     empty?.classList.add('hidden');
-    const TYPE_ICONS = { metric:'🔢', area:'📈', bar:'📊', pie:'🥧', table:'📋', markdown:'📝' };
-    const TYPE_COLORS = { metric:'var(--accent)', area:'var(--low)', bar:'var(--high)', pie:'var(--med)', table:'var(--ok)', markdown:'var(--fg-3)' };
     grid.innerHTML = vizs.map(v => `
       <div class="card" data-viz-id="${escapeHtml(v.id)}" style="cursor:default">
-        <div class="card-h">
-          <h3 class="card-h-title">
-            <span style="font-size:16px;margin-right:6px">${TYPE_ICONS[v.viz_type] || '📊'}</span>
-            ${escapeHtml(v.title)}
-          </h3>
+        <div class="card-h" style="gap:9px">
+          <span class="viz-type-glyph">${vizTypeIcon(v.viz_type)}</span>
+          <h3 class="card-h-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(v.title)}</h3>
         </div>
-        <div class="card-body" style="padding:8px 16px 12px">
-          <div style="font-size:11px;color:var(--fg-4);margin-bottom:10px">
-            <span style="background:var(--bg-2);border:1px solid var(--border);border-radius:4px;padding:2px 7px;text-transform:uppercase;letter-spacing:.04em">${escapeHtml(v.viz_type)}</span>
-            <span style="margin-left:6px">${escapeHtml((v.datasource||'').replace('watchvault-','').replace('-*',''))}</span>
+        <div class="card-body" style="padding:10px 16px 12px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--fg-4);margin-bottom:12px">
+            <span class="viz-type-badge">${escapeHtml(v.viz_type)}</span>
+            <span>${escapeHtml((v.datasource||'').replace('watchvault-','').replace('-*',''))}</span>
           </div>
           <div style="display:flex;gap:6px">
             <button type="button" class="act-btn viz-card-edit" data-viz-id="${escapeHtml(v.id)}" style="flex:1;font-size:11px">Edit</button>
@@ -7246,11 +7530,9 @@ const GEO_CONTINENTS = [
     empty?.classList.add('hidden');
     list.innerHTML = dashes.map(d => `
       <div class="card">
-        <div class="card-h">
-          <h3 class="card-h-title">
-            <span style="font-size:16px;margin-right:6px">🗂</span>
-            ${escapeHtml(d.title)}
-          </h3>
+        <div class="card-h" style="gap:9px">
+          <span class="viz-type-glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg></span>
+          <h3 class="card-h-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(d.title)}</h3>
         </div>
         <div class="card-body" style="padding:8px 16px 14px">
           <div style="font-size:11px;color:var(--fg-4);margin-bottom:4px">${d.widgets?.length || 0} widget${(d.widgets?.length||0)!==1?'s':''} · ${escapeHtml(d.time_filter||'24h')}</div>
@@ -7338,17 +7620,16 @@ const GEO_CONTINENTS = [
     const listEl = document.getElementById('dashAddWidgetList');
     const res = await fetchJson(API.customVizList).catch(() => ({ visualizations: [] }));
     const vizs = res.visualizations || [];
-    const TYPE_ICONS = { metric:'🔢', area:'📈', bar:'📊', pie:'🥧', table:'📋', markdown:'📝' };
     listEl.innerHTML = vizs.length ? vizs.map(v =>
       `<div class="dash-add-viz-item" data-viz-id="${escapeHtml(v.id)}">
-        <span class="dash-add-viz-icon">${TYPE_ICONS[v.viz_type]||'📊'}</span>
+        <span class="viz-type-glyph">${vizTypeIcon(v.viz_type)}</span>
         <div>
           <div class="dash-add-viz-title">${escapeHtml(v.title)}</div>
           <div class="dash-add-viz-meta">${escapeHtml(v.viz_type)} · ${escapeHtml(v.datasource.replace('watchvault-','').replace('-*',''))}</div>
         </div>
-        <button type="button" class="btn-primary dash-add-viz-pick" data-viz-id="${escapeHtml(v.id)}" style="margin-left:auto;flex-shrink:0">Add</button>
+        <button type="button" class="act-btn primary dash-add-viz-pick" data-viz-id="${escapeHtml(v.id)}" style="margin-left:auto;flex-shrink:0">Add</button>
       </div>`).join('') :
-      '<div style="color:var(--text-muted);padding:20px;text-align:center">No saved visualizations. Create some in the Visualize page first.</div>';
+      '<div class="viz-empty" style="padding:30px 20px"><div class="viz-empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 20V10M18 20V4M6 20v-4"/></svg></div><p>No saved visualizations yet.<br>Build one in the Visualizations page first.</p></div>';
 
     listEl.querySelectorAll('.dash-add-viz-pick').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -8318,6 +8599,7 @@ function _renderRbaV2() {
   // Tab counts
   const ec=document.getElementById('rbaTabEntitiesCount'); if(ec) ec.textContent=entities.length;
   const nc=document.getElementById('rbaTabNotablesCount'); if(nc) nc.textContent=notableCount;
+  const wc=document.getElementById('rbaTabWeightsCount'); if(wc) wc.textContent=weights.length;
 
   // Entities pane
   const ePane = document.getElementById('rbaPaneEntities');
@@ -8373,25 +8655,119 @@ function _renderRbaV2() {
     }
   }
 
-  // Weights pane
+  // Weights pane — editable: add a per-rule weight, edit existing ones
   const wPane = document.getElementById('rbaPaneWeights');
   if (wPane) {
+    const addForm = `<div class="rba-weight-add">
+      <span class="rba-weight-add-lbl">Add / override a rule weight</span>
+      <input type="number" id="rbaNewWeightRule" class="fld" placeholder="Rule ID" min="1" style="width:110px">
+      <input type="number" id="rbaNewWeightVal" class="fld" placeholder="Weight (pts)" min="0" style="width:120px">
+      <button type="button" class="act-btn primary" onclick="addRbaWeight()">Add weight</button>
+    </div>`;
     if (!weights.length) {
-      wPane.innerHTML = `<div class="chart-empty"><div class="chart-empty-icon ok"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3v18M6 7l-3 7c0 2 1.5 3 3 3s3-1 3-3L6 7zM18 7l-3 7c0 2 1.5 3 3 3s3-1 3-3l-3-7zM5 7h14"/></svg></div><div class="chart-empty-msg">No rule weights configured</div><div class="chart-empty-sub">Adjust per-rule risk weights to tune how quickly entities accumulate score</div></div>`;
+      wPane.innerHTML = addForm + `<div class="chart-empty" style="padding:28px"><div class="chart-empty-icon ok"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3v18M6 7l-3 7c0 2 1.5 3 3 3s3-1 3-3L6 7zM18 7l-3 7c0 2 1.5 3 3 3s3-1 3-3l-3-7zM5 7h14"/></svg></div><div class="chart-empty-msg">No custom rule weights</div><div class="chart-empty-sub">All rules currently use level-derived default weights. Add an override above to make a specific rule contribute more (or less) risk.</div></div>`;
     } else {
-      wPane.innerHTML = `<div class="tbl">
-        <div class="tbl-h" style="grid-template-columns:32px 1fr 90px 90px">
-          <span>#</span><span>Rule</span><span>Weight</span><span>Fires 24h</span>
+      wPane.innerHTML = addForm + `<div class="tbl">
+        <div class="tbl-h" style="grid-template-columns:90px 1fr 110px 150px">
+          <span>Rule ID</span><span>Rule</span><span>Weight (pts)</span><span></span>
         </div>
-        ${weights.map((w,i) => `<div class="tbl-r" style="grid-template-columns:32px 1fr 90px 90px">
-          <span class="row-num">${i+1}</span>
-          <span class="tbl-pri">${escapeHtml(w.rule||w.description||'—')}</span>
-          <span style="font-family:var(--font-mono);font-weight:500;color:${(w.weight||0)>=20?'var(--crit)':(w.weight||0)>=10?'var(--high)':'var(--fg-2)'}">+${w.weight||0}</span>
-          <span class="tbl-mono">${w.fires||0}</span>
+        ${weights.map(w => `<div class="tbl-r" style="grid-template-columns:90px 1fr 110px 150px">
+          <span class="tbl-mono" style="color:var(--accent)">#${escapeHtml(String(w.rule_id ?? '—'))}</span>
+          <span class="tbl-pri">${escapeHtml(w.rule||'—')}</span>
+          <span><input type="number" class="fld rba-w-input" data-rule-id="${escapeHtml(String(w.rule_id))}" value="${escapeHtml(String(w.weight||0))}" min="1" style="width:80px;height:26px"></span>
+          <span style="display:flex;gap:6px">
+            <button type="button" class="act-btn rba-w-save" data-rule-id="${escapeHtml(String(w.rule_id))}" onclick="saveRbaWeightFromRow(${w.rule_id})">Save</button>
+            <button type="button" class="act-btn rba-w-del" title="Remove this override" data-rule-id="${escapeHtml(String(w.rule_id))}" onclick="deleteRbaWeight(${w.rule_id})" style="color:var(--crit);width:30px;padding:0">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            </button>
+          </span>
         </div>`).join('')}
       </div>`;
     }
   }
+}
+
+// ── RBA: rule weight + entity threshold configuration (live PUT endpoints) ──
+async function addRbaWeight() {
+  const ruleEl = document.getElementById('rbaNewWeightRule');
+  const valEl  = document.getElementById('rbaNewWeightVal');
+  const ruleId = parseInt(ruleEl?.value, 10);
+  const weight = parseInt(valEl?.value, 10);
+  if (!Number.isInteger(ruleId) || ruleId <= 0) { alert('Enter a valid numeric Rule ID.'); return; }
+  if (!Number.isInteger(weight) || weight < 0) { alert('Enter a valid weight (0 or more).'); return; }
+  await _putRbaWeight(ruleId, weight);
+  await loadRbaWeights(); _renderRbaV2();
+}
+async function saveRbaWeightFromRow(ruleId) {
+  const input = document.querySelector(`.rba-w-input[data-rule-id="${ruleId}"]`);
+  const weight = parseInt(input?.value, 10);
+  if (!Number.isInteger(weight) || weight < 0) { alert('Enter a valid weight (0 or more).'); return; }
+  const btn = document.querySelector(`.rba-w-save[data-rule-id="${ruleId}"]`);
+  if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
+  await _putRbaWeight(ruleId, weight);
+  if (btn) { btn.textContent = 'Saved ✓'; setTimeout(() => { btn.textContent = 'Save'; btn.disabled = false; }, 1400); }
+}
+async function _putRbaWeight(ruleId, weight) {
+  try {
+    const r = await fetch(`/api/rba/weights/${ruleId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ risk_weight: weight, weight }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  } catch (e) { alert('Failed to save weight: ' + e.message); }
+}
+async function deleteRbaWeight(ruleId) {
+  if (!confirm(`Remove the risk-weight override for rule #${ruleId}? It will revert to the level-derived default.`)) return;
+  try {
+    const r = await fetch(`/api/rba/weights/${ruleId}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  } catch (e) { alert('Failed to remove weight: ' + e.message); return; }
+  await loadRbaWeights(); _renderRbaV2();
+}
+
+function openRbaThresholds() {
+  const modal = document.getElementById('rbaThresholdModal');
+  const list  = document.getElementById('rbaThresholdList');
+  if (!modal || !list) return;
+  const entities = (window._rbaEntitiesCache || {}).entities || [];
+  if (!entities.length) {
+    list.innerHTML = `<div style="color:var(--fg-4);font-size:13px;padding:20px;text-align:center">No entities are being tracked yet. Thresholds become configurable once entities accumulate risk.</div>`;
+  } else {
+    list.innerHTML = entities.map(e => {
+      const id = e.id || e.entity_id || '';
+      const thr = e.threshold || 100;
+      const name = (typeof _resolveEntity === 'function') ? _resolveEntity(id, e.type || e.entity_type || 'agent') : id;
+      return `<div class="rba-thr-row">
+        <span class="rba-thr-name" title="${escapeHtml(id)}">${escapeHtml(name)}</span>
+        <input type="number" class="fld rba-thr-input" data-entity-id="${escapeHtml(id)}" value="${escapeHtml(String(thr))}" min="1" style="width:100px;height:28px">
+        <button type="button" class="act-btn rba-thr-save" data-entity-id="${escapeHtml(id)}" onclick="saveRbaThreshold('${escapeHtml(id)}')">Save</button>
+      </div>`;
+    }).join('');
+  }
+  modal.classList.remove('hidden');
+}
+function closeRbaThresholds() { document.getElementById('rbaThresholdModal')?.classList.add('hidden'); }
+async function saveRbaThreshold(entityId) {
+  const input = document.querySelector(`.rba-thr-input[data-entity-id="${entityId}"]`);
+  const threshold = parseInt(input?.value, 10);
+  if (!Number.isInteger(threshold) || threshold < 1) { alert('Enter a valid threshold (1 or more).'); return; }
+  const btn = document.querySelector(`.rba-thr-save[data-entity-id="${entityId}"]`);
+  if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
+  try {
+    const r = await fetch(`/api/rba/entities/${encodeURIComponent(entityId)}/threshold`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ threshold }),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (btn) { btn.textContent = 'Saved ✓'; }
+    // reflect locally so the entities table shows the new threshold on next render
+    const ent = ((window._rbaEntitiesCache||{}).entities||[]).find(x => (x.id||x.entity_id) === entityId);
+    if (ent) ent.threshold = threshold;
+  } catch (e) {
+    if (btn) { btn.textContent = 'Save'; btn.disabled = false; }
+    alert('Failed to save threshold: ' + e.message); return;
+  }
+  setTimeout(() => { if (btn) { btn.textContent = 'Save'; btn.disabled = false; } }, 1400);
 }
 
 async function loadRbaEntities() {
@@ -8471,9 +8847,9 @@ async function loadRbaWeights() {
   const res = await fetch('/api/rba/weights').then(r => r.json()).catch(() => ({}));
   const weights = res.data || [];
   window._rbaEntitiesCache = window._rbaEntitiesCache || {};
-  window._rbaEntitiesCache.weights = weights.length > 0 ? weights.map(w => ({
-    rule: w.description || `Rule #${w.rule_id}`, weight: w.risk_weight||0, fires: 0
-  })) : null;
+  window._rbaEntitiesCache.weights = (weights.length > 0 ? weights.map(w => ({
+    rule_id: w.rule_id, rule: w.description || `Rule #${w.rule_id}`, weight: w.risk_weight||0, updated: w.updated_at
+  })) : []);
   const tbody = document.getElementById('rbaWeightsBody');
   if (!tbody) return;
 
@@ -8500,7 +8876,7 @@ function switchRbaTab(tab) {
   });
   Object.entries(tabs).forEach(([key, id]) => {
     const el = document.getElementById(id);
-    if (el) el.classList.toggle('tab-btn--active', key === tab);
+    if (el) el.classList.toggle('active', key === tab);
   });
 }
 
@@ -8541,6 +8917,10 @@ function _renderUebaV2() {
   setK('uebaKpiMonitored', String(entities.length), 'uebaKpiMonTag', entities.length>0?'+'+entities.length:'OK', entities.length>0?'up':'ok', 'uebaEntitiesMeta', 'identities · hosts · service accts');
   setK('kpiUebaAnomalies', String(anomalies.length), 'uebaKpiAnomTag', anomalies.length>0?'+'+anomalies.length:'CLEAR', anomalies.length>0?'up':'ok', 'uebaKpiAnomSub', anomalies.length>0?anomalies.length+' anomalies detected':'no anomalies');
   setK('uebaKpiHighRisk', String(highRisk), 'uebaKpiHRTag', highRisk>0?'ATTN':'CLEAR', highRisk>0?'crit':'ok', null, 'risk score ≥ 70');
+  // Baselines profiled = entities that have produced activity (a real, derived metric)
+  const profiled = entities.filter(e => (e.alerts||e.alert_count_7d||0) > 0).length;
+  const basePct = entities.length ? Math.round(100*profiled/entities.length) : 0;
+  setK('uebaKpiBaselines', basePct+'%', 'uebaKpiBaseTag', entities.length ? 'OK' : 'IDLE', entities.length ? 'ok' : 'ok', 'uebaKpiBaseSub', `${profiled}/${entities.length} entities with activity`);
   const metaEl=document.getElementById('uebaEntitiesMeta'); if(metaEl) metaEl.textContent=entities.length;
   // Tab counts
   const rc=document.getElementById('uebaTabRiskCount'); if(rc) rc.textContent=entities.length;
@@ -8589,10 +8969,31 @@ function _renderUebaV2() {
     }
   }
 
-  // Baselines pane
+  // Baselines pane — honest, derived from real entity activity (no fabricated numbers)
   const bPane = document.getElementById('uebaPaneBaselines');
   if (bPane) {
-    bPane.innerHTML = `<div class="chart-empty" style="padding:24px"><div class="chart-empty-icon ok"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 6 9 17l-5-5"/></svg></div><div class="chart-empty-msg">All baselines healthy</div><div class="chart-empty-sub">${entities.length} of ${entities.length} models trained · 2 retraining on schedule</div></div>`;
+    if (!entities.length) {
+      bPane.innerHTML = `<div class="chart-empty" style="padding:24px"><div class="chart-empty-icon info"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></div><div class="chart-empty-msg">No baselines yet</div><div class="chart-empty-sub">Run analysis to build behavioural baselines as entities accumulate activity</div></div>`;
+    } else {
+      bPane.innerHTML = `<div class="tbl">
+        <div class="tbl-h" style="grid-template-columns:24px 1fr 110px 100px 90px 130px">
+          <span></span><span>Entity</span><span>Type</span><span>Status</span><span>Alerts 7d</span><span>Last activity</span>
+        </div>
+        ${entities.map(e => {
+          const act = e.alerts||e.alert_count_7d||0;
+          const established = act > 0;
+          const badge = e.color ? `<span class="entbadge" style="background:${e.color}">${escapeHtml(e.badge||'?')}</span>` : `<span class="entbadge idle">·</span>`;
+          return `<div class="tbl-r" style="grid-template-columns:24px 1fr 110px 100px 90px 130px">
+            <span>${badge}</span>
+            <span class="tbl-pri" style="font-size:12px">${escapeHtml(_resolveEntity(e.id||e.entity_id||'', e.type||e.entity_type||'agent'))}</span>
+            <span class="tbl-mono" style="color:var(--fg-3)">${escapeHtml(e.type||e.entity_type||'—')}</span>
+            <span><span class="pill ${established?'ok':'med'}" style="font-size:10px">${established?'Established':'Learning'}</span></span>
+            <span class="tbl-mono">${act}</span>
+            <span class="tbl-time">${escapeHtml(e.last||fmtTs(e.last_alert)||'—')}</span>
+          </div>`;
+        }).join('')}
+      </div>`;
+    }
   }
 }
 

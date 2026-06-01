@@ -115,6 +115,7 @@ func (s *Server) routes() *chi.Mux {
 			r.Get("/notables", rbah.ListNotables)
 			r.Get("/weights", rbah.ListWeights)
 			r.Put("/weights/{rule_id}", rbah.SetWeight)
+			r.Delete("/weights/{rule_id}", rbah.DeleteWeight)
 		})
 
 		uebah := handlers.NewUebaHandler(s.store, s.uebaAnalyzer)

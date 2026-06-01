@@ -7,8 +7,9 @@
 **Status:** Active deployment / Production-ready
 
 ## 2. Commands
-**Server / Backend Start:** `docker-compose -f docker-compose.full.yaml up -d`
-**Server / Backend Stop:** `docker-compose -f docker-compose.full.yaml down`
+**Server / Backend Start:** `docker compose -f docker-compose.local.yaml up -d`
+**Server / Backend Stop:** `docker compose -f docker-compose.local.yaml down`
+> ⚠️ The running dev/single-host stack is defined by **`docker-compose.local.yaml`** (single-node OpenSearch on `opensearch:9200`, single WatchTower reachable directly on `watchtower:9400`, no HAProxy). Always target this file locally. `docker-compose.full.yaml` is the **multi-node production topology** (3-node OpenSearch cluster `opensearch-node1/2/3`, HAProxy, dual WatchTower) — do NOT run `full.yaml` against a `local.yaml` deployment; the service names/volumes differ and it will clobber the stack. Other variants: `docker-compose.ha.yaml`, `docker-compose.esxi.yaml`, `docker-compose.test-nodes.yaml`.
 **WatchNode Agent Build (Windows):** `cd WatchNode/cmd/agent && GOOS=windows GOARCH=amd64 go build -o watchnode.exe`
 **WatchNode Agent Build (Linux):** `cd WatchNode/cmd/agent && GOOS=linux GOARCH=amd64 go build -o watchnode-linux`
 **Agent Bulk Deployment:** `.\deploy-to-all-machines.ps1 -ServerIP <IP> -CsvFile machines.csv`
@@ -26,7 +27,8 @@
 - `/WatchVault` → Go-based indexer (OpenSearch routing, data pipeline)
 - `/sentinelCoreDashboard` → Python/Flask web dashboard application
 - `/WatchTower/rules` → Sigma YAML detection rules directory
-- `docker-compose.full.yaml` → Orchestrates OpenSearch, OpenSearch Dashboards, WatchTower, and WatchVault.
+- `docker-compose.local.yaml` → **The running local/single-host stack** (single-node OpenSearch, single WatchTower, Kafka, Postgres, WatchVault, 2 WatchNodes, dashboard). Use this one locally.
+- `docker-compose.full.yaml` → Multi-node production topology (3-node OpenSearch + OpenSearch Dashboards + HAProxy + dual WatchTower). Not for local use.
 
 ## 4. Key Patterns
 - **Communication:** Strict use of gRPC between the Agent (WatchNode) → Manager (WatchTower) → Indexer (WatchVault).

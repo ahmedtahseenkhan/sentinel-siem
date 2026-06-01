@@ -751,6 +751,12 @@ func (s *Store) UpsertRbaRuleWeight(rw *RbaRuleWeight) error {
 	return err
 }
 
+func (s *Store) DeleteRbaRuleWeight(ruleID int) error {
+	_, err := s.pool.Exec(context.Background(),
+		`DELETE FROM rba_rule_weights WHERE rule_id = $1`, ruleID)
+	return err
+}
+
 func (s *Store) ListRbaRuleWeights() ([]*RbaRuleWeight, error) {
 	rows, err := s.pool.Query(context.Background(),
 		`SELECT rule_id, risk_weight, description, updated_at FROM rba_rule_weights ORDER BY rule_id`)
