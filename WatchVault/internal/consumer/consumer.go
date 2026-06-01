@@ -41,6 +41,10 @@ type kafkaAlert struct {
 	Description string   `json:"description"`
 	EventData   string   `json:"event_data,omitempty"`
 	RuleGroups  []string `json:"rule_groups,omitempty"`
+	// Mitre is the rule's MITRE ATT&CK mapping (tactic_id/tactic_name/
+	// technique_id/technique_name). Decoded generically so any field the
+	// producer adds is preserved and indexed for tactic/technique queries.
+	Mitre []map[string]interface{} `json:"mitre,omitempty"`
 }
 
 // Consumer reads events and alerts from Kafka and feeds them into the pipeline.
@@ -135,6 +139,11 @@ func (c *Consumer) handleAlert(data []byte) {
 		"agent_name":       a.AgentName,
 		"title":            a.Title,
 		"timestamp":        a.Timestamp,
+	}
+	if len(a.Mitre) > 0 {
+		// Indexed as an array of objects: query with mitre.technique_id,
+		// mitre.tactic_name, etc. in Discover / query_string.
+		doc["mitre"] = a.Mitre
 	}
 	if a.EventData != "" {
 		var ed map[string]interface{}

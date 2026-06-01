@@ -40,6 +40,9 @@ type kafkaAlert struct {
 	Description string   `json:"description"`
 	EventData   string   `json:"event_data,omitempty"`
 	RuleGroups  []string `json:"rule_groups,omitempty"`
+	// Mitre carries the rule's MITRE ATT&CK mapping so WatchVault can index it
+	// and the SOC can query by tactic/technique (mitre.technique_id, etc.).
+	Mitre []models.MitreMapping `json:"mitre,omitempty"`
 }
 
 // KafkaProducer sends events and alerts to Kafka topics.
@@ -101,6 +104,7 @@ func (p *KafkaProducer) SendAlerts(alerts []*models.Alert) error {
 			Description: a.Description,
 			EventData:   a.EventData,
 			RuleGroups:  a.RuleGroups,
+			Mitre:       a.MitreAttack,
 		}
 		data, err := json.Marshal(msg)
 		if err != nil {
