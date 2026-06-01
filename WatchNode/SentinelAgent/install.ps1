@@ -424,7 +424,7 @@ collectors:
     enabled: true
     interval: "12h"
     policy_dirs:
-      - "configs\sca"
+      - "configs/sca"
 
   syscollector:
     enabled: true
