@@ -458,30 +458,51 @@ if (-not $SkipSysmon) {
 # Harden install directory ACL
 Set-InstallDirACL
 
-# Install as Windows service
+# Install as Windows service.
+# Use New-Service (the .NET CreateService API) instead of `sc.exe create`:
+# sc.exe needs a binPath with a spaced, quoted exe path PLUS arguments, and
+# PowerShell mangles the embedded quotes when passing that to a native exe on
+# 5.1 — sc.exe then fails silently and Start-Service can't find the service.
 Write-Step "Installing Windows service..."
-$binPathQuoted = "`"$BinaryPath`" --config `"$ConfigPath`""
-sc.exe create $ServiceName `
-    binPath= $binPathQuoted `
-    DisplayName= $DisplayName `
-    start= auto | Out-Null
+$binPath = "`"$BinaryPath`" --config `"$ConfigPath`""
 
-sc.exe description $ServiceName "Sentinel Core SIEM endpoint monitoring agent" | Out-Null
+# Clean up any stale/half-created registration from a previous failed run.
+$existingSvc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+if ($existingSvc) {
+    if ($existingSvc.Status -ne 'Stopped') {
+        Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
+    }
+    & sc.exe delete $ServiceName | Out-Null
+    Start-Sleep -Seconds 1
+}
 
-# Set service to restart on failure
-sc.exe failure $ServiceName reset= 60 actions= restart/5000/restart/10000/restart/30000 | Out-Null
+New-Service -Name $ServiceName -BinaryPathName $binPath -DisplayName $DisplayName `
+    -Description "Sentinel Core SIEM endpoint monitoring agent" `
+    -StartupType Automatic -ErrorAction Stop | Out-Null
+
+# Auto-restart on failure (service now exists, so sc.exe just updates it).
+& sc.exe failure $ServiceName reset= 60 actions= restart/5000/restart/10000/restart/30000 | Out-Null
 
 Write-OK "Service '$ServiceName' created."
 
 # Start service
 Write-Step "Starting service..."
-Start-Service -Name $ServiceName
+try {
+    Start-Service -Name $ServiceName -ErrorAction Stop
+} catch {
+    Write-Host "  [!] Service did not start: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "  [i] Run it in the foreground to see why:" -ForegroundColor DarkGray
+    Write-Host "      & '$BinaryPath' --config '$ConfigPath'" -ForegroundColor DarkGray
+    throw "Service '$ServiceName' failed to start."
+}
 Start-Sleep -Seconds 3
 $status = (Get-Service -Name $ServiceName).Status
 if ($status -eq "Running") {
     Write-OK "Service is RUNNING."
 } else {
-    Write-Host "  [!] Service status: $status — check logs at $LogDir" -ForegroundColor Yellow
+    Write-Host "  [!] Service status: $status — check the agent log at $LogDir" -ForegroundColor Yellow
+    Write-Host "  [i] If it stopped immediately, run in the foreground to see the error:" -ForegroundColor DarkGray
+    Write-Host "      & '$BinaryPath' --config '$ConfigPath'" -ForegroundColor DarkGray
 }
 
 # Done
