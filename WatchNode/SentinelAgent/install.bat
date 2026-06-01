@@ -20,6 +20,11 @@ REM   install.bat -Uninstall
 setlocal
 set "SCRIPT_DIR=%~dp0"
 
+REM === TLS MODE (managed by build-agent-package.sh --mode; do not edit by hand) ===
+REM   -NoTLS  -> plaintext gRPC + enrollment token (lab / docker-compose.local stack)
+REM   (empty) -> mTLS using the bundled certs (production server configured with TLS)
+set "TLS_ARGS=-NoTLS"
+
 REM Log everything to file so we can see what happened even if all windows close.
 set "LOG_DIR=%ProgramData%\SentinelAgent\install-logs"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%" >nul 2>&1
@@ -32,7 +37,7 @@ echo.
 
 REM Forward to PowerShell and tee everything into the log file.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-  "& {& '%SCRIPT_DIR%install.ps1' %* *>&1 | Tee-Object -FilePath '%LOG_FILE%'; exit $LASTEXITCODE}"
+  "& {& '%SCRIPT_DIR%install.ps1' %TLS_ARGS% %* *>&1 | Tee-Object -FilePath '%LOG_FILE%'; exit $LASTEXITCODE}"
 set "EXIT_CODE=%ERRORLEVEL%"
 
 echo.

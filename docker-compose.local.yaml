@@ -144,6 +144,11 @@ services:
     build: ./sentinelCoreDashboard
     ports:
       - "5050:5050"
+    volumes:
+      # Lets the /deploy page serve the agent package (SentinelAgent.zip) and the
+      # Linux binary. The dashboard code looks for them at ../WatchNode relative to
+      # the app, which resolves to /WatchNode inside the container.
+      - ./WatchNode:/WatchNode:ro
     environment:
       - WATCHTOWER_URL=http://watchtower:9400
       - OPENSEARCH_URL=http://opensearch:9200
