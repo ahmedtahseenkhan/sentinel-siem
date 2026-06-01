@@ -70,7 +70,9 @@ trap {
     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
     exit 1
 }
-$ServiceName   = "SentinelAgent"
+# Must match the name the agent binary registers with the SCM (svc.Run in the
+# Go code uses "SentinelWatchNode"); a different name fails to start.
+$ServiceName   = "SentinelWatchNode"
 $DisplayName   = "Sentinel Core SIEM Agent"
 $InstallDir    = "C:\Program Files\SentinelAgent"
 $ConfigPath    = "$InstallDir\config.yaml"
@@ -458,15 +460,15 @@ if (-not $SkipSysmon) {
 # Harden install directory ACL
 Set-InstallDirACL
 
-# Install as Windows service.
-# Use New-Service (the .NET CreateService API) instead of `sc.exe create`:
-# sc.exe needs a binPath with a spaced, quoted exe path PLUS arguments, and
-# PowerShell mangles the embedded quotes when passing that to a native exe on
-# 5.1 — sc.exe then fails silently and Start-Service can't find the service.
+# Install as Windows service via the agent's OWN installer (watchnode.exe
+# --install). The binary registers under its internal SCM name and enters
+# service mode through svc.Run with that exact name, sets failure actions, and
+# starts itself. A hand-rolled New-Service/sc.exe with a different name does NOT
+# match what the binary reports to the SCM, so the service fails to start.
 Write-Step "Installing Windows service..."
-$binPath = "`"$BinaryPath`" --config `"$ConfigPath`""
 
-# Clean up any stale/half-created registration from a previous failed run.
+# Remove any prior registration so --install creates + starts a fresh one
+# (the agent's installer skips starting if the service already exists).
 $existingSvc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existingSvc) {
     if ($existingSvc.Status -ne 'Stopped') {
@@ -476,32 +478,22 @@ if ($existingSvc) {
     Start-Sleep -Seconds 1
 }
 
-New-Service -Name $ServiceName -BinaryPathName $binPath -DisplayName $DisplayName `
-    -Description "Sentinel Core SIEM endpoint monitoring agent" `
-    -StartupType Automatic -ErrorAction Stop | Out-Null
-
-# Auto-restart on failure (service now exists, so sc.exe just updates it).
-& sc.exe failure $ServiceName reset= 60 actions= restart/5000/restart/10000/restart/30000 | Out-Null
-
-Write-OK "Service '$ServiceName' created."
-
-# Start service
-Write-Step "Starting service..."
-try {
-    Start-Service -Name $ServiceName -ErrorAction Stop
-} catch {
-    Write-Host "  [!] Service did not start: $($_.Exception.Message)" -ForegroundColor Yellow
-    Write-Host "  [i] Run it in the foreground to see why:" -ForegroundColor DarkGray
+& $BinaryPath --install --config $ConfigPath
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  [i] Run the agent in the foreground to see the underlying error:" -ForegroundColor DarkGray
     Write-Host "      & '$BinaryPath' --config '$ConfigPath'" -ForegroundColor DarkGray
-    throw "Service '$ServiceName' failed to start."
+    throw "Agent service install failed (watchnode.exe --install exit code $LASTEXITCODE)."
 }
+Write-OK "Service '$ServiceName' installed and started."
+
 Start-Sleep -Seconds 3
-$status = (Get-Service -Name $ServiceName).Status
-if ($status -eq "Running") {
+$svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+if ($svc -and $svc.Status -eq "Running") {
     Write-OK "Service is RUNNING."
 } else {
-    Write-Host "  [!] Service status: $status — check the agent log at $LogDir" -ForegroundColor Yellow
-    Write-Host "  [i] If it stopped immediately, run in the foreground to see the error:" -ForegroundColor DarkGray
+    $st = if ($svc) { $svc.Status } else { "not found" }
+    Write-Host "  [!] Service status: $st" -ForegroundColor Yellow
+    Write-Host "  [i] If it did not start, run in the foreground to see the agent's error:" -ForegroundColor DarkGray
     Write-Host "      & '$BinaryPath' --config '$ConfigPath'" -ForegroundColor DarkGray
 }
 
