@@ -8,6 +8,7 @@ type Rule struct {
 	Match          RuleMatch          `yaml:"match" json:"match"`
 	CDBLookup      *CDBLookup         `yaml:"cdb_lookup,omitempty" json:"cdb_lookup,omitempty"`
 	Threshold      *RuleThreshold     `yaml:"threshold,omitempty" json:"threshold,omitempty"`
+	Correlation    *RuleCorrelation   `yaml:"correlation,omitempty" json:"correlation,omitempty"`
 	Alert          RuleAlert          `yaml:"alert" json:"alert"`
 	ActiveResponse *ActiveResponseRef `yaml:"active_response,omitempty" json:"active_response,omitempty"`
 	MitreAttack    []MitreMapping     `yaml:"mitre,omitempty" json:"mitre,omitempty"`
@@ -96,4 +97,21 @@ type RuleThreshold struct {
 	Count      int    `yaml:"count" json:"count"`
 	PeriodSecs int    `yaml:"period_secs" json:"period_secs"`
 	GroupBy    string `yaml:"group_by,omitempty" json:"group_by,omitempty"`
+}
+
+// RuleCorrelation is the Wazuh-style spelling of a frequency rule used across
+// the rule corpus: an alert fires only when the rule matches at least
+// Threshold times within Window (a Go duration string like "5m"/"1h"),
+// optionally grouped by one or more fields.
+//
+//	correlation:
+//	  window: "5m"
+//	  threshold: 5
+//	  group_by: ["src_ip"]      # one or more fields; values are concatenated
+//
+// Equivalent to RuleThreshold; the engine honours whichever block is present.
+type RuleCorrelation struct {
+	Window    string   `yaml:"window" json:"window"`
+	Threshold int      `yaml:"threshold" json:"threshold"`
+	GroupBy   []string `yaml:"group_by,omitempty" json:"group_by,omitempty"`
 }

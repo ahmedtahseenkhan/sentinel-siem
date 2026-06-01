@@ -15,7 +15,11 @@ param(
     [switch]$Silent,
     [switch]$Uninstall,
     [switch]$SkipSysmon,   # Pass to skip automatic Sysmon installation
-    [switch]$SkipAuditPol  # Pass to skip Windows audit policy configuration
+    [switch]$SkipAuditPol, # Pass to skip Windows audit policy configuration
+    [switch]$NoTLS         # Connect over plaintext gRPC (enrollment-token auth only).
+                           # Use when the WatchTower server is not configured for TLS
+                           # (e.g. the docker-compose.local.yaml test stack). For a
+                           # production server with certs, omit this so the agent uses mTLS.
 )
 
 $ErrorActionPreference = "Stop"
@@ -38,6 +42,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     if ($Uninstall)  { $argsList += "-Uninstall" }
     if ($SkipSysmon) { $argsList += "-SkipSysmon" }
     if ($SkipAuditPol) { $argsList += "-SkipAuditPol" }
+    if ($NoTLS)      { $argsList += "-NoTLS" }
     Start-Process powershell.exe -Verb RunAs -ArgumentList $argsList
     exit
 }
@@ -166,9 +171,13 @@ function Install-Sysmon {
         }
         Write-OK "Sysmon config updated."
     } else {
-        $configArg = if (Test-Path $SysmonConfig) { "-c `"$SysmonConfig`"" } else { "" }
-        $acceptEulaCmd = "& `"$SysmonBin`" -accepteula -i $configArg"
-        Invoke-Expression $acceptEulaCmd | Out-Null
+        # Use the call operator with plain args — no Invoke-Expression / escaped
+        # quotes (that pattern trips the Windows PowerShell 5.1 parser).
+        if (Test-Path $SysmonConfig) {
+            & $SysmonBin -accepteula -i $SysmonConfig | Out-Null
+        } else {
+            & $SysmonBin -accepteula -i | Out-Null
+        }
         Write-OK "Sysmon installed and running."
     }
 }
@@ -287,6 +296,23 @@ if (Test-Path $srcSca) {
 
 # Write config.yaml with the provided server IP
 Write-Step "Writing configuration..."
+
+# TLS block is emitted only when the server uses certs. With -NoTLS the agent
+# connects over plaintext gRPC and authenticates with the enrollment token only
+# (see internal/communication/client.go: any tls field set => mTLS is required).
+if ($NoTLS) {
+    Write-Host "  Transport: PLAINTEXT (enrollment-token auth only) — -NoTLS set" -ForegroundColor Yellow
+    $TlsBlock = "  # tls: disabled via -NoTLS (plaintext gRPC + enrollment token)"
+} else {
+    Write-Host "  Transport: mTLS (certs in $InstallDir\certs)" -ForegroundColor DarkGray
+    $TlsBlock = @"
+  tls:
+    cert: "C:\\Program Files\\SentinelAgent\\certs\\watchnode.crt"
+    key:  "C:\\Program Files\\SentinelAgent\\certs\\watchnode.key"
+    ca:   "C:\\Program Files\\SentinelAgent\\certs\\ca.crt"
+"@
+}
+
 $configContent = @"
 agent:
   id: ""
@@ -298,10 +324,7 @@ agent:
 
 manager:
   url: "${ServerIP}:${ServerPort}"
-  tls:
-    cert: "C:\\Program Files\\SentinelAgent\\certs\\watchnode.crt"
-    key:  "C:\\Program Files\\SentinelAgent\\certs\\watchnode.key"
-    ca:   "C:\\Program Files\\SentinelAgent\\certs\\ca.crt"
+$TlsBlock
   reconnect:
     max_attempts: 0
     initial_backoff: "5s"

@@ -60,7 +60,7 @@ You're looking for cluster status `green`/`yellow` and, after a minute or two,
 
 **b) WatchTower sees the two built-in agents:**
 ```bash
-curl -s -H "X-API-Key: sentinel-dev-api-key" http://localhost:9400/api/v1/agents | python3 -m json.tool
+curl -s -H "Authorization: Bearer sentinel-dev-api-key" http://localhost:9400/api/v1/agents | python3 -m json.tool
 ```
 You should see `node-local-01` and `node-local-02` with a recent last-seen time.
 (The API key is `sentinel-dev-api-key`, set in the compose file.)
@@ -162,7 +162,7 @@ docker compose -f docker-compose.local.yaml down -v
 |---|---|
 | `opensearch` keeps restarting / unhealthy | Raise Docker Desktop memory to ≥ 4 GB. Check `docker compose -f docker-compose.local.yaml logs opensearch`. |
 | Dashboard 502 / won't load | OpenSearch or WatchTower not healthy yet — wait, then `docker compose ... ps`. |
-| `/api/v1/agents` returns 401 | Missing/incorrect `X-API-Key: sentinel-dev-api-key` header. |
+| `/api/v1/agents` returns 401 (`{"error":"unauthorized"}`) | WatchTower requires `Authorization: Bearer sentinel-dev-api-key` (not `X-API-Key`). |
 | Native mac agent won't connect | Confirm port `50051` is published (`docker compose ... ps`), and `enroll_token` matches `sentinel-enroll-secret-2024`. |
 | Build fails on `go build` | Need Go 1.21+ (`go version`). |
 

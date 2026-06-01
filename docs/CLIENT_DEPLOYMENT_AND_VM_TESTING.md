@@ -69,7 +69,7 @@ sudo ufw allow 5140/tcp    # syslog ingest (pfSense etc.) — optional
 ### A5. Verify the server
 ```bash
 curl -s http://localhost:9200/_cluster/health
-curl -s -H "X-API-Key: sentinel-dev-api-key" http://localhost:9400/api/v1/agents
+curl -s -H "Authorization: Bearer sentinel-dev-api-key" http://localhost:9400/api/v1/agents
 ```
 Then browse to **`http://SERVER_IP:5050`** → log in `admin` / `admin`.
 
@@ -175,7 +175,7 @@ For a fleet, use the repo's PowerShell pusher with a CSV of machine names:
 
 1. **Server sees the agents:**
    ```bash
-   curl -s -H "X-API-Key: sentinel-dev-api-key" http://SERVER_IP:9400/api/v1/agents | python3 -m json.tool
+   curl -s -H "Authorization: Bearer sentinel-dev-api-key" http://SERVER_IP:9400/api/v1/agents | python3 -m json.tool
    ```
    DC01, Windows, Windows2 should appear with recent last-seen times.
 
@@ -224,7 +224,7 @@ snapshots.
 | Agent connects then drops, never appears | `enroll_token` missing or doesn't match `WATCHTOWER_GRPC_ENROLL_TOKEN`. |
 | Agent listed but no Windows events | Security event log channel not enabled in `agent.yaml`, or agent not running as Administrator/Service. |
 | No data on Discover at all | OpenSearch unhealthy — `docker compose -f docker-compose.local.yaml logs opensearch`. |
-| `/api/v1/agents` 401 | Missing `X-API-Key` header. |
+| `/api/v1/agents` 401 (`{"error":"unauthorized"}`) | Use `Authorization: Bearer <api-key>` (not `X-API-Key`). |
 | pfSense logs not arriving | pfSense remote syslog must target `SERVER_IP:5140`, and `5140/tcp` open on the server. |
 
 ---
@@ -232,7 +232,7 @@ snapshots.
 ### Quick reference
 - **Server up:** `docker compose -f docker-compose.local.yaml up -d --build`
 - **Server down:** `docker compose -f docker-compose.local.yaml down`
-- **Agents API:** `curl -H "X-API-Key: <key>" http://SERVER_IP:9400/api/v1/agents`
+- **Agents API:** `curl -H "Authorization: Bearer <key>" http://SERVER_IP:9400/api/v1/agents`
 - **Dashboard:** `http://SERVER_IP:5050`
 - **Build Windows agent:** `cd WatchNode/cmd/agent && GOOS=windows GOARCH=amd64 go build -o watchnode.exe .`
 - **Install as service:** `watchnode.exe --install --config agent.yaml`

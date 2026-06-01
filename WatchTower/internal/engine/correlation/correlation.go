@@ -15,6 +15,7 @@ package correlation
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -58,16 +59,13 @@ func New(logger *zap.Logger) *Manager {
 //
 // For rules without a Threshold block this always returns true (pass-through).
 func (m *Manager) ShouldFire(rule *models.Rule, event *models.Event) bool {
-	if rule.Threshold == nil {
-		return true
-	}
-	t := rule.Threshold
-	if t.Count <= 0 || t.PeriodSecs <= 0 {
+	count, period, groupFields := effectiveCorrelation(rule)
+	if count <= 0 || period <= 0 {
+		// Not a frequency rule (or malformed window) — pass through.
 		return true
 	}
 
-	period := time.Duration(t.PeriodSecs) * time.Second
-	groupVal := groupByValue(event, t.GroupBy)
+	groupVal := groupByValues(event, groupFields)
 	key := fmt.Sprintf("%d|%s|%s", rule.ID, event.AgentID, groupVal)
 
 	m.mu.Lock()
@@ -89,20 +87,54 @@ func (m *Manager) ShouldFire(rule *models.Rule, event *models.Event) bool {
 	w.times = append(w.times, now)
 	w.times = pruneOld(w.times, cutoff)
 
-	count := len(w.times)
-	if count >= t.Count {
-		// Reset counter so the next t.Count hits fire again.
+	hits := len(w.times)
+	if hits >= count {
+		// Reset counter so the next `count` hits fire again.
 		w.times = nil
 		m.logger.Debug("correlation threshold reached",
 			zap.Int("rule_id", rule.ID),
 			zap.String("agent_id", event.AgentID),
 			zap.String("group_by_val", groupVal),
-			zap.Int("count", count),
+			zap.Int("count", hits),
 			zap.Duration("period", period),
 		)
 		return true
 	}
 	return false
+}
+
+// effectiveCorrelation resolves a rule's frequency settings from either the
+// `threshold:` block (count/period_secs/group_by string) or the Wazuh-style
+// `correlation:` block (threshold/window/group_by list). Returns count<=0 when
+// the rule is not a (valid) frequency rule, in which case ShouldFire passes
+// through. threshold: wins if both are present.
+func effectiveCorrelation(rule *models.Rule) (count int, period time.Duration, groupFields []string) {
+	if t := rule.Threshold; t != nil && t.Count > 0 && t.PeriodSecs > 0 {
+		var gf []string
+		if t.GroupBy != "" {
+			gf = []string{t.GroupBy}
+		}
+		return t.Count, time.Duration(t.PeriodSecs) * time.Second, gf
+	}
+	if c := rule.Correlation; c != nil && c.Threshold > 0 && c.Window != "" {
+		if d, err := time.ParseDuration(c.Window); err == nil && d > 0 {
+			return c.Threshold, d, c.GroupBy
+		}
+	}
+	return 0, 0, nil
+}
+
+// groupByValues concatenates the string values of the configured group-by
+// fields (so a rule can correlate on, e.g., [src_ip, dst_ip] as a pair).
+func groupByValues(event *models.Event, fields []string) string {
+	if len(fields) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(fields))
+	for _, f := range fields {
+		parts = append(parts, groupByValue(event, f))
+	}
+	return strings.Join(parts, "|")
 }
 
 // Stop shuts down the background GC goroutine.
