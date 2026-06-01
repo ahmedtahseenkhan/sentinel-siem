@@ -205,18 +205,22 @@ function Set-InstallDirACL {
 # ── UNINSTALL ─────────────────────────────────────────────────────────────────
 if ($Uninstall) {
     Write-Banner
-    Write-Step "Stopping and removing Sentinel Agent service..."
+    Write-Step "Stopping and removing Sentinel agent..."
+    # Scheduled task (current install method).
+    & schtasks.exe /query /tn $ServiceName *> $null
+    if ($LASTEXITCODE -eq 0) {
+        & schtasks.exe /end /tn $ServiceName *> $null
+        & schtasks.exe /delete /tn $ServiceName /f *> $null
+        Write-OK "Scheduled task removed."
+    }
+    # Any leftover SCM service from an older install.
     $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
     if ($svc) {
-        if ($svc.Status -eq "Running") {
-            Stop-Service -Name $ServiceName -Force
-            Start-Sleep -Seconds 2
-        }
-        sc.exe delete $ServiceName | Out-Null
+        if ($svc.Status -eq "Running") { Stop-Service -Name $ServiceName -Force; Start-Sleep -Seconds 2 }
+        & sc.exe delete $ServiceName | Out-Null
         Write-OK "Service removed."
-    } else {
-        Write-Host "  [i] Service not found — already uninstalled." -ForegroundColor DarkGray
     }
+    Get-Process -Name "watchnode" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     if (Test-Path $InstallDir) {
         Remove-Item -Recurse -Force $InstallDir
         Write-OK "Files removed from $InstallDir"
@@ -259,15 +263,15 @@ Write-Host "  Install : $InstallDir" -ForegroundColor DarkGray
 Write-Host "  Service : $ServiceName" -ForegroundColor DarkGray
 Write-Host ""
 
-# Stop existing service if running
+# Stop any existing agent (old SCM service from a previous install) up front.
 $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existing) {
-    Write-Step "Stopping existing service..."
+    Write-Step "Removing old service..."
     if ($existing.Status -eq "Running") {
         Stop-Service -Name $ServiceName -Force
         Start-Sleep -Seconds 2
     }
-    sc.exe delete $ServiceName | Out-Null
+    & sc.exe delete $ServiceName | Out-Null
     Start-Sleep -Seconds 1
     Write-OK "Old service removed."
 }
@@ -460,40 +464,49 @@ if (-not $SkipSysmon) {
 # Harden install directory ACL
 Set-InstallDirACL
 
-# Install as Windows service via the agent's OWN installer (watchnode.exe
-# --install). The binary registers under its internal SCM name and enters
-# service mode through svc.Run with that exact name, sets failure actions, and
-# starts itself. A hand-rolled New-Service/sc.exe with a different name does NOT
-# match what the binary reports to the SCM, so the service fails to start.
-Write-Step "Installing Windows service..."
+# Run the agent as a SYSTEM Scheduled Task (auto-start at boot, auto-restart on
+# failure). We deliberately do NOT use an SCM service: the agent binary's
+# service mode returns Windows error 1053 ("did not respond to the start request
+# in a timely fashion") on this OS build. A scheduled task runs the binary in
+# its normal console mode as a persistent background process under LocalSystem,
+# which is reliable and equally persistent. (Wazuh-style: the goal is a
+# background agent that survives reboots and restarts on crash — a task delivers
+# that without the SCM-protocol fragility.)
+Write-Step "Registering Sentinel agent (scheduled task, runs as SYSTEM)..."
 
-# Remove any prior registration so --install creates + starts a fresh one
-# (the agent's installer skips starting if the service already exists).
-$existingSvc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-if ($existingSvc) {
-    if ($existingSvc.Status -ne 'Stopped') {
-        Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
-    }
-    & sc.exe delete $ServiceName | Out-Null
+# Clean up any prior task / leftover SCM service / running process from earlier
+# attempts so this is idempotent.
+& schtasks.exe /query /tn $ServiceName *> $null
+if ($LASTEXITCODE -eq 0) { & schtasks.exe /delete /tn $ServiceName /f *> $null }
+$leftoverSvc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+if ($leftoverSvc) {
+    if ($leftoverSvc.Status -ne 'Stopped') { Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue }
+    & sc.exe delete $ServiceName *> $null
     Start-Sleep -Seconds 1
 }
+Get-Process -Name "watchnode" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 
-& $BinaryPath --install --config $ConfigPath
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "  [i] Run the agent in the foreground to see the underlying error:" -ForegroundColor DarkGray
-    Write-Host "      & '$BinaryPath' --config '$ConfigPath'" -ForegroundColor DarkGray
-    throw "Agent service install failed (watchnode.exe --install exit code $LASTEXITCODE)."
-}
-Write-OK "Service '$ServiceName' installed and started."
+$action    = New-ScheduledTaskAction -Execute $BinaryPath -Argument "--config `"$ConfigPath`"" -WorkingDirectory $InstallDir
+$trigger   = New-ScheduledTaskTrigger -AtStartup
+$principal = New-ScheduledTaskPrincipal -UserId "NT AUTHORITY\SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+$settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+    -StartWhenAvailable -RestartCount 9999 -RestartInterval (New-TimeSpan -Minutes 1) `
+    -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
+Register-ScheduledTask -TaskName $ServiceName -Action $action -Trigger $trigger `
+    -Principal $principal -Settings $settings -Description "Sentinel Core SIEM endpoint agent" -Force | Out-Null
+Write-OK "Scheduled task '$ServiceName' registered (auto-start at boot)."
 
-Start-Sleep -Seconds 3
-$svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-if ($svc -and $svc.Status -eq "Running") {
-    Write-OK "Service is RUNNING."
+# Start it now.
+Write-Step "Starting agent..."
+Start-ScheduledTask -TaskName $ServiceName
+Start-Sleep -Seconds 4
+if (Get-Process -Name "watchnode" -ErrorAction SilentlyContinue) {
+    Write-OK "Agent is RUNNING."
+    $status = "Running"
 } else {
-    $st = if ($svc) { $svc.Status } else { "not found" }
-    Write-Host "  [!] Service status: $st" -ForegroundColor Yellow
-    Write-Host "  [i] If it did not start, run in the foreground to see the agent's error:" -ForegroundColor DarkGray
+    $status = "starting"
+    Write-Host "  [!] Agent process not detected yet — it may still be connecting to ${ServerIP}:${ServerPort}." -ForegroundColor Yellow
+    Write-Host "  [i] Check it / see live output by running in the foreground:" -ForegroundColor DarkGray
     Write-Host "      & '$BinaryPath' --config '$ConfigPath'" -ForegroundColor DarkGray
 }
 
