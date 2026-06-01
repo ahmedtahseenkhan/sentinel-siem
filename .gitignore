@@ -81,3 +81,8 @@ marketing/out/
 certs/*.key
 certs/*.crt
 certs/*.srl
+
+# Built agent artifacts — regenerate with scripts/build-agent-package.sh
+WatchNode/SentinelAgent.zip
+WatchNode/SentinelAgent/watchnode.exe
+WatchNode/cmd/agent/watchnode-linux
