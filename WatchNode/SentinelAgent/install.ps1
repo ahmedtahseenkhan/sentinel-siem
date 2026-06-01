@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Sentinel Core SIEM Agent Installer for Windows
 .DESCRIPTION

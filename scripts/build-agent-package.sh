@@ -79,6 +79,18 @@ strip_cr() { tr -d '\r' < "$1" > "$1.lf" && mv "$1.lf" "$1"; }
 strip_cr "$PKG/install.ps1"
 strip_cr "$PKG/install.bat"
 
+# Force a UTF-8 BOM on install.ps1. Windows PowerShell 5.1 reads a BOM-less file
+# as the ANSI codepage, mangling the script's non-ASCII characters (banner box
+# drawing, em-dashes) into garbage bytes that derail the parser -> bogus
+# "Missing closing '}'" errors. A UTF-8 BOM forces 5.1 to read it as UTF-8.
+# (PowerShell 7 defaults to UTF-8, which is why this only bites on 5.1.)
+ensure_bom() {
+  if [ "$(head -c3 "$1" | od -An -tx1 | tr -d ' \n')" != "efbbbf" ]; then
+    printf '\357\273\277' | cat - "$1" > "$1.bom" && mv "$1.bom" "$1"
+  fi
+}
+ensure_bom "$PKG/install.ps1"
+
 # --- repackage SentinelAgent.zip --------------------------------------------
 echo "[*] Repackaging SentinelAgent.zip..."
 ( cd "$WN" && rm -f SentinelAgent.zip
