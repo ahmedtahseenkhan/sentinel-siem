@@ -71,14 +71,9 @@ fi
 tmp="$(mktemp)"
 sed 's|^set "TLS_ARGS=.*|'"$TLS_LINE"'|' "$PKG/install.bat" > "$tmp" && mv "$tmp" "$PKG/install.bat"
 
-# --- normalise Windows scripts to CRLF --------------------------------------
-# Windows PowerShell 5.1 and cmd.exe are happiest with CRLF; LF-only endings are
-# a known source of flaky .ps1/.bat parsing. (awk is portable across GNU/BSD.)
-to_crlf() {
-  awk '{ sub(/\r$/,""); printf "%s\r\n", $0 }' "$1" > "$1.crlf" && mv "$1.crlf" "$1"
-}
-to_crlf "$PKG/install.ps1"
-to_crlf "$PKG/install.bat"
+# NOTE: do NOT rewrite line endings here. install.ps1 parses correctly with its
+# committed (LF) endings; an awk CRLF pass corrupted here-string parsing on the
+# target and produced bogus "Missing closing '}'" errors. Leave endings as-is.
 
 # --- repackage SentinelAgent.zip --------------------------------------------
 echo "[*] Repackaging SentinelAgent.zip..."
