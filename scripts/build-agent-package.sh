@@ -71,9 +71,13 @@ fi
 tmp="$(mktemp)"
 sed 's|^set "TLS_ARGS=.*|'"$TLS_LINE"'|' "$PKG/install.bat" > "$tmp" && mv "$tmp" "$PKG/install.bat"
 
-# NOTE: do NOT rewrite line endings here. install.ps1 parses correctly with its
-# committed (LF) endings; an awk CRLF pass corrupted here-string parsing on the
-# target and produced bogus "Missing closing '}'" errors. Leave endings as-is.
+# Force LF endings on the installer scripts. install.ps1 parses correctly as LF;
+# a stray CRLF (e.g. left in the working tree by an older build) breaks
+# here-string parsing and yields bogus "Missing closing '}'" errors. tr is
+# portable across GNU/BSD and strips every CR, normalising to clean LF.
+strip_cr() { tr -d '\r' < "$1" > "$1.lf" && mv "$1.lf" "$1"; }
+strip_cr "$PKG/install.ps1"
+strip_cr "$PKG/install.bat"
 
 # --- repackage SentinelAgent.zip --------------------------------------------
 echo "[*] Repackaging SentinelAgent.zip..."
