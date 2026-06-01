@@ -71,6 +71,15 @@ fi
 tmp="$(mktemp)"
 sed 's|^set "TLS_ARGS=.*|'"$TLS_LINE"'|' "$PKG/install.bat" > "$tmp" && mv "$tmp" "$PKG/install.bat"
 
+# --- normalise Windows scripts to CRLF --------------------------------------
+# Windows PowerShell 5.1 and cmd.exe are happiest with CRLF; LF-only endings are
+# a known source of flaky .ps1/.bat parsing. (awk is portable across GNU/BSD.)
+to_crlf() {
+  awk '{ sub(/\r$/,""); printf "%s\r\n", $0 }' "$1" > "$1.crlf" && mv "$1.crlf" "$1"
+}
+to_crlf "$PKG/install.ps1"
+to_crlf "$PKG/install.bat"
+
 # --- repackage SentinelAgent.zip --------------------------------------------
 echo "[*] Repackaging SentinelAgent.zip..."
 ( cd "$WN" && rm -f SentinelAgent.zip

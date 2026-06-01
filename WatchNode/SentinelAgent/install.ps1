@@ -171,9 +171,13 @@ function Install-Sysmon {
         }
         Write-OK "Sysmon config updated."
     } else {
-        $configArg = if (Test-Path $SysmonConfig) { "-c `"$SysmonConfig`"" } else { "" }
-        $acceptEulaCmd = "& `"$SysmonBin`" -accepteula -i $configArg"
-        Invoke-Expression $acceptEulaCmd | Out-Null
+        # Use the call operator with plain args — no Invoke-Expression / escaped
+        # quotes (that pattern trips the Windows PowerShell 5.1 parser).
+        if (Test-Path $SysmonConfig) {
+            & $SysmonBin -accepteula -i $SysmonConfig | Out-Null
+        } else {
+            & $SysmonBin -accepteula -i | Out-Null
+        }
         Write-OK "Sysmon installed and running."
     }
 }
