@@ -50,6 +50,22 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # Creates the topics WatchTower publishes to. franz-go does not trigger broker
+  # auto-creation, so without this the producer fails with UNKNOWN_TOPIC_OR_PARTITION
+  # and every event is dropped (nothing reaches OpenSearch / the dashboard).
+  kafka-init:
+    image: apache/kafka:3.7.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic sentinel.events --partitions 3 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic sentinel.alerts --partitions 3 --replication-factor 1
+        echo "Kafka topics ready"
+
   opensearch:
     image: opensearchproject/opensearch:2.12.0
     environment:
@@ -98,6 +114,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   watchvault:
@@ -115,6 +133,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   watchnode:
