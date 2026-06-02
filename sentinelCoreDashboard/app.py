@@ -744,6 +744,17 @@ def _get_agent_id_map():
     return _agent_map_cache
 
 
+def _agent_label(aid):
+    """Human-readable label for an agent id: the PC hostname when known,
+    otherwise a short id. Avoids showing raw 32-char hex ids in the UI."""
+    if not aid:
+        return "—"
+    name = _get_agent_id_map().get(aid)
+    if name:
+        return name
+    return (aid[:8] + "…") if len(aid) > 8 else aid
+
+
 # ---- Manager API proxy ----
 @app.route("/api/agents/summary")
 def api_agents_summary():
@@ -1911,7 +1922,12 @@ def api_alerts_by_agent():
         buckets = _aggregation_buckets(res, "by_agent")
         for b in buckets:
             aid = (b.get("agent_id") or {}).get("buckets") or []
-            b["agent_id"] = aid[0].get("key") if aid else None
+            resolved = aid[0].get("key") if aid else b.get("key")
+            b["agent_id"] = resolved
+            # Show the PC hostname instead of the raw hex agent id. Keep the id
+            # in agent_id for click-through/filtering; surface the label as key.
+            b["agent_name"] = _agent_label(resolved)
+            b["key"] = b["agent_name"]
         if not buckets:
             wt = get_watchtower_alerts(500)
             agents = get_watchtower_agents()

@@ -99,6 +99,7 @@ func (p *KafkaProducer) SendAlerts(alerts []*models.Alert) error {
 			RuleID:      a.RuleID,
 			Level:       a.Level,
 			AgentID:     a.AgentID,
+			AgentName:   a.AgentName, // hostname (resolved by the engine) — was dropped, leaving the UI to show the hex agent_id
 			Timestamp:   a.Timestamp,
 			Title:       a.Title,
 			Description: a.Description,
