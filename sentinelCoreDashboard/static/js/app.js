@@ -1353,6 +1353,7 @@ const GEO_CONTINENTS = [
     try {
       const res    = await fetch('/api/ueba/risk-scores?limit=5').then(r => r.json()).catch(() => ({}));
       const scores = res.risk_scores || res.data || [];
+      if (typeof _ensureEntityAgentMap === 'function') { try { await _ensureEntityAgentMap(); } catch(_) {} }
       const anomalyRes   = await fetch('/api/ueba/anomalies?limit=1').then(r => r.json()).catch(() => ({}));
       const anomalyCount = anomalyRes.total || (anomalyRes.anomalies || []).length || 0;
       const kpi   = document.getElementById('kpiUebaAnomalies');
@@ -1380,7 +1381,7 @@ const GEO_CONTINENTS = [
         return `<div class="ov2-row">
           <div class="ov2-avatar" style="background:${color}">${escapeHtml(badge)}</div>
           <div class="ov2-row-main">
-            <span class="ov2-row-pri mono">${escapeHtml(s.id || s.entity_id || '—')}</span>
+            <span class="ov2-row-pri mono">${escapeHtml(typeof _resolveEntity === 'function' ? _resolveEntity(s.id || s.entity_id, s.entity_type || 'agent') : (s.id || s.entity_id || '—'))}</span>
             <span class="ov2-row-sec">${escapeHtml(label)} · ${s.anomaly_count || score} anomalies</span>
           </div>
           <span style="font-size:11.5px;font-family:var(--d-font-mono);font-weight:600;color:${metaColor};flex-shrink:0;min-width:18px;text-align:right">${score}</span>
@@ -1398,6 +1399,7 @@ const GEO_CONTINENTS = [
     try {
       const res      = await fetch('/api/rba/notables?limit=5').then(r => r.json()).catch(() => ({}));
       const notables = res.notables || res.data || [];
+      if (typeof _ensureEntityAgentMap === 'function') { try { await _ensureEntityAgentMap(); } catch(_) {} }
       const total    = res.total || notables.length;
       const kpi   = document.getElementById('kpiRbaNotables');
       const tagEl = document.getElementById('kpiRbaTag');
@@ -1422,7 +1424,7 @@ const GEO_CONTINENTS = [
         const scoreColor = score >= 90 ? 'var(--d-crit)' : score >= 70 ? 'var(--d-high)' : 'var(--d-fg-3)';
         return `<div class="ov2-row">
           <div class="ov2-row-main">
-            <span class="ov2-row-pri mono">${escapeHtml((n.entity_id || n.entity || '—').slice(0,36))}</span>
+            <span class="ov2-row-pri mono">${escapeHtml(typeof _resolveEntity === 'function' ? _resolveEntity(n.entity_id || n.entity, n.entity_type || 'agent') : (n.entity_id || n.entity || '—').slice(0,36))}</span>
             <span class="ov2-row-sec">${n.event_count || 0} events · ${n.triggered_at ? new Date(n.triggered_at).toLocaleTimeString() : '—'}</span>
           </div>
           <span style="font-size:14px;font-family:var(--d-font-mono);font-weight:500;color:${scoreColor};flex-shrink:0">${score}</span>
