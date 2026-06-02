@@ -1,5 +1,7 @@
 {
-  "index_patterns": ["watchvault-fim-*"],
+  "index_patterns": [
+    "watchvault-fim-*"
+  ],
   "template": {
     "settings": {
       "number_of_shards": 2,
@@ -8,17 +10,56 @@
       "plugins.index_state_management.policy_id": "watchvault-fim-policy"
     },
     "mappings": {
+      "date_detection": false,
+      "dynamic_templates": [
+        {
+          "strings_as_keyword": {
+            "match_mapping_type": "string",
+            "mapping": {
+              "type": "keyword",
+              "ignore_above": 8192
+            }
+          }
+        }
+      ],
       "properties": {
-        "tags": {"type": "object", "dynamic": true},
-        "timestamp": {"type": "date", "format": "epoch_millis"},
-        "event_type": {"type": "keyword"},
-        "agent_id": {"type": "keyword"},
-        "path": {"type": "keyword", "fields": {"text": {"type": "text"}}},
-        "sha256": {"type": "keyword"},
-        "previous_hash": {"type": "keyword"},
-        "directory": {"type": "keyword"},
-        "filename": {"type": "keyword"},
-        "action": {"type": "keyword"}
+        "tags": {
+          "type": "object",
+          "dynamic": true
+        },
+        "timestamp": {
+          "type": "date",
+          "format": "epoch_millis"
+        },
+        "event_type": {
+          "type": "keyword"
+        },
+        "agent_id": {
+          "type": "keyword"
+        },
+        "path": {
+          "type": "keyword",
+          "fields": {
+            "text": {
+              "type": "text"
+            }
+          }
+        },
+        "sha256": {
+          "type": "keyword"
+        },
+        "previous_hash": {
+          "type": "keyword"
+        },
+        "directory": {
+          "type": "keyword"
+        },
+        "filename": {
+          "type": "keyword"
+        },
+        "action": {
+          "type": "keyword"
+        }
       }
     }
   }

@@ -1,5 +1,7 @@
 {
-  "index_patterns": ["watchvault-audit-*"],
+  "index_patterns": [
+    "watchvault-audit-*"
+  ],
   "template": {
     "settings": {
       "number_of_shards": 1,
@@ -8,18 +10,55 @@
       "plugins.index_state_management.policy_id": "watchvault-audit-policy"
     },
     "mappings": {
+      "date_detection": false,
+      "dynamic_templates": [
+        {
+          "strings_as_keyword": {
+            "match_mapping_type": "string",
+            "mapping": {
+              "type": "keyword",
+              "ignore_above": 8192
+            }
+          }
+        }
+      ],
       "properties": {
-        "tags": {"type": "object", "dynamic": true},
-        "timestamp":   {"type": "date", "format": "epoch_millis"},
-        "event_type":  {"type": "keyword"},
-        "actor_ip":    {"type": "ip"},
-        "method":      {"type": "keyword"},
-        "path":        {"type": "keyword"},
-        "status_code": {"type": "integer"},
-        "duration_ms": {"type": "long"},
-        "agent_id":    {"type": "keyword"},
-        "success":     {"type": "boolean"},
-        "details":     {"type": "object", "dynamic": true}
+        "tags": {
+          "type": "object",
+          "dynamic": true
+        },
+        "timestamp": {
+          "type": "date",
+          "format": "epoch_millis"
+        },
+        "event_type": {
+          "type": "keyword"
+        },
+        "actor_ip": {
+          "type": "ip"
+        },
+        "method": {
+          "type": "keyword"
+        },
+        "path": {
+          "type": "keyword"
+        },
+        "status_code": {
+          "type": "integer"
+        },
+        "duration_ms": {
+          "type": "long"
+        },
+        "agent_id": {
+          "type": "keyword"
+        },
+        "success": {
+          "type": "boolean"
+        },
+        "details": {
+          "type": "object",
+          "dynamic": true
+        }
       }
     }
   }
