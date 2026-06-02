@@ -3708,16 +3708,39 @@ def api_geo_lookup():
         return _api_error(e)
 
 
-def _to_epoch_ms(expr: str) -> int:
-    """Convert simple relative time expressions to epoch ms."""
+def _to_epoch_ms(expr) -> int:
+    """Convert a time expression to epoch milliseconds. Accepts:
+      - relative:  'now', 'now-24h', 'now-7d', 'now-30m', 'now-2w'
+      - epoch:     13-digit milliseconds or 10-digit seconds
+      - ISO-8601:  '2026-06-02T13:10:37Z' (the dashboard sends this form)
+    Falls back to "now" only when the input is empty/unrecognised.
+    """
     import re
+    from datetime import datetime, timezone
     now_ms = int(_time.time() * 1000)
-    m = re.match(r'now-(\d+)([hdwm])', expr)
-    if not m:
+    if expr is None:
         return now_ms
-    n, unit = int(m.group(1)), m.group(2)
-    multipliers = {'h': 3_600_000, 'd': 86_400_000, 'w': 604_800_000, 'm': 2_592_000_000}
-    return now_ms - n * multipliers.get(unit, 3_600_000)
+    s = str(expr).strip()
+    if s == "" or s == "now":
+        return now_ms
+    # Relative: now-<n><unit>
+    m = re.match(r'now-(\d+)([hdwm])$', s)
+    if m:
+        n, unit = int(m.group(1)), m.group(2)
+        multipliers = {'h': 3_600_000, 'd': 86_400_000, 'w': 604_800_000, 'm': 2_592_000_000}
+        return now_ms - n * multipliers.get(unit, 3_600_000)
+    # Raw epoch: 13-digit ms, 10-digit seconds
+    if s.isdigit():
+        v = int(s)
+        return v if v >= 10**12 else v * 1000
+    # ISO-8601 (handle trailing 'Z' for Python < 3.11)
+    try:
+        dt = datetime.fromisoformat(s.replace('Z', '+00:00'))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp() * 1000)
+    except Exception:
+        return now_ms
 
 
 # ── Risk-Based Alerting (RBA) ─────────────────────────────────────────────────
