@@ -1,5 +1,7 @@
 {
-  "index_patterns": ["watchvault-system-*"],
+  "index_patterns": [
+    "watchvault-system-*"
+  ],
   "template": {
     "settings": {
       "number_of_shards": 3,
@@ -8,21 +10,63 @@
       "plugins.index_state_management.policy_id": "watchvault-system-policy"
     },
     "mappings": {
+      "date_detection": false,
+      "dynamic_templates": [
+        {
+          "strings_as_keyword": {
+            "match_mapping_type": "string",
+            "mapping": {
+              "type": "keyword",
+              "ignore_above": 8192
+            }
+          }
+        }
+      ],
       "properties": {
-        "tags": {"type": "object", "dynamic": true},
-        "timestamp": {"type": "date", "format": "epoch_millis"},
-        "agent_id": {"type": "keyword"},
-        "metric_type": {"type": "keyword"},
-        "cpu_percent": {"type": "float"},
-        "memory_percent": {"type": "float"},
-        "disk_percent": {"type": "float"},
-        "process_name": {"type": "keyword"},
-        "pid": {"type": "integer"},
-        "bytes_sent": {"type": "long"},
-        "bytes_recv": {"type": "long"},
-        "load_1m": {"type": "float"},
-        "load_5m": {"type": "float"},
-        "load_15m": {"type": "float"}
+        "tags": {
+          "type": "object",
+          "dynamic": true
+        },
+        "timestamp": {
+          "type": "date",
+          "format": "epoch_millis"
+        },
+        "agent_id": {
+          "type": "keyword"
+        },
+        "metric_type": {
+          "type": "keyword"
+        },
+        "cpu_percent": {
+          "type": "float"
+        },
+        "memory_percent": {
+          "type": "float"
+        },
+        "disk_percent": {
+          "type": "float"
+        },
+        "process_name": {
+          "type": "keyword"
+        },
+        "pid": {
+          "type": "integer"
+        },
+        "bytes_sent": {
+          "type": "long"
+        },
+        "bytes_recv": {
+          "type": "long"
+        },
+        "load_1m": {
+          "type": "float"
+        },
+        "load_5m": {
+          "type": "float"
+        },
+        "load_15m": {
+          "type": "float"
+        }
       }
     }
   }
