@@ -8,6 +8,9 @@
 #   - engine perf smoke test (asserts >= 1k EPS — full 850k benchmark runs
 #     locally on demand, see CHANGELOG)
 #   - syntax check on Python dashboard files (no full test suite there yet)
+#   - END-TO-END smoke: stands up the full docker stack and asserts an event
+#     flows agent -> manager -> kafka -> indexer -> OpenSearch -> dashboard
+#     (catches seam bugs like missing Kafka topics / enrollment / indexing)
 #
 # Two CRITICAL bugs in Week 3 (compiler ignoring `value:` syntax;
 # loader rejecting bare-array YAML files — 800 rules silently absent) would
@@ -114,6 +117,33 @@ jobs:
                   errors += 1
           sys.exit(1 if errors else 0)
           EOF
+
+  e2e:
+    name: End-to-end pipeline smoke (full stack)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      # Stands up the real local stack and asserts data flows the whole way:
+      # kafka topics exist -> built-in agents enroll -> events index in
+      # OpenSearch -> no forwarder drops -> dashboard responds. This is the
+      # guard for the seam bugs that bit in the field (missing Kafka topics,
+      # enrollment, indexing) — they break the build here instead of a client.
+      - name: Run end-to-end smoke
+        run: |
+          chmod +x scripts/e2e-smoke.sh scripts/build-agent-package.sh
+          ./scripts/e2e-smoke.sh
+
+      - name: Dump service logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.local.yaml ps || true
+          docker compose -f docker-compose.local.yaml logs --tail=120 watchtower watchvault kafka opensearch kafka-init || true
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.local.yaml down -v || true
 
   rules-loadable:
     name: All rule files load cleanly
