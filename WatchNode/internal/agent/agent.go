@@ -139,7 +139,9 @@ func (a *Agent) enrichPoint(p *models.DataPoint) {
 // LoadAgentID loads or creates the agent ID and sets it on Info.
 func (a *Agent) LoadAgentID(configDir string) error {
 	path := utils.AgentIDPath(configDir)
-	id, err := utils.LoadOrCreateAgentID(path)
+	// Seed with the hostname so a lost/ephemeral persist file regenerates the
+	// SAME id (stable per machine; no ghost agents on reinstall/container restart).
+	id, err := utils.LoadOrCreateAgentID(path, a.Info.Hostname)
 	if err != nil {
 		return err
 	}
@@ -158,8 +160,8 @@ func (a *Agent) Start(ctx context.Context) error {
 	a.runCtx, a.cancel = context.WithCancel(ctx)
 	if a.Info.ID == "" {
 		if err := a.LoadAgentID(""); err != nil {
-			a.Logger.Warn("agent id not loaded, using ephemeral id", zap.Error(err))
-			a.Info.ID, _ = utils.GenerateAgentID()
+			a.Logger.Warn("agent id not loaded, deriving stable id from hostname", zap.Error(err))
+			a.Info.ID = utils.StableAgentID(a.Info.Hostname)
 		}
 	}
 

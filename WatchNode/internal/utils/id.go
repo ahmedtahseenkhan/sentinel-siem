@@ -2,6 +2,7 @@ package utils
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -16,6 +17,16 @@ func GenerateAgentID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// StableAgentID derives a deterministic 32-hex-char agent ID from a stable seed
+// (the hostname). The same machine therefore keeps the same identity across
+// reinstalls and container restarts, instead of minting a new random id each
+// time — which produced "ghost" agents piling up in UEBA/RBA. Same width as
+// GenerateAgentID so it's a drop-in.
+func StableAgentID(seed string) string {
+	sum := sha256.Sum256([]byte("watchnode-agent:" + seed))
+	return hex.EncodeToString(sum[:16])
 }
 
 // AgentIDPath returns the default path for persisting the agent ID file.
@@ -39,8 +50,12 @@ func AgentIDPath(configDir string) string {
 	}
 }
 
-// LoadOrCreateAgentID reads the agent ID from path, or creates and persists a new one.
-func LoadOrCreateAgentID(path string) (string, error) {
+// LoadOrCreateAgentID reads the agent ID from path. If absent it derives a
+// stable ID from seed (the hostname) so the same machine reuses the same
+// identity even when the persist file is on ephemeral storage (e.g. /tmp in a
+// container) or wiped by a reinstall. A random ID is used only when seed is
+// empty. The result is persisted for fast lookup / manual override.
+func LoadOrCreateAgentID(path, seed string) (string, error) {
 	data, err := os.ReadFile(path)
 	if err == nil {
 		id := string(data)
@@ -48,8 +63,10 @@ func LoadOrCreateAgentID(path string) (string, error) {
 			return id, nil
 		}
 	}
-	id, err := GenerateAgentID()
-	if err != nil {
+	var id string
+	if seed != "" {
+		id = StableAgentID(seed)
+	} else if id, err = GenerateAgentID(); err != nil {
 		return "", fmt.Errorf("generate agent id: %w", err)
 	}
 	dir := filepath.Dir(path)
