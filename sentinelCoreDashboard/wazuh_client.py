@@ -150,10 +150,25 @@ def get_agents_summary():
 
 def get_agents_list(limit=50, offset=0):
     """Get paginated list of agents from manager. Sort omitted for API compatibility (some versions reject sort=-last_keep_alive with 400)."""
-    return manager_request(
+    res = manager_request(
         "/agents",
         params={"limit": limit, "offset": offset},
     )
+    # The UI reads a.ip / a.name; the manager returns ip_address / hostname.
+    # Add aliases (additive, defensive) so the agent's IP and name always show.
+    try:
+        items = res.get("data") if isinstance(res, dict) else None
+        if isinstance(items, dict):
+            items = items.get("affected_items") or items.get("agents") or items.get("data") or []
+        for a in (items or []):
+            if isinstance(a, dict):
+                if not a.get("ip"):
+                    a["ip"] = a.get("ip_address") or ""
+                if not a.get("name"):
+                    a["name"] = a.get("hostname") or ""
+    except Exception:
+        pass
+    return res
 
 
 def get_agent_by_id(agent_id):

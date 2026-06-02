@@ -3,6 +3,7 @@ package pipeline
 import (
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -241,38 +242,53 @@ func eventToDoc(e *models.IndexEvent) map[string]interface{} {
 // normalizeEventFields promotes nested IP and identity fields to top-level
 // keyword fields so OpenSearch can search and aggregate on them directly.
 func normalizeEventFields(doc map[string]interface{}, data map[string]interface{}) {
-	str := func(key string) string {
-		if v, ok := data[key].(string); ok && v != "" && v != "-" && v != "0.0.0.0" && v != "::" {
-			return v
+	// first returns the first meaningful value among the given keys. Windows
+	// EventData uses a different field name for the "same" thing depending on the
+	// event ID, so each canonical column is a fallback chain.
+	first := func(keys ...string) string {
+		for _, key := range keys {
+			if v, ok := data[key].(string); ok {
+				v = strings.TrimSpace(v)
+				if v != "" && v != "-" && v != "0.0.0.0" && v != "::" && v != "::1" {
+					return v
+				}
+			}
 		}
 		return ""
 	}
 
-	// Network events: raddr/laddr are already at top level (spread from Data)
-	// but we also set canonical src_ip/dst_ip aliases
-	if ip := str("raddr"); ip != "" {
+	// Source / destination IP:
+	//   network conn collector: raddr/laddr
+	//   Windows logon 4624/4625: IpAddress
+	//   Sysmon EID 3 (network): SourceIp / DestinationIp
+	if ip := first("raddr", "win_IpAddress", "win_SourceIp", "win_SourceAddress", "src_ip", "source_ip", "srcip"); ip != "" {
 		doc["src_ip"] = ip
-	} else if ip := str("src_ip"); ip == "" {
-		if ip2 := str("source_ip"); ip2 != "" {
-			doc["src_ip"] = ip2
-		}
 	}
-	if ip := str("laddr"); ip != "" {
+	if ip := first("laddr", "win_DestinationIp", "win_DestAddress", "dst_ip", "dstip"); ip != "" {
 		doc["dst_ip"] = ip
 	}
 
-	// Login events
-	if u := str("win_TargetUserName"); u != "" {
+	// Username:
+	//   logon 4624/4625: TargetUserName ; process 4688 / most: SubjectUserName
+	//   Sysmon: User ; generic collectors: user/username
+	if u := first("win_TargetUserName", "win_SubjectUserName", "win_User", "User", "user", "username"); u != "" {
 		doc["username"] = u
-	} else if u := str("user"); u != "" {
-		doc["username"] = u
-	}
-	if ip := str("win_IpAddress"); ip != "" {
-		doc["src_ip"] = ip
 	}
 
-	// Process events
-	if p := str("name"); p != "" {
+	// Process:
+	//   4688 process creation: NewProcessName ; Sysmon EID 1: Image
+	//   generic process collector: name
+	if p := first("win_NewProcessName", "win_Image", "Image", "win_ProcessName", "name", "process_name"); p != "" {
 		doc["process_name"] = p
+		base := p
+		if i := strings.LastIndexAny(p, `\/`); i >= 0 && i+1 < len(p) {
+			base = p[i+1:]
+		}
+		doc["process"] = base // clean basename for display
+	}
+
+	// Command line (4688 with cmdline auditing, or Sysmon)
+	if c := first("win_CommandLine", "win_ProcessCommandLine", "CommandLine", "command_line"); c != "" {
+		doc["command_line"] = c
 	}
 }
