@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/watchtower/watchtower/internal/models"
 	"github.com/watchtower/watchtower/pkg/proto"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/peer"
 )
 
 const (
@@ -60,6 +62,19 @@ func (h *Handler) SetAuditLogger(al *audit.Logger) {
 	h.audit = al
 }
 
+// peerIP returns the source IP of the gRPC client (the agent), without the
+// port. Empty if it can't be determined.
+func peerIP(ctx context.Context) string {
+	p, ok := peer.FromContext(ctx)
+	if !ok || p.Addr == nil {
+		return ""
+	}
+	if host, _, err := net.SplitHostPort(p.Addr.String()); err == nil {
+		return host
+	}
+	return p.Addr.String()
+}
+
 func (h *Handler) Register(ctx context.Context, req *proto.RegistrationRequest) (*proto.RegistrationResponse, error) {
 	if req.AgentId == "" {
 		return &proto.RegistrationResponse{Accepted: false, Message: "missing agent_id"}, nil
@@ -95,6 +110,7 @@ func (h *Handler) Register(ctx context.Context, req *proto.RegistrationRequest) 
 		Version:      req.Version,
 		Labels:       req.Labels,
 		Status:       models.AgentStatusActive,
+		IPAddress:    peerIP(ctx), // source IP of the agent's gRPC connection
 		RegisteredAt: time.Now().UnixMilli(),
 	}
 
