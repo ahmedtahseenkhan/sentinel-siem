@@ -91,6 +91,44 @@ ensure_bom() {
 }
 ensure_bom "$PKG/install.ps1"
 
+# --- VALIDATE the installer before packaging --------------------------------
+# Catches the classes of bug that bit us in the field (missing BOM; invalid
+# YAML escape like "configs\sca" in the generated config; PS parse errors).
+# Fail the build rather than ship a broken installer to a client.
+echo "[*] Validating installer..."
+[ "$(head -c3 "$PKG/install.ps1" | od -An -tx1 | tr -d ' \n')" = "efbbbf" ] \
+  || { echo "    ✗ install.ps1 missing UTF-8 BOM"; exit 1; }
+
+python3 - "$PKG/install.ps1" <<'PY' || exit 1
+import re, sys
+src = open(sys.argv[1], encoding='utf-8-sig').read()
+m = re.search(r'\$configContent\s*=\s*@"\r?\n(.*?)\r?\n"@', src, re.S)
+if not m:
+    print("    ✗ could not find generated config block to validate"); sys.exit(1)
+cfg = re.sub(r'\$\w+|\$\{\w+\}', 'X', m.group(1))
+valid = set('ntr0abvfeNLP_xuU/ \\"')
+bad = []
+for i, line in enumerate(cfg.splitlines(), 1):
+    for q in re.findall(r'"(?:[^"\\]|\\.)*"', line):
+        body = q[1:-1]; j = 0
+        while j < len(body):
+            if body[j] == '\\':
+                nxt = body[j+1] if j+1 < len(body) else ''
+                if nxt not in valid: bad.append((i, q, '\\'+nxt))
+                j += 2
+            else: j += 1
+if bad:
+    print("    ✗ invalid YAML escape(s) in generated config:")
+    for i,q,e in bad: print(f"        line {i}: {e} in {q}")
+    sys.exit(1)
+print("    ✓ config YAML escapes valid, BOM present")
+PY
+
+# Optional: real PowerShell parse check if pwsh is on PATH (CI/dev with pwsh).
+if command -v pwsh >/dev/null 2>&1; then
+  pwsh -NoProfile -Command "\$e=\$null;\$t=\$null;[System.Management.Automation.Language.Parser]::ParseFile('$PKG/install.ps1',[ref]\$t,[ref]\$e)|Out-Null; if(\$e){Write-Error \$e[0].Message; exit 1} else {'    ✓ install.ps1 parses'}" || exit 1
+fi
+
 # --- repackage SentinelAgent.zip --------------------------------------------
 echo "[*] Repackaging SentinelAgent.zip..."
 ( cd "$WN" && rm -f SentinelAgent.zip
