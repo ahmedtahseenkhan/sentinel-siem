@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -102,8 +103,15 @@ func (e *SyslogEngine) loadLocked() error {
 		}
 	}
 
-	// Second pass: wire parent→child relationships.
-	for _, cd := range e.byName {
+	// Second pass: wire parent→child relationships. Iterate e.rules (load order),
+	// NOT e.byName — ranging a map randomises order, which let the generic
+	// "^.*$" fallback win over specific decoders (pfsense, cisco, …) at random,
+	// and also scrambled sibling order (e.g. tcp/udp vs no-port children).
+	for i := range e.rules {
+		cd := e.byName[e.rules[i].Name]
+		if cd == nil {
+			continue
+		}
 		if cd.rule.Parent == "" {
 			e.roots = append(e.roots, cd)
 			continue
@@ -120,10 +128,26 @@ func (e *SyslogEngine) loadLocked() error {
 		parent.children = append(parent.children, cd)
 	}
 
+	// Catch-all roots (program "^.*$" / ".*" / empty) must be evaluated LAST so a
+	// specific decoder always wins. Stable sort preserves load order otherwise.
+	sort.SliceStable(e.roots, func(i, j int) bool {
+		return !isCatchAllProgram(e.roots[i].rule.Program) && isCatchAllProgram(e.roots[j].rule.Program)
+	})
+
 	e.logger.Info("syslog decoders loaded",
 		zap.Int("total", len(e.byName)),
 		zap.Int("roots", len(e.roots)))
 	return nil
+}
+
+// isCatchAllProgram reports whether a root decoder's program regex matches any
+// program (so it must be tried last, after specific decoders).
+func isCatchAllProgram(p string) bool {
+	switch strings.TrimSpace(p) {
+	case "", ".*", "^.*$", "^.*", ".*$", "(?s).*":
+		return true
+	}
+	return false
 }
 
 func (e *SyslogEngine) loadFileLocked(path string, builtIn bool) error {
