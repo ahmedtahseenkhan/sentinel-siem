@@ -28,3 +28,19 @@ collectors:
   syscollector:
     enabled: true
     interval: "5m"
+
+# Active Response — lets SOAR playbooks run firewall-drop/kill-process here.
+# NOTE: inside Docker, iptables needs the NET_ADMIN capability, so the watchnode
+# services in docker-compose.local.yaml are given `cap_add: [NET_ADMIN]`. Without
+# it the drop command runs but fails (reported as "failed"). On the real Windows
+# VM agents this is not needed — netsh runs as SYSTEM.
+active_response:
+  enabled: true
+  allowed_commands: []
+  command_timeout_secs: 15
+  block_ttl_secs: 3600
+  safelist_ips:
+    - "192.168.100.0/24"   # management subnet — never block
+    - "127.0.0.1"
+  safelist_users:
+    - "root"
