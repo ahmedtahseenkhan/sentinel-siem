@@ -9757,7 +9757,7 @@ async function loadPlaybooks() {
   tbody.innerHTML = pbs.map(pb => `
     <div class="tbl-r" style="${pbW}">
       <span class="tbl-mono" style="color:var(--fg-4)">#${pb.id}</span>
-      <span><span class="tbl-pri">${escHtml(pb.name)}</span><span class="tbl-muted" style="font-size:10px;display:block">${escHtml(pb.description||'')}</span></span>
+      <span><span class="tbl-pri">${escHtml(pb.name)}${pb.dry_run ? ' <span class="pill" style="font-size:9px;padding:1px 5px;background:rgba(245,158,11,.15);color:#f59e0b" title="Dry-run: actions are logged but not executed">DRY RUN</span>' : ''}</span><span class="tbl-muted" style="font-size:10px;display:block">${escHtml(pb.description||'')}</span></span>
       <span class="tbl-mono">Level ≥ ${pb.trigger?.min_level || 'any'}</span>
       <span class="tbl-mono">${(pb.actions||[]).length} actions</span>
       <span class="tbl-mono">${pb.run_count || 0}</span>
@@ -9836,6 +9836,8 @@ function showPlaybookModal() {
   });
   const lvl = document.getElementById('pbMinLevel');
   if (lvl) lvl.value = '10';
+  const dr = document.getElementById('pbDryRun');
+  if (dr) dr.checked = false;
   document.getElementById('playbookModal').style.display = 'flex';
 }
 
@@ -9894,10 +9896,12 @@ async function submitPlaybook() {
   const rule_ids = ruleIdsRaw ? ruleIdsRaw.split(',').map(s => parseInt(s.trim())).filter(Boolean) : [];
   const rule_groups = ruleGroupsRaw ? ruleGroupsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
 
+  const dryRun = document.getElementById('pbDryRun')?.checked || false;
   const body = {
     name,
     description: document.getElementById('pbDesc')?.value?.trim() || '',
     enabled: true,
+    dry_run: dryRun,
     trigger: { min_level: minLevel, rule_ids, rule_groups, agent_ids: [] },
     actions: _pbActions,
   };
@@ -9910,7 +9914,7 @@ async function submitPlaybook() {
 
   hidePlaybookModal();
   await loadPlaybooks();
-  if (res?.data?.id) alert(`Playbook #${res.data.id} created successfully.`);
+  if (res?.data?.id) alert(`Playbook #${res.data.id} created successfully.` + (dryRun ? '\n\nDry-run mode is ON — matching alerts will log the actions but not execute them. Turn it off (edit the playbook) when you\'re ready to arm it.' : ''));
 }
 
 document.addEventListener('DOMContentLoaded', () => {
