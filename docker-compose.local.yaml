@@ -99,7 +99,8 @@ services:
     ports:
       - "9400:9400"   # REST API
       - "50051:50051" # gRPC (agents)
-      - "5140:5140"   # Syslog
+      - "5140:5140"       # Syslog (TCP)
+      - "5140:5140/udp"   # Syslog (UDP) — pfSense/most network gear send UDP syslog
     environment:
       - WATCHTOWER_LOG_LEVEL=info
       - WATCHTOWER_WATCHVAULT_ADDRESS=watchvault:50052
