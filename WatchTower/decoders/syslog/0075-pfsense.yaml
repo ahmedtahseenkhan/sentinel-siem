@@ -1,0 +1,35 @@
+group: pfsense
+description: "pfSense / OPNsense filterlog firewall decoder — parses the CSV filter log into src_ip/dst_ip/ports/action so the network recon, scanning, and DoS rules can fire."
+
+# pfSense/OPNsense ship the firewall filter log via syslog with program
+# "filterlog" and a CSV body. IPv4 field order (TCP/UDP):
+#   1 rule  2 subrule  3 anchor  4 tracker  5 interface  6 reason  7 action
+#   8 direction  9 ipversion  10 tos  11 ecn  12 ttl  13 id  14 offset
+#   15 flags  16 protoid  17 protocol  18 length  19 src_ip  20 dst_ip
+#   21 src_port  22 dst_port ...
+# ICMP/other have no ports, so the no-port child catches them.
+
+decoders:
+  - name: pfsense
+    program: "^(filterlog|pf|pfsense|opnsense)$"
+    description: "Root pfSense/OPNsense filterlog decoder"
+
+  # IPv4 TCP/UDP — has source/destination ports.
+  - name: pfsense-filter-tcpudp
+    parent: pfsense
+    prematch: "^[0-9]+,"
+    regex: "^(?P<rule_num>\\d+),[^,]*,[^,]*,(?P<tracker>[^,]*),(?P<interface>[^,]*),[^,]*,(?P<action>pass|block),(?P<direction>in|out),4,(?:[^,]*,){6}(?P<proto_id>\\d+),(?P<protocol>tcp|udp),[^,]*,(?P<src_ip>(?:\\d{1,3}\\.){3}\\d{1,3}),(?P<dst_ip>(?:\\d{1,3}\\.){3}\\d{1,3}),(?P<src_port>\\d+),(?P<dst_port>\\d+)"
+    static_fields:
+      category: firewall
+      source: pfsense
+      log_type: filterlog
+
+  # IPv4 ICMP / no-port protocols — src/dst only.
+  - name: pfsense-filter-noport
+    parent: pfsense
+    prematch: "^[0-9]+,"
+    regex: "^(?P<rule_num>\\d+),[^,]*,[^,]*,(?P<tracker>[^,]*),(?P<interface>[^,]*),[^,]*,(?P<action>pass|block),(?P<direction>in|out),4,(?:[^,]*,){6}(?P<proto_id>\\d+),(?P<protocol>[a-z0-9-]+),[^,]*,(?P<src_ip>(?:\\d{1,3}\\.){3}\\d{1,3}),(?P<dst_ip>(?:\\d{1,3}\\.){3}\\d{1,3})"
+    static_fields:
+      category: firewall
+      source: pfsense
+      log_type: filterlog
