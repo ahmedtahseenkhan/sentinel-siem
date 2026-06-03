@@ -252,6 +252,10 @@ func (e *Executor) executeAction(ctx context.Context, action models.PlaybookActi
 		return e.actionWebhook(ctx, alert, params)
 	case "add_to_watchlist":
 		return e.actionAddToWatchlist(params)
+	case "quarantine_file":
+		return e.actionQuarantineFile(alert.AgentID, params)
+	case "force_logoff":
+		return e.actionForceLogoff(alert.AgentID, params)
 	default:
 		return "", fmt.Errorf("unknown action type: %s", action.Type)
 	}
@@ -531,6 +535,36 @@ func (e *Executor) actionAddToWatchlist(params map[string]string) (string, error
 	return fmt.Sprintf("added %s to watchlist %s", value, list), nil
 }
 
+func (e *Executor) actionQuarantineFile(agentID string, params map[string]string) (string, error) {
+	path := params["path"]
+	if path == "" {
+		path = params["file_path"]
+	}
+	if path == "" {
+		return "", fmt.Errorf("quarantine_file: path param required")
+	}
+	cmd := &proto.ManagerCommand{CommandType: "quarantine-file", Payload: []byte(path)}
+	if !e.reg.SendCommand(agentID, cmd) {
+		return "", fmt.Errorf("agent %s not connected", agentID)
+	}
+	return fmt.Sprintf("quarantine-file sent for %s to agent %s", path, agentID), nil
+}
+
+func (e *Executor) actionForceLogoff(agentID string, params map[string]string) (string, error) {
+	user := params["username"]
+	if user == "" {
+		user = params["user"]
+	}
+	if user == "" {
+		return "", fmt.Errorf("force_logoff: username param required")
+	}
+	cmd := &proto.ManagerCommand{CommandType: "force-logoff", Payload: []byte(user)}
+	if !e.reg.SendCommand(agentID, cmd) {
+		return "", fmt.Errorf("agent %s not connected", agentID)
+	}
+	return fmt.Sprintf("force-logoff sent for %s to agent %s", user, agentID), nil
+}
+
 // ── Template helpers ──────────────────────────────────────────────────────────
 
 // buildVars extracts template substitution variables from alert + event data.
@@ -556,6 +590,18 @@ func buildVars(alert *models.Alert, event *models.Event) map[string]string {
 		}
 		if proc, ok := event.Fields["process"].(string); ok {
 			vars["process"] = proc
+		}
+		for _, k := range []string{"username", "target_user", "user", "subject_user"} {
+			if v, ok := event.Fields[k].(string); ok && v != "" {
+				vars["username"] = v
+				break
+			}
+		}
+		for _, k := range []string{"file_path", "path", "image", "target_filename"} {
+			if v, ok := event.Fields[k].(string); ok && v != "" {
+				vars["file_path"] = v
+				break
+			}
 		}
 	}
 	return vars
