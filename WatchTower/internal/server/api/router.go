@@ -158,7 +158,7 @@ func (s *Server) routes() *chi.Mux {
 		})
 		r.Get("/playbook-executions", pbh.AllExecutions)
 
-		csh := handlers.NewCaseHandler(s.store, s.casesCfg, s.caseNotifier)
+		csh := handlers.NewCaseHandler(s.store)
 		r.Route("/cases", func(r chi.Router) {
 			r.Get("/", csh.List)
 			r.Post("/", csh.Create)
@@ -169,7 +169,6 @@ func (s *Server) routes() *chi.Mux {
 			r.Post("/{id}/notes", csh.AddNote)
 			r.Get("/{id}/evidence", csh.ListEvidence)
 			r.Post("/{id}/evidence", csh.AddEvidence)
-			r.Get("/{id}/history", csh.ListHistory)
 		})
 	})
 

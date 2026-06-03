@@ -4,7 +4,6 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -66,7 +65,6 @@ func (s *Store) migrate() error {
 		"migrations/006_ueba.sql",
 		"migrations/007_rba.sql",
 		"migrations/008_partitioning.sql",
-		"migrations/009_case_ticketing.sql",
 	}
 	for _, f := range files {
 		data, err := migrations.ReadFile(f)
@@ -378,12 +376,12 @@ func (s *Store) CreateCase(c *models.Case) (int64, error) {
 	agentsJSON, _ := json.Marshal(c.AgentIDs)
 	var id int64
 	err := s.pool.QueryRow(context.Background(), `
-		INSERT INTO cases (title, description, status, priority, severity, assignee, created_by, created_at, updated_at, tags, alert_ids, agent_ids, group_key, due_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+		INSERT INTO cases (title, description, status, priority, severity, assignee, created_by, created_at, updated_at, tags, alert_ids, agent_ids)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 		RETURNING id`,
 		c.Title, c.Description, string(c.Status), string(c.Priority), c.Severity,
 		c.Assignee, c.CreatedBy, c.CreatedAt, c.UpdatedAt,
-		string(tagsJSON), string(alertsJSON), string(agentsJSON), c.GroupKey, c.DueAt,
+		string(tagsJSON), string(alertsJSON), string(agentsJSON),
 	).Scan(&id)
 	return id, err
 }
@@ -393,7 +391,6 @@ func (s *Store) GetCase(id int64) (*models.Case, error) {
 		SELECT c.id, c.title, c.description, c.status, c.priority, c.severity,
 		       c.assignee, c.created_by, c.created_at, c.updated_at, c.closed_at,
 		       c.tags, c.alert_ids, c.agent_ids,
-		       c.group_key, c.due_at, c.sla_breached, c.escalated,
 		       (SELECT COUNT(*) FROM case_notes n WHERE n.case_id = c.id) AS note_count
 		FROM cases c WHERE c.id = $1`, id)
 	return scanCase(row)
@@ -424,7 +421,6 @@ func (s *Store) ListCases(status, priority, assignee string, limit, offset int) 
 		SELECT c.id, c.title, c.description, c.status, c.priority, c.severity,
 		       c.assignee, c.created_by, c.created_at, c.updated_at, c.closed_at,
 		       c.tags, c.alert_ids, c.agent_ids,
-		       c.group_key, c.due_at, c.sla_breached, c.escalated,
 		       (SELECT COUNT(*) FROM case_notes n WHERE n.case_id = c.id) AS note_count
 		FROM cases c %s ORDER BY c.created_at DESC`, where)
 	if limit > 0 {
@@ -499,129 +495,6 @@ func (s *Store) CountCases() (total, open, investigating, resolved int, err erro
 	}
 	err = rows.Err()
 	return
-}
-
-// === Case ticketing (auto-create grouping, SLA, history) ===
-
-// FindOpenCaseByGroup returns the most recent open/investigating case for a
-// given group_key (rule+agent), or (nil, nil) if none exists. Used by the
-// auto-case generator so repeat alerts append to one case instead of spawning.
-func (s *Store) FindOpenCaseByGroup(groupKey string) (*models.Case, error) {
-	if groupKey == "" {
-		return nil, nil
-	}
-	row := s.pool.QueryRow(context.Background(), `
-		SELECT c.id, c.title, c.description, c.status, c.priority, c.severity,
-		       c.assignee, c.created_by, c.created_at, c.updated_at, c.closed_at,
-		       c.tags, c.alert_ids, c.agent_ids,
-		       c.group_key, c.due_at, c.sla_breached, c.escalated,
-		       (SELECT COUNT(*) FROM case_notes n WHERE n.case_id = c.id) AS note_count
-		FROM cases c
-		WHERE c.group_key = $1 AND c.status IN ('open','investigating')
-		ORDER BY c.created_at DESC LIMIT 1`, groupKey)
-	c, err := scanCase(row)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	return c, err
-}
-
-// AppendAlertToCase appends an alert ID to a case's alert_ids (idempotent — a
-// repeat of the same alert is a no-op) and bumps updated_at.
-func (s *Store) AppendAlertToCase(caseID, alertID int64) error {
-	idJSON, _ := json.Marshal([]int64{alertID})
-	_, err := s.pool.Exec(context.Background(), `
-		UPDATE cases
-		SET alert_ids = alert_ids || $2::jsonb, updated_at = $3
-		WHERE id = $1 AND NOT (alert_ids @> $2::jsonb)`,
-		caseID, string(idJSON), time.Now().UnixMilli())
-	return err
-}
-
-// SetCaseDueAt updates a case's SLA deadline (epoch millis).
-func (s *Store) SetCaseDueAt(id, dueAt int64) error {
-	_, err := s.pool.Exec(context.Background(),
-		`UPDATE cases SET due_at = $2 WHERE id = $1`, id, dueAt)
-	return err
-}
-
-// ListOverdueCases returns open/investigating cases whose SLA deadline has
-// passed and that have not yet been flagged as breached.
-func (s *Store) ListOverdueCases(now int64) ([]*models.Case, error) {
-	rows, err := s.pool.Query(context.Background(), `
-		SELECT c.id, c.title, c.description, c.status, c.priority, c.severity,
-		       c.assignee, c.created_by, c.created_at, c.updated_at, c.closed_at,
-		       c.tags, c.alert_ids, c.agent_ids,
-		       c.group_key, c.due_at, c.sla_breached, c.escalated,
-		       (SELECT COUNT(*) FROM case_notes n WHERE n.case_id = c.id) AS note_count
-		FROM cases c
-		WHERE c.status IN ('open','investigating')
-		  AND c.due_at > 0 AND c.due_at < $1 AND c.sla_breached = FALSE
-		ORDER BY c.due_at ASC`, now)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var cases []*models.Case
-	for rows.Next() {
-		c, err := scanCaseRows(rows)
-		if err != nil {
-			return nil, err
-		}
-		cases = append(cases, c)
-	}
-	return cases, rows.Err()
-}
-
-// MarkCaseBreached flags a case as SLA-breached and escalated, optionally
-// raising its priority. newPriority may be "" to leave priority unchanged.
-func (s *Store) MarkCaseBreached(id int64, newPriority string) error {
-	now := time.Now().UnixMilli()
-	if newPriority != "" {
-		_, err := s.pool.Exec(context.Background(), `
-			UPDATE cases SET sla_breached = TRUE, escalated = TRUE, priority = $2, updated_at = $3
-			WHERE id = $1`, id, newPriority, now)
-		return err
-	}
-	_, err := s.pool.Exec(context.Background(), `
-		UPDATE cases SET sla_breached = TRUE, escalated = TRUE, updated_at = $2
-		WHERE id = $1`, id, now)
-	return err
-}
-
-// AddCaseHistory records one entry in a case's audit trail.
-func (s *Store) AddCaseHistory(h *models.CaseHistory) (int64, error) {
-	if h.CreatedAt == 0 {
-		h.CreatedAt = time.Now().UnixMilli()
-	}
-	var id int64
-	err := s.pool.QueryRow(context.Background(), `
-		INSERT INTO case_history (case_id, actor, action, field, old_value, new_value, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-		h.CaseID, h.Actor, h.Action, h.Field, h.OldValue, h.NewValue, h.CreatedAt,
-	).Scan(&id)
-	return id, err
-}
-
-// ListCaseHistory returns a case's audit trail, oldest first.
-func (s *Store) ListCaseHistory(caseID int64) ([]*models.CaseHistory, error) {
-	rows, err := s.pool.Query(context.Background(),
-		`SELECT id, case_id, actor, action, field, old_value, new_value, created_at
-		 FROM case_history WHERE case_id = $1 ORDER BY created_at ASC`, caseID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var hist []*models.CaseHistory
-	for rows.Next() {
-		h := &models.CaseHistory{}
-		if err := rows.Scan(&h.ID, &h.CaseID, &h.Actor, &h.Action, &h.Field,
-			&h.OldValue, &h.NewValue, &h.CreatedAt); err != nil {
-			return nil, err
-		}
-		hist = append(hist, h)
-	}
-	return hist, rows.Err()
 }
 
 // === Case Notes ===
@@ -1492,8 +1365,7 @@ func scanCase(row pgx.Row) (*models.Case, error) {
 	var status, priority, tagsJSON, alertsJSON, agentsJSON string
 	err := row.Scan(&c.ID, &c.Title, &c.Description, &status, &priority, &c.Severity,
 		&c.Assignee, &c.CreatedBy, &c.CreatedAt, &c.UpdatedAt, &c.ClosedAt,
-		&tagsJSON, &alertsJSON, &agentsJSON,
-		&c.GroupKey, &c.DueAt, &c.SLABreached, &c.Escalated, &c.NoteCount)
+		&tagsJSON, &alertsJSON, &agentsJSON, &c.NoteCount)
 	if err != nil {
 		return nil, err
 	}
@@ -1510,8 +1382,7 @@ func scanCaseRows(rows pgx.Rows) (*models.Case, error) {
 	var status, priority, tagsJSON, alertsJSON, agentsJSON string
 	err := rows.Scan(&c.ID, &c.Title, &c.Description, &status, &priority, &c.Severity,
 		&c.Assignee, &c.CreatedBy, &c.CreatedAt, &c.UpdatedAt, &c.ClosedAt,
-		&tagsJSON, &alertsJSON, &agentsJSON,
-		&c.GroupKey, &c.DueAt, &c.SLABreached, &c.Escalated, &c.NoteCount)
+		&tagsJSON, &alertsJSON, &agentsJSON, &c.NoteCount)
 	if err != nil {
 		return nil, err
 	}
