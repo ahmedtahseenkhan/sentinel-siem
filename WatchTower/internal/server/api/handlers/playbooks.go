@@ -50,6 +50,7 @@ func (h *PlaybookHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Name        string                    `json:"name"`
 		Description string                    `json:"description"`
 		Enabled     *bool                     `json:"enabled"`
+		DryRun      bool                      `json:"dry_run"`
 		Trigger     models.PlaybookTrigger    `json:"trigger"`
 		Actions     []models.PlaybookAction   `json:"actions"`
 	}
@@ -69,6 +70,7 @@ func (h *PlaybookHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Name:        req.Name,
 		Description: req.Description,
 		Enabled:     enabled,
+		DryRun:      req.DryRun,
 		Trigger:     req.Trigger,
 		Actions:     req.Actions,
 	}

@@ -65,6 +65,7 @@ func (s *Store) migrate() error {
 		"migrations/006_ueba.sql",
 		"migrations/007_rba.sql",
 		"migrations/008_partitioning.sql",
+		"migrations/010_playbook_dryrun.sql",
 	}
 	for _, f := range files {
 		data, err := migrations.ReadFile(f)
@@ -575,9 +576,9 @@ func (s *Store) CreatePlaybook(p *models.Playbook) (int64, error) {
 	actionsJSON, _ := json.Marshal(p.Actions)
 	var id int64
 	err := s.pool.QueryRow(context.Background(), `
-		INSERT INTO playbooks (name, description, enabled, trigger, actions, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-		p.Name, p.Description, p.Enabled,
+		INSERT INTO playbooks (name, description, enabled, dry_run, trigger, actions, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+		p.Name, p.Description, p.Enabled, p.DryRun,
 		string(triggerJSON), string(actionsJSON), p.CreatedAt, p.UpdatedAt,
 	).Scan(&id)
 	return id, err
@@ -585,13 +586,13 @@ func (s *Store) CreatePlaybook(p *models.Playbook) (int64, error) {
 
 func (s *Store) GetPlaybook(id int64) (*models.Playbook, error) {
 	row := s.pool.QueryRow(context.Background(), `
-		SELECT id, name, description, enabled, trigger, actions, created_at, updated_at, run_count
+		SELECT id, name, description, enabled, dry_run, trigger, actions, created_at, updated_at, run_count
 		FROM playbooks WHERE id = $1`, id)
 	return scanPlaybook(row)
 }
 
 func (s *Store) ListPlaybooks(enabledOnly bool) ([]*models.Playbook, error) {
-	query := `SELECT id, name, description, enabled, trigger, actions, created_at, updated_at, run_count FROM playbooks`
+	query := `SELECT id, name, description, enabled, dry_run, trigger, actions, created_at, updated_at, run_count FROM playbooks`
 	if enabledOnly {
 		query += " WHERE enabled = TRUE"
 	}
@@ -617,9 +618,9 @@ func (s *Store) UpdatePlaybook(p *models.Playbook) error {
 	triggerJSON, _ := json.Marshal(p.Trigger)
 	actionsJSON, _ := json.Marshal(p.Actions)
 	_, err := s.pool.Exec(context.Background(), `
-		UPDATE playbooks SET name=$1, description=$2, enabled=$3, trigger=$4, actions=$5, updated_at=$6
-		WHERE id=$7`,
-		p.Name, p.Description, p.Enabled, string(triggerJSON), string(actionsJSON), p.UpdatedAt, p.ID)
+		UPDATE playbooks SET name=$1, description=$2, enabled=$3, dry_run=$4, trigger=$5, actions=$6, updated_at=$7
+		WHERE id=$8`,
+		p.Name, p.Description, p.Enabled, p.DryRun, string(triggerJSON), string(actionsJSON), p.UpdatedAt, p.ID)
 	return err
 }
 
@@ -1337,7 +1338,7 @@ func (s *Store) ListVersionedFiles() ([]map[string]interface{}, error) {
 func scanPlaybook(row pgx.Row) (*models.Playbook, error) {
 	p := &models.Playbook{}
 	var triggerJSON, actionsJSON string
-	err := row.Scan(&p.ID, &p.Name, &p.Description, &p.Enabled,
+	err := row.Scan(&p.ID, &p.Name, &p.Description, &p.Enabled, &p.DryRun,
 		&triggerJSON, &actionsJSON, &p.CreatedAt, &p.UpdatedAt, &p.RunCount)
 	if err != nil {
 		return nil, err
@@ -1350,7 +1351,7 @@ func scanPlaybook(row pgx.Row) (*models.Playbook, error) {
 func scanPlaybookRows(rows pgx.Rows) (*models.Playbook, error) {
 	p := &models.Playbook{}
 	var triggerJSON, actionsJSON string
-	err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Enabled,
+	err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Enabled, &p.DryRun,
 		&triggerJSON, &actionsJSON, &p.CreatedAt, &p.UpdatedAt, &p.RunCount)
 	if err != nil {
 		return nil, err

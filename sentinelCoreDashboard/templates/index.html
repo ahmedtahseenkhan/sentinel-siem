@@ -4480,11 +4480,11 @@ CLOUD_SYNC_INTERVAL=15m</pre>
                 </div>
                 <div>
                   <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Rule IDs (comma-sep, empty=any)</label>
-                  <input id="pbRuleIds" type="text" placeholder="1001, 1002" style="width:100%;background:var(--surface-1);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:5px;font-size:12px;box-sizing:border-box">
+                  <input id="pbRuleIds" type="text" placeholder="e.g. 7001, 7003 — blank = any" style="width:100%;background:var(--surface-1);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:5px;font-size:12px;box-sizing:border-box">
                 </div>
                 <div style="grid-column:1/-1">
                   <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:3px">Rule Groups (comma-sep, empty=any)</label>
-                  <input id="pbRuleGroups" type="text" placeholder="authentication, fim, network" style="width:100%;background:var(--surface-1);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:5px;font-size:12px;box-sizing:border-box">
+                  <input id="pbRuleGroups" type="text" placeholder="e.g. brute_force, authentication — blank = any" style="width:100%;background:var(--surface-1);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:5px;font-size:12px;box-sizing:border-box">
                 </div>
               </div>
             </div>
@@ -4498,6 +4498,11 @@ CLOUD_SYNC_INTERVAL=15m</pre>
                 <div style="font-size:12px;color:var(--text-muted);font-style:italic">No actions yet. Click "Add Action" to build your playbook.</div>
               </div>
             </div>
+
+            <label for="pbDryRun" style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--text-primary);margin-bottom:18px;cursor:pointer;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+              <input type="checkbox" id="pbDryRun" style="width:15px;height:15px;margin-top:1px;cursor:pointer">
+              <span><b>Dry run</b> — log the actions this playbook would take, but don't execute them. Safely confirm the trigger matches before arming real responses (firewall-drop, kill-process, …).</span>
+            </label>
 
             <div style="display:flex;gap:10px;justify-content:flex-end">
               <button onclick="hidePlaybookModal()" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px 18px;border-radius:6px;cursor:pointer">Cancel</button>
