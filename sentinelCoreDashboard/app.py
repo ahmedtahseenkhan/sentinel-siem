@@ -3506,6 +3506,43 @@ def api_ar_kill_process():
         return _api_error(e)
 
 
+@app.route("/api/process-tree")
+def api_process_tree():
+    """Process-creation events for one agent, for the parent/child tree view."""
+    try:
+        agent_id = (request.args.get("agent_id") or "").strip()
+        hours = request.args.get("hours", 24, type=int)
+        if not agent_id:
+            return jsonify({"nodes": []})
+        from_ms = int(_time.time() * 1000) - max(1, hours) * 3600 * 1000
+        body = {
+            "size": 3000,
+            "query": {"bool": {"must": [
+                {"term": {"event_type": "process.new"}},
+                {"term": {"agent_id": agent_id}},
+                {"range": {"timestamp": {"gte": from_ms}}},
+            ]}},
+            "sort": [{"timestamp": "asc"}],
+            "_source": ["pid", "ppid", "name", "process_name", "exe", "cmdline",
+                        "user", "username", "timestamp"],
+        }
+        res = _os_search(f"{INDEX_PREFIX}-events-*", body) or {}
+        nodes = []
+        for h in res.get("hits", {}).get("hits", []):
+            s = h.get("_source", {})
+            nodes.append({
+                "pid": s.get("pid"),
+                "ppid": s.get("ppid"),
+                "name": s.get("name") or s.get("process_name") or "?",
+                "cmdline": s.get("cmdline") or s.get("exe") or "",
+                "user": s.get("user") or s.get("username") or "",
+                "timestamp": s.get("timestamp"),
+            })
+        return jsonify({"nodes": nodes, "agent_id": agent_id, "hours": hours})
+    except Exception as e:
+        return _api_error(e)
+
+
 @app.route("/api/active-response/isolate", methods=["POST"])
 def api_ar_isolate():
     """Isolate (network-quarantine) a specific agent, keeping the manager channel.

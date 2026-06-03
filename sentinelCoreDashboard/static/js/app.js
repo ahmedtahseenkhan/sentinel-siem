@@ -4945,6 +4945,7 @@ const GEO_CONTINENTS = [
     'correlations': loadCorrelationsPage,
     sca: loadScaPage,
     'threat-hunting': loadThreatHunting,
+    'process-tree': loadProcessTreePage,
     alerts: () => { _wireAlertChips(); loadAlerts(); },
     discover: () => {
       // Restore URL state first, then session, then apply density and load
@@ -9815,6 +9816,95 @@ async function applyAppControl(mode) {
     alert(r.ok && d.ok ? `Application control (${mode}) sent to ${who}.` : `Could not apply app-control: ${d.error || r.status}`);
   } catch (e) { alert('Could not apply app-control: ' + e); }
   closeAppControl();
+}
+
+// ── Process Tree ────────────────────────────────────────────────────────────
+let _ptHostsLoaded = false;
+let _ptNodes = [];
+async function _ptEnsureHosts() {
+  const sel = document.getElementById('ptHost');
+  if (!sel || _ptHostsLoaded) return;
+  await _ensureEntityAgentMap();
+  try {
+    const res = await fetch('/api/agents?limit=500').then(r => r.json()).catch(() => ({}));
+    const d = res && res.data;
+    const list = Array.isArray(res) ? res
+      : Array.isArray(res.agents) ? res.agents
+      : (d && Array.isArray(d.affected_items)) ? d.affected_items
+      : Array.isArray(d) ? d : [];
+    sel.innerHTML = list.map(a => {
+      const id = a.id || a.agent_id || '';
+      const name = a.hostname || a.name || id;
+      return `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`;
+    }).join('') || '<option value="">No agents</option>';
+    // Attach change/filter listeners once.
+    sel.addEventListener('change', loadProcessTreePage);
+    document.getElementById('ptWindow')?.addEventListener('change', loadProcessTreePage);
+    document.getElementById('ptSearch')?.addEventListener('input', () => _ptRender(_ptNodes));
+    _ptHostsLoaded = true;
+  } catch (e) {}
+}
+
+async function loadProcessTreePage() {
+  await _ptEnsureHosts();
+  const agentId = document.getElementById('ptHost')?.value || '';
+  const hours = document.getElementById('ptWindow')?.value || '24';
+  const meta = document.getElementById('ptMeta');
+  const tree = document.getElementById('ptTree');
+  if (!agentId) { if (tree) tree.innerHTML = ''; if (meta) meta.textContent = 'No host selected.'; return; }
+  if (meta) meta.textContent = 'Loading…';
+  let data;
+  try {
+    data = await fetch(`/api/process-tree?agent_id=${encodeURIComponent(agentId)}&hours=${encodeURIComponent(hours)}`).then(r => r.json());
+  } catch (e) { if (meta) meta.textContent = 'Error loading process tree.'; return; }
+  _ptNodes = (data && data.nodes) || [];
+  if (!_ptNodes.length) {
+    if (tree) tree.innerHTML = '';
+    if (meta) meta.textContent = 'No process-creation events for this host in the window. (Events are emitted as new processes start — they accumulate on a busy host.)';
+    return;
+  }
+  const who = (typeof _resolveEntity === 'function') ? _resolveEntity(agentId, 'agent') : agentId;
+  if (meta) meta.textContent = `${_ptNodes.length} process events · ${who}`;
+  _ptRender(_ptNodes);
+}
+
+function _ptRender(nodes) {
+  const tree = document.getElementById('ptTree');
+  if (!tree) return;
+  const filter = (document.getElementById('ptSearch')?.value || '').toLowerCase();
+  const byPid = {};
+  nodes.forEach(n => { if (n.pid != null) byPid[n.pid] = n; });
+  const children = {};
+  nodes.forEach(n => { (children[n.ppid] = children[n.ppid] || []).push(n); });
+  // Roots: ppid not present as a pid (or 0/null).
+  const rootSeen = new Set(), roots = [];
+  nodes.forEach(n => {
+    if ((!(n.ppid in byPid) || n.ppid === 0 || n.ppid == null) && !rootSeen.has(n.pid)) {
+      rootSeen.add(n.pid); roots.push(n);
+    }
+  });
+  const suspicious = /powershell|cmd\.exe|wscript|cscript|mshta|rundll32|regsvr32|\bnet1?\.exe|wmic|bitsadmin|certutil/i;
+  const seen = new Set(), lines = [];
+  function walk(node, depth) {
+    const key = node.pid + ':' + node.timestamp;
+    if (depth > 40 || seen.has(key)) return;
+    seen.add(key);
+    const name = node.name || '?';
+    const cmd = (node.cmdline || '').slice(0, 140);
+    const sus = suspicious.test(name) || suspicious.test(cmd);
+    if (!filter || (name + ' ' + cmd).toLowerCase().includes(filter)) {
+      const indent = '&nbsp;'.repeat(depth * 4);
+      const branch = depth > 0 ? '└─ ' : '';
+      lines.push(`<div style="white-space:nowrap">${indent}<span style="color:var(--text-muted)">${branch}</span>` +
+        `<span style="color:${sus ? '#f25555' : 'var(--accent)'};font-weight:600">${escapeHtml(name)}</span>` +
+        `<span style="color:var(--text-muted)"> [${escapeHtml(String(node.pid))}]</span>` +
+        (node.user ? `<span style="color:var(--text-muted)"> · ${escapeHtml(node.user)}</span>` : '') +
+        (cmd ? `<span style="color:var(--fg-3)"> · ${escapeHtml(cmd)}</span>` : '') + `</div>`);
+    }
+    (children[node.pid] || []).filter(k => k.pid !== node.pid).forEach(k => walk(k, depth + 1));
+  }
+  roots.forEach(r => walk(r, 0));
+  tree.innerHTML = lines.join('') || '<div style="color:var(--text-muted)">No processes match the filter.</div>';
 }
 
 async function loadPlaybooks() {
