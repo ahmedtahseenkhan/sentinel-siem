@@ -8658,6 +8658,18 @@ function switchRbaTab(tabKey) {
   });
 }
 
+// Map a raw accumulated RBA risk score to a readable 0–100 index. The raw score
+// is an uncapped point sum (per-alert weights, 24h rolling) that can reach the
+// millions under heavy load. Half-saturation at the entity threshold: 0 = no
+// risk, 50 = at the notable-firing threshold, asymptotes to 100 for large
+// pile-ups — so big scores stay distinguishable instead of all pinning at 100.
+function _riskIndex(score, threshold) {
+  score = Number(score) || 0;
+  threshold = Number(threshold) || 100;
+  if (score <= 0) return 0;
+  return Math.round(100 * score / (score + threshold));
+}
+
 function _renderRbaV2() {
   // Fetch cached data or use demo
   const res = window._rbaEntitiesCache || {};
@@ -8675,7 +8687,8 @@ function _renderRbaV2() {
   };
   _sk('rbaKpiEntities', String(entities.length), entities.length>0?'+'+entities.length:'OK', entities.length>0?'up':'ok', 'auto-discovered', 'rbaKpiEntitiesSub', 'rbaKpiEntitiesTag');
   _sk('rbaKpiNotables', String(notableCount), notableCount>0?'ATTN':'CLEAR', notableCount>0?'crit':'ok', 'over threshold (100)', 'rbaKpiNotablesSub', 'rbaKpiNotablesTag');
-  _sk('rbaKpiHighest',  String(highest), highest>0?'+'+highest:'OK', highest>0?'up':'ok', highest>0?'highest score':'below threshold', 'rbaKpiHighestSub', 'rbaKpiHighestTag');
+  const highestIdx = _riskIndex(highest, 100);
+  _sk('rbaKpiHighest',  String(highestIdx), highest>0?(highestIdx>=70?'HIGH':'OK'):'OK', highest>0?(highestIdx>=70?'up':'ok'):'ok', highest>0?('raw '+Number(highest).toLocaleString()):'below threshold', 'rbaKpiHighestSub', 'rbaKpiHighestTag');
   const metaEl=document.getElementById('rbaEntitiesMeta'); if(metaEl) metaEl.textContent=entities.length;
   // Tab counts
   const ec=document.getElementById('rbaTabEntitiesCount'); if(ec) ec.textContent=entities.length;
@@ -8692,7 +8705,8 @@ function _renderRbaV2() {
       ${entities.map(e => {
         const s     = e.score || e.current_score || 0;
         const thr   = e.threshold || 100;
-        const pct   = Math.min(100, Math.round(s/thr*100));
+        const idx   = _riskIndex(s, thr);
+        const pct   = idx;
         const tone  = s>=thr?'hot':s>=thr*.7?'warm':'';
         const sCol  = s>=thr?'var(--crit)':s>=thr*.7?'var(--high)':'var(--ok)';
         const sBg   = s>=thr?'var(--crit-soft,rgba(242,85,85,.12))':s>=thr*.7?'var(--high-soft,rgba(245,158,11,.12))':'var(--ok-soft,rgba(52,211,153,.12))';
@@ -8700,7 +8714,7 @@ function _renderRbaV2() {
         return `<div class="tbl-r" style="grid-template-columns:28px 1fr 90px 70px 1fr 70px 80px 120px">
           <span>${badge}</span>
           <span class="tbl-pri" title="${escapeHtml(e.id||e.entity_id||'')}" style="${e.mono?'font-family:var(--font-mono);font-size:11px':'font-size:12px'}">${escapeHtml(typeof _resolveEntity==='function' ? _resolveEntity(e.id||e.entity_id, e.entity_type||'agent') : (e.id||e.entity_id||'—'))}</span>
-          <span><span style="font-family:var(--font-mono);font-size:13px;font-weight:500;color:${sCol};padding:2px 8px;border-radius:4px;background:${sBg}">${s}</span></span>
+          <span><span title="raw score: ${Number(s).toLocaleString()}" style="font-family:var(--font-mono);font-size:13px;font-weight:500;color:${sCol};padding:2px 8px;border-radius:4px;background:${sBg}">${idx}</span></span>
           <span class="tbl-mono" style="color:var(--fg-4)">${thr}</span>
           <span style="display:flex;align-items:center;gap:8px">
             <span class="risk-prog ${tone}"><i style="width:${pct}%"></i></span>
@@ -8727,7 +8741,7 @@ function _renderRbaV2() {
         ${notables.map(n => `<div class="tbl-r" style="grid-template-columns:110px 1fr 70px 90px 1fr 90px">
           <span class="tbl-mono">${escapeHtml(n.id||'—')}</span>
           <span class="tbl-pri" title="${escapeHtml(n.entity||n.entity_id||'')}">${escapeHtml(typeof _resolveEntity==='function' ? _resolveEntity(n.entity||n.entity_id, n.entity_type||'agent') : (n.entity||n.entity_id||'—'))}</span>
-          <span style="font-family:var(--font-mono);color:var(--crit);font-weight:500">${n.score||n.risk_score||0}</span>
+          <span title="raw score: ${Number(n.score||n.risk_score||0).toLocaleString()}" style="font-family:var(--font-mono);color:var(--crit);font-weight:500">${_riskIndex(n.score||n.risk_score||0, 100)}</span>
           <span><span class="pill ${n.sev||'crit'}">${n.sev||'crit'}</span></span>
           <span class="tbl-muted">${escapeHtml(n.summary||n.description||'—')}</span>
           <span class="tbl-time">${escapeHtml(n.triggered||n.created_at||'—')}</span>
@@ -8869,9 +8883,10 @@ async function loadRbaEntities() {
   }
 
   tbody.innerHTML = entities.map(e => {
-    const pct   = Math.min(100, Math.round(e.current_score / e.threshold * 100));
-    const level = pct >= 100 ? 'danger' : pct >= 75 ? 'high' : pct >= 50 ? 'medium' : 'ok';
-    const badgeClass = pct >= 100 ? 'critical' : pct >= 75 ? 'high' : pct >= 50 ? 'medium' : 'low';
+    const ratio = (e.current_score || 0) / (e.threshold || 100);
+    const pct   = _riskIndex(e.current_score, e.threshold);
+    const level = ratio >= 1 ? 'danger' : ratio >= .75 ? 'high' : ratio >= .5 ? 'medium' : 'ok';
+    const badgeClass = ratio >= 1 ? 'critical' : ratio >= .75 ? 'high' : ratio >= .5 ? 'medium' : 'low';
     const bar   = `<div class="risk-bar-wrap">
       <div class="risk-bar-track"><div class="risk-bar-fill risk-bar-fill--${level}" style="width:${pct}%"></div></div>
       <span class="risk-bar-pct">${pct}%</span>
@@ -8880,7 +8895,7 @@ async function loadRbaEntities() {
     const notablesCls = e.notables_fired > 0 ? 'style="color:#ef4444;font-weight:600"' : 'style="color:var(--text-muted)"';
     return `<tr title="${escHtml(e.entity_id)}">
       <td style="font-weight:600;font-size:12px;font-family:var(--font-mono)">${escHtml(rbaDisplayName)}</td>
-      <td><span class="risk-badge risk-badge--${badgeClass}">${e.current_score}</span></td>
+      <td><span class="risk-badge risk-badge--${badgeClass}" title="raw score: ${Number(e.current_score||0).toLocaleString()}">${_riskIndex(e.current_score, e.threshold)}</span></td>
       <td style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono)">${e.threshold}</td>
       <td style="min-width:130px">${bar}</td>
       <td style="font-size:12px">${e.alert_count_7d || '—'}</td>
@@ -8917,7 +8932,7 @@ async function loadRbaNotables() {
     <tr title="${escHtml(n.entity_id)}">
       <td style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono)">#${n.id}</td>
       <td style="font-weight:600;font-size:12px;font-family:var(--font-mono)">${escHtml(_resolveEntity(n.entity_id, n.entity_type))}</td>
-      <td><span class="risk-badge risk-badge--critical">${n.risk_score}</span></td>
+      <td><span class="risk-badge risk-badge--critical" title="raw score: ${Number(n.risk_score||0).toLocaleString()}">${_riskIndex(n.risk_score||0, 100)}</span></td>
       <td style="font-size:12px;color:var(--text-muted);max-width:300px">${escHtml(n.description)}</td>
       <td style="font-size:12px">${n.case_id ? `<a href="#" onclick="event.preventDefault()" style="color:var(--accent)">Case #${n.case_id}</a>` : '<span style="color:var(--text-muted)">—</span>'}</td>
       <td style="font-size:12px;color:var(--text-muted)">${fmtTs(n.created_at)}</td>
