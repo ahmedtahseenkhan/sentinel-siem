@@ -155,6 +155,16 @@ collectors:
       - "C:\\Users\\Public\\Documents"
       - "C:\\Users\\Public\\Desktop"
 
+  # In-memory YARA scanning of running processes. Requires yara64.exe — drop it
+  # in "C:\Program Files\SentinelAgent\" (or set yara_path), then flip enabled to
+  # true. Stays idle if the binary is missing.
+  yara_memory:
+    enabled: false
+    interval: "10m"
+    yara_path: "C:\\Program Files\\SentinelAgent\\yara64.exe"
+    scan_timeout_secs: 20
+    max_procs: 200
+
 performance:
   max_cpu_percent: 25
   max_memory_bytes: 268435456

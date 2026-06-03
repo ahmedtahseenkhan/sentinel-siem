@@ -34,6 +34,13 @@ collectors:
     file_count: 2
     paths:
       - "/tmp"
+  # In-memory YARA scanning. Disabled here: the distroless agent image has no
+  # `yara` binary and runs nonroot (can't read other PIDs). Enable on a real
+  # host where yara is installed and the agent runs as root.
+  yara_memory:
+    enabled: false
+    interval: "10m"
+    scan_timeout_secs: 20
 
 # Active Response — lets SOAR playbooks run firewall-drop/kill-process here.
 # NOTE: inside Docker, iptables needs the NET_ADMIN capability, so the watchnode

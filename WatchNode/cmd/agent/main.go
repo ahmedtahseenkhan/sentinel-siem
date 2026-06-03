@@ -24,6 +24,7 @@ import (
 	"github.com/watchnode/watchnode/internal/collectors/syscollector"
 	"github.com/watchnode/watchnode/internal/collectors/system"
 	"github.com/watchnode/watchnode/internal/collectors/vulnerability"
+	"github.com/watchnode/watchnode/internal/collectors/yarascan"
 	"github.com/watchnode/watchnode/internal/communication"
 	"github.com/watchnode/watchnode/internal/models"
 	"github.com/watchnode/watchnode/internal/updater"
@@ -100,7 +101,7 @@ func main() {
 				log.Warn("config integrity check failed to init", zap.Error(err))
 			} else {
 				stopCh := ctx.Done()
-			go checker.RunPeriodicCheck(stopCh, func(path, expected, current string) {
+				go checker.RunPeriodicCheck(stopCh, func(path, expected, current string) {
 					log.Warn("CONFIG TAMPER DETECTED",
 						zap.String("path", path),
 						zap.String("expected_sha256", expected),
@@ -203,6 +204,9 @@ func buildCollectors(cfg *agent.Config) []models.Collector {
 	}
 	if cfg.Collectors.Canary.Enabled {
 		collectors = append(collectors, canary.New(cfg.Collectors.Canary))
+	}
+	if cfg.Collectors.Yara.Enabled {
+		collectors = append(collectors, yarascan.New(cfg.Collectors.Yara))
 	}
 	if cfg.Collectors.Vulnerability.Enabled {
 		collectors = append(collectors, vulnerability.New(cfg.Collectors.Vulnerability))
