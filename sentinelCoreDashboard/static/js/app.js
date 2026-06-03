@@ -7867,7 +7867,7 @@ async function loadCases() {
   tbody.innerHTML = cases.map(c => `
     <div class="tbl-r discover-row" style="${caseW};cursor:pointer" onclick="openCaseDetail(${c.id})">
       <span class="tbl-mono" style="color:var(--fg-4)">#${c.id}</span>
-      <span class="tbl-pri">${escHtml(c.title)}</span>
+      <span class="tbl-pri">${escHtml(c.title)}${slaBadge(c)}</span>
       <span><span class="pill" style="background:${statusColor[c.status]||'var(--fg-4)'}22;color:${statusColor[c.status]||'var(--fg-3)'};border:1px solid ${statusColor[c.status]||'var(--line)'}44">${c.status}</span></span>
       <span style="color:${priorityColor[c.priority]||'var(--fg-4)'};font-weight:600;font-size:11px;text-transform:uppercase">${c.priority}</span>
       <span class="tbl-mono">${c.assignee || '—'}</span>
@@ -7891,7 +7891,11 @@ async function openCaseDetail(id) {
   const priorityColor = { critical:'#ef4444', high:'#f97316', medium:'#f59e0b', low:'#6b7280' };
   const statusColor   = { open:'#f59e0b', investigating:'#3b82f6', resolved:'#10b981', closed:'#6b7280', false_positive:'#8b5cf6' };
 
-  document.getElementById('detailCaseId').textContent    = `Case #${c.id}  ·  Created ${fmtTs(c.created_at)}`;
+  let idLine = `Case #${c.id}  ·  Created ${fmtTs(c.created_at)}`;
+  if (c.sla_breached)              idLine += '  ·  ⚠ SLA breached';
+  else if (c.due_at && c.due_at < Date.now() && c.status !== 'resolved' && c.status !== 'closed') idLine += '  ·  ⚠ Overdue';
+  else if (c.due_at)              idLine += `  ·  Due ${fmtTs(c.due_at)}`;
+  document.getElementById('detailCaseId').textContent    = idLine;
   document.getElementById('detailCaseTitle').textContent = c.title || '';
   document.getElementById('detailCaseDesc').textContent  = c.description || '—';
   document.getElementById('detailCaseStatus').textContent  = c.status;
@@ -7912,6 +7916,43 @@ async function openCaseDetail(id) {
 
   await loadCaseNotes(id);
   await loadCaseEvidence(id);
+  await loadCaseHistory(id);
+}
+
+// slaBadge renders a small chip reflecting a case's SLA state for the list view.
+function slaBadge(c) {
+  const chip = (txt, col) => ` <span style="background:${col}22;color:${col};border:1px solid ${col}55;font-size:9px;padding:1px 5px;border-radius:4px;margin-left:6px;font-weight:600;text-transform:uppercase">${txt}</span>`;
+  if (c.sla_breached) return chip('SLA breached', '#ef4444');
+  if (!c.due_at || c.status === 'resolved' || c.status === 'closed') return '';
+  const now = Date.now();
+  if (c.due_at < now) return chip('Overdue', '#f97316');
+  const mins = Math.round((c.due_at - now) / 60000);
+  if (mins <= 60) return chip(`Due ${mins}m`, '#f59e0b');
+  return chip(`Due ${Math.round(mins / 60)}h`, '#6b7280');
+}
+
+async function loadCaseHistory(id) {
+  const el = document.getElementById('detailCaseHistory');
+  if (!el) return;
+  const res  = await fetch(`/api/cases/${id}/history`).then(r => r.json()).catch(() => ({}));
+  const hist = res.data || [];
+  if (!hist.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-muted);font-style:italic">No history yet.</div>';
+    return;
+  }
+  const label = { created:'Created', status_changed:'Status', assignee_changed:'Assignee', priority_changed:'Priority', sla_breached:'SLA breached' };
+  el.innerHTML = hist.map(h => {
+    let detail;
+    if (h.action === 'created')           detail = 'Case opened';
+    else if (h.action === 'sla_breached') detail = `Escalated ${escHtml(h.old_value)} → ${escHtml(h.new_value)}`;
+    else                                  detail = `${escHtml(h.old_value || '—')} → ${escHtml(h.new_value || '—')}`;
+    return `<div style="display:flex;gap:10px;align-items:baseline;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)">
+      <span style="color:var(--text-muted);white-space:nowrap;min-width:140px">${fmtTs(h.created_at)}</span>
+      <span style="font-weight:600;color:var(--text-primary);min-width:90px">${label[h.action] || escHtml(h.action)}</span>
+      <span style="color:var(--text-secondary);flex:1">${detail}</span>
+      <span style="color:var(--text-muted)">${escHtml(h.actor || '')}</span>
+    </div>`;
+  }).join('');
 }
 
 function closeCaseDetail() {
@@ -8620,7 +8661,7 @@ function _renderRbaV2() {
         const badge = e.badge ? `<span class="entbadge" style="background:${e.color||'#555'}">${escapeHtml(e.badge)}</span>` : `<span class="entbadge idle">·</span>`;
         return `<div class="tbl-r" style="grid-template-columns:28px 1fr 90px 70px 1fr 70px 80px 120px">
           <span>${badge}</span>
-          <span class="tbl-pri" style="${e.mono?'font-family:var(--font-mono);font-size:11px':'font-size:12px'}">${escapeHtml(e.id||e.entity_id||'—')}</span>
+          <span class="tbl-pri" title="${escapeHtml(e.id||e.entity_id||'')}" style="${e.mono?'font-family:var(--font-mono);font-size:11px':'font-size:12px'}">${escapeHtml(typeof _resolveEntity==='function' ? _resolveEntity(e.id||e.entity_id, e.entity_type||'agent') : (e.id||e.entity_id||'—'))}</span>
           <span><span style="font-family:var(--font-mono);font-size:13px;font-weight:500;color:${sCol};padding:2px 8px;border-radius:4px;background:${sBg}">${s}</span></span>
           <span class="tbl-mono" style="color:var(--fg-4)">${thr}</span>
           <span style="display:flex;align-items:center;gap:8px">
@@ -8647,7 +8688,7 @@ function _renderRbaV2() {
         </div>
         ${notables.map(n => `<div class="tbl-r" style="grid-template-columns:110px 1fr 70px 90px 1fr 90px">
           <span class="tbl-mono">${escapeHtml(n.id||'—')}</span>
-          <span class="tbl-pri">${escapeHtml(n.entity||n.entity_id||'—')}</span>
+          <span class="tbl-pri" title="${escapeHtml(n.entity||n.entity_id||'')}">${escapeHtml(typeof _resolveEntity==='function' ? _resolveEntity(n.entity||n.entity_id, n.entity_type||'agent') : (n.entity||n.entity_id||'—'))}</span>
           <span style="font-family:var(--font-mono);color:var(--crit);font-weight:500">${n.score||n.risk_score||0}</span>
           <span><span class="pill ${n.sev||'crit'}">${n.sev||'crit'}</span></span>
           <span class="tbl-muted">${escapeHtml(n.summary||n.description||'—')}</span>
