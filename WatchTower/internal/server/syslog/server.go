@@ -198,6 +198,13 @@ func (s *Server) parse(raw, srcIP string) *models.Event {
 	fields["facility"] = facility
 	fields["severity"] = severity
 
+	// Keep the wire format (rfc3164/rfc5424/syslog) as a field, but emit a
+	// canonical event Type the rule corpus actually matches on. The engine does
+	// an EXACT type match, and the syslog-sourced rules (firewall, recon, DoS,
+	// auth) are written against "logs.syslog" — so emitting "syslog.rfc3164"
+	// here meant none of them ever fired on syslog/pfSense events.
+	fields["syslog_format"] = eventType
+
 	// Decode message body using the YAML-driven syslog decoder engine.
 	if s.decoder != nil {
 		s.decoder.Decode(appName, message, fields)
@@ -206,7 +213,7 @@ func (s *Server) parse(raw, srcIP string) *models.Event {
 	return &models.Event{
 		ID:        uuid.New().String(),
 		Timestamp: ts,
-		Type:      eventType,
+		Type:      "logs.syslog",
 		AgentID:   "syslog:" + srcIP,
 		AgentName: hostname,
 		Fields:    fields,
