@@ -110,6 +110,7 @@ func (s *Server) routes() *chi.Mux {
 		rbah := handlers.NewRbaHandler(s.store)
 		r.Route("/rba", func(r chi.Router) {
 			r.Get("/entities", rbah.ListEntities)
+			r.Post("/entities/purge", rbah.PurgeEntities)
 			r.Get("/entities/{id}", rbah.GetEntity)
 			r.Put("/entities/{id}/threshold", rbah.SetThreshold)
 			r.Get("/notables", rbah.ListNotables)
@@ -157,7 +158,7 @@ func (s *Server) routes() *chi.Mux {
 		})
 		r.Get("/playbook-executions", pbh.AllExecutions)
 
-		csh := handlers.NewCaseHandler(s.store)
+		csh := handlers.NewCaseHandler(s.store, s.casesCfg, s.caseNotifier)
 		r.Route("/cases", func(r chi.Router) {
 			r.Get("/", csh.List)
 			r.Post("/", csh.Create)
@@ -168,6 +169,7 @@ func (s *Server) routes() *chi.Mux {
 			r.Post("/{id}/notes", csh.AddNote)
 			r.Get("/{id}/evidence", csh.ListEvidence)
 			r.Post("/{id}/evidence", csh.AddEvidence)
+			r.Get("/{id}/history", csh.ListHistory)
 		})
 	})
 

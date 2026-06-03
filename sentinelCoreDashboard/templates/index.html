@@ -3999,6 +3999,10 @@ CLOUD_SYNC_INTERVAL=15m</pre>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
                 Configure thresholds
               </button>
+              <button class="act-btn" id="rbaPurgeBtn" onclick="purgeStaleEntities()" title="Remove risk scores for old agent IDs that are no longer registered, so the board only shows live machines by hostname">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                Clear stale entities
+              </button>
             </div>
           </div>
 
@@ -4651,6 +4655,12 @@ CLOUD_SYNC_INTERVAL=15m</pre>
               <input id="newEvidenceContent" type="text" placeholder="Content/reference" style="flex:2;min-width:160px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:6px;font-size:12px">
               <button onclick="submitEvidence()" class="btn btn-primary" style="font-size:12px;padding:6px 14px">Add</button>
             </div>
+          </div>
+
+          <!-- Audit trail -->
+          <div>
+            <div style="font-size:11px;color:var(--text-muted);margin:14px 0 10px;text-transform:uppercase;letter-spacing:0.5px">Audit Trail</div>
+            <div id="detailCaseHistory" style="display:flex;flex-direction:column;gap:6px"></div>
           </div>
         </div>
 

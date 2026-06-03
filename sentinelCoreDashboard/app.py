@@ -3555,6 +3555,8 @@ def api_cases_update(case_id):
     try:
         from watchtower_client import watchtower_request
         body = request.get_json(force=True) or {}
+        # Stamp who made the change so the case audit trail is accurate.
+        body.setdefault("actor", session.get("username", "anonymous"))
         res = watchtower_request(f"/api/v1/cases/{case_id}", method="PUT", json_body=body)
         return jsonify(res or {})
     except Exception as e:
@@ -3608,6 +3610,16 @@ def api_cases_evidence_add(case_id):
         body.setdefault("added_by", user)
         res = watchtower_request(f"/api/v1/cases/{case_id}/evidence", method="POST", json_body=body)
         return jsonify(res or {}), 201
+    except Exception as e:
+        return _api_error(e)
+
+@app.route("/api/cases/<int:case_id>/history", methods=["GET"])
+def api_cases_history_list(case_id):
+    """Case audit trail (status/assignee/priority changes, SLA breaches)."""
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request(f"/api/v1/cases/{case_id}/history", method="GET")
+        return jsonify(res or {"data": []})
     except Exception as e:
         return _api_error(e)
 
@@ -3779,6 +3791,55 @@ def api_rba_entity(entity_id):
         return jsonify(res or {})
     except Exception as e:
         return _api_error(e)
+
+@app.route("/api/rba/entities/purge-stale", methods=["POST"])
+def api_rba_purge_stale():
+    """Remove RBA/UEBA risk state for 'ghost' entities.
+
+    A ghost is an agent ID that the risk engine still tracks but that is no
+    longer present in /api/agents — typically an old or re-installed node that
+    minted a throwaway ID. Those can never resolve to a hostname, so they show
+    as raw hex on the risk boards. We keep live agents (they resolve) and
+    readable syslog sources (``syslog:<ip>``), and purge the rest.
+    """
+    try:
+        from watchtower_client import watchtower_request
+        # 1) Live agent IDs — these resolve to a hostname, so keep them.
+        live = set()
+        try:
+            agents = watchtower_request("/api/v1/agents", method="GET", params={"limit": 5000}) or {}
+            for a in (agents.get("data") or []):
+                aid = a.get("id") or a.get("agent_id")
+                if aid:
+                    live.add(str(aid))
+        except Exception:
+            live = set()
+        # Safety: if the manager returned no agents at all, refuse to purge so a
+        # transient hiccup can't wipe the whole board.
+        if not live:
+            return jsonify({"deleted": 0, "stale": [],
+                            "error": "no live agents available — refusing to purge"}), 409
+        # 2) Collect every entity currently tracked by RBA + UEBA.
+        candidates = set()
+        for path in ("/api/v1/rba/entities", "/api/v1/ueba/risk-scores"):
+            res = watchtower_request(path, method="GET", params={"limit": 5000}) or {}
+            for e in (res.get("data") or []):
+                eid = e.get("entity_id") or e.get("id")
+                if eid:
+                    candidates.add(str(eid))
+        # 3) Stale = tracked, not a live agent, not a readable syslog source.
+        stale = sorted(
+            eid for eid in candidates
+            if eid not in live and not eid.startswith("syslog:")
+        )
+        if not stale:
+            return jsonify({"deleted": 0, "stale": []})
+        res = watchtower_request("/api/v1/rba/entities/purge", method="POST",
+                                 json_body={"entity_ids": stale}) or {}
+        return jsonify({"deleted": res.get("deleted", 0), "stale": stale})
+    except Exception as e:
+        return _api_error(e)
+
 
 @app.route("/api/rba/entities/<entity_id>/threshold", methods=["PUT"])
 def api_rba_threshold(entity_id):
