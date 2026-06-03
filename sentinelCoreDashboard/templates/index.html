@@ -4456,6 +4456,27 @@ CLOUD_SYNC_INTERVAL=15m</pre>
         </section>
 
         <!-- Create Playbook Modal -->
+        <div id="appControlModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1001;align-items:center;justify-content:center">
+          <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:26px;width:520px;max-width:94vw">
+            <h3 style="margin:0 0 6px">Application control · <span id="appControlTarget" style="color:var(--accent)">—</span></h3>
+            <p style="margin:0 0 16px;font-size:12px;color:var(--text-muted);line-height:1.5">
+              Applies the Windows AppLocker baseline (Microsoft default rules). It allows execution from
+              <b>Program Files</b> and <b>Windows</b> only — so anything run from user-writable folders
+              (<b>Downloads</b>, <b>%TEMP%</b>, <b>%APPDATA%</b>) is blocked. That stops most commodity malware
+              and ransomware, kernel-enforced by Windows. <b>Start with Audit</b>, review the events, then Enforce.
+              Enforcement requires Windows Enterprise/Education/Server.
+            </p>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <button onclick="applyAppControl('audit')" style="text-align:left;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:10px 14px;border-radius:8px;cursor:pointer;font-size:13px"><b>Audit</b> — log what would be blocked, block nothing (safe first step)</button>
+              <button onclick="applyAppControl('enforce')" style="text-align:left;background:rgba(242,85,85,.10);border:1px solid rgba(242,85,85,.4);color:var(--text-primary);padding:10px 14px;border-radius:8px;cursor:pointer;font-size:13px"><b style="color:#f25555">Enforce</b> — block execution from user-writable folders</button>
+              <button onclick="applyAppControl('clear')" style="text-align:left;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:10px 14px;border-radius:8px;cursor:pointer;font-size:13px"><b>Clear</b> — remove the application-control policy</button>
+            </div>
+            <div style="display:flex;justify-content:flex-end;margin-top:16px">
+              <button onclick="closeAppControl()" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px 18px;border-radius:6px;cursor:pointer">Cancel</button>
+            </div>
+          </div>
+        </div>
+
         <div id="playbookModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;align-items:flex-start;justify-content:center;padding-top:40px;overflow-y:auto">
           <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:28px;width:640px;max-width:95vw;margin-bottom:40px">
             <h3 style="margin:0 0 20px">New Playbook</h3>
