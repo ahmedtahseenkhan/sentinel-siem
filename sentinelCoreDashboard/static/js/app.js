@@ -8609,6 +8609,34 @@ async function loadRbaPage() {
   _renderRbaV2();
 }
 
+// Purge "ghost" entities — agent IDs no longer registered (old/re-installed
+// nodes) that can never resolve to a hostname. Server keeps live agents and
+// syslog sources and clears the rest, then we refresh the board.
+async function purgeStaleEntities() {
+  const btn = document.getElementById('rbaPurgeBtn');
+  if (!confirm('Clear risk scores for stale/ghost entities?\n\nThis removes RBA + UEBA history for agent IDs that are no longer registered (old or re-installed nodes that show as raw hex). Live agents and syslog sources are kept.')) return;
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = 'Clearing…'; }
+  try {
+    const res = await fetch('/api/rba/entities/purge-stale', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert('Could not clear stale entities: ' + (data.error || res.status));
+    } else if ((data.deleted || 0) === 0) {
+      alert('No stale entities found — the board already shows only live machines.');
+    } else {
+      alert('Cleared ' + data.deleted + ' stale entit' + (data.deleted === 1 ? 'y' : 'ies') + '. The board now shows only your live machines.');
+    }
+  } catch (e) {
+    alert('Could not clear stale entities: ' + e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+    // Rebuild the agent→hostname cache and reload the board.
+    _entityAgentMap = {};
+    await loadRbaPage();
+  }
+}
+
 function switchRbaTab(tabKey) {
   ['entities','notables','weights'].forEach(k => {
     const pEl = document.getElementById(`rbaPaneEntities`.replace('entities', k === 'entities' ? 'entities' : k[0].toUpperCase()+k.slice(1)));

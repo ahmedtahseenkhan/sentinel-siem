@@ -111,6 +111,35 @@ func (h *RbaHandler) DeleteWeight(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"data": map[string]int{"rule_id": ruleID}, "deleted": true})
 }
 
+// PurgeEntities POST /api/v1/rba/entities/purge   body: {"entity_ids": ["..."]}
+//
+// Deletes all RBA + UEBA state for the supplied entity IDs. The dashboard sends
+// the set of "ghost" entities (agent IDs no longer present in /api/agents, which
+// can never resolve to a hostname) so the risk boards only show live machines.
+func (h *RbaHandler) PurgeEntities(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		EntityIDs []string `json:"entity_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if len(req.EntityIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "entity_ids required")
+		return
+	}
+	if len(req.EntityIDs) > 5000 {
+		writeError(w, http.StatusBadRequest, "too many entity_ids (max 5000)")
+		return
+	}
+	n, err := h.store.DeleteEntities(req.EntityIDs)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"deleted": n, "requested": len(req.EntityIDs)})
+}
+
 // SetThreshold PUT /api/v1/rba/entities/:id/threshold
 func (h *RbaHandler) SetThreshold(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
