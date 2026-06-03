@@ -80,7 +80,7 @@ decoders:
 
   - name: dnsmasq-query
     parent: dnsmasq
-    prematch: "query["
+    prematch: "query\\["
     regex: "query\\[(?P<query_type>[^\\]]+)\\] (?P<query_name>\\S+) from (?P<src_ip>\\S+)"
     static_fields:
       action: dns-query

@@ -18,7 +18,7 @@ decoders:
 
   - name: nginx-error
     parent: nginx
-    prematch: "[error]"
+    prematch: "\\[error\\]"
     regex: "\\[(?P<log_level>\\w+)\\] \\d+#\\d+:(?:.*?\\*\\d+)? (?P<error_msg>[^,]+), client: (?P<src_ip>[^,]+), server: (?P<server>[^,]+), request: \"(?P<method>\\S+) (?P<url>\\S+)"
     static_fields:
       action: http-error
@@ -48,7 +48,7 @@ decoders:
 
   - name: apache-error
     parent: apache
-    prematch: "[error]"
+    prematch: "\\[error\\]"
     regex: "\\[(?P<log_level>[^\\]]+)\\].*?\\[client (?P<src_ip>[^\\]]+)\\] (?P<error_msg>AH\\d+: .+)"
     static_fields:
       action: http-error
