@@ -14,7 +14,7 @@ decoders:
 
   - name: snort-alert
     parent: snort
-    prematch: "[**]"
+    prematch: "\\[\\*\\*\\]"
     regex: "\\[\\*\\*\\] \\[(?P<gid>\\d+):(?P<sid>\\d+):(?P<rev>\\d+)\\] (?P<alert_msg>[^[]+) \\[\\*\\*\\]"
     static_fields:
       action: ids-alert
@@ -22,7 +22,7 @@ decoders:
 
   - name: snort-alert-full
     parent: snort
-    prematch: "[Classification:"
+    prematch: "\\[Classification:"
     regex: "\\[Classification: (?P<classification>[^\\]]+)\\] \\[Priority: (?P<priority>\\d+)\\] \\{(?P<protocol>\\S+)\\} (?P<src_ip>[^:]+):(?P<src_port>\\d+) -> (?P<dst_ip>[^:]+):(?P<dst_port>\\d+)"
     static_fields:
       action: ids-alert
@@ -30,7 +30,7 @@ decoders:
 
   - name: snort-icmp-alert
     parent: snort
-    prematch: "{ICMP}"
+    prematch: "\\{ICMP\\}"
     regex: "\\{ICMP\\} (?P<src_ip>\\S+) -> (?P<dst_ip>\\S+)"
     static_fields:
       action: ids-alert
@@ -55,7 +55,7 @@ decoders:
 
   - name: suricata-fast-alert
     parent: suricata
-    prematch: "[**]"
+    prematch: "\\[\\*\\*\\]"
     regex: "\\[\\*\\*\\] \\[(?P<gid>\\d+):(?P<sid>\\d+):(?P<rev>\\d+)\\] (?P<alert_msg>[^[]+) \\[\\*\\*\\].*?\\[Priority: (?P<priority>\\d+)\\] \\{(?P<protocol>\\S+)\\} (?P<src_ip>[^:]+):(?P<src_port>\\d+) -> (?P<dst_ip>[^:]+):(?P<dst_port>\\d+)"
     static_fields:
       action: ids-alert
