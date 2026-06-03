@@ -1749,6 +1749,9 @@ const GEO_CONTINENTS = [
           <button type="button" class="adt-act-btn" title="Release isolation" aria-label="Release isolation" onclick="event.stopPropagation();releaseAgent('${escapeHtml(fullId)}','${escapeHtml(hostnameRaw)}')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M4 4l16 16"/></svg>
           </button>
+          <button type="button" class="adt-act-btn" title="Application control (AppLocker prevention)" aria-label="Application control" onclick="event.stopPropagation();openAppControl('${escapeHtml(fullId)}','${escapeHtml(hostnameRaw)}')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </button>
           <button type="button" class="adt-act-btn btn-agent-view" data-agent-id="${escapeHtml(fullId)}" title="Open node detail" aria-label="Open node detail">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
           </button>
@@ -9777,6 +9780,39 @@ async function releaseAgent(agentId, hostname) {
     const d = await r.json().catch(() => ({}));
     alert(r.ok && d.ok ? `Release command sent to ${who}.` : `Could not release ${who}: ${d.error || r.status}`);
   } catch (e) { alert('Could not release: ' + e); }
+}
+
+// Application control (Windows AppLocker) — pre-execution prevention.
+let _appCtlAgent = null, _appCtlHost = null;
+function openAppControl(agentId, hostname) {
+  _appCtlAgent = agentId; _appCtlHost = hostname || agentId;
+  const t = document.getElementById('appControlTarget');
+  if (t) t.textContent = _appCtlHost;
+  const m = document.getElementById('appControlModal');
+  if (m) m.style.display = 'flex';
+}
+function closeAppControl() {
+  const m = document.getElementById('appControlModal');
+  if (m) m.style.display = 'none';
+}
+async function applyAppControl(mode) {
+  if (!_appCtlAgent) return;
+  const who = _appCtlHost;
+  const warn = mode === 'enforce'
+    ? `ENFORCE application control on ${who}?\n\nWindows will BLOCK any executable or script run from user-writable folders (Downloads, %TEMP%, %APPDATA%). Always test in Audit first. Enforcement needs Windows Enterprise/Education/Server.`
+    : mode === 'clear'
+    ? `Clear application control on ${who}? This removes the AppLocker policy.`
+    : `Apply AUDIT application control on ${who}?\n\nLog-only — nothing is blocked. Review the AppLocker events it generates, then switch to Enforce.`;
+  if (!confirm(warn)) return;
+  try {
+    const r = await fetch('/api/active-response/app-control', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_id: _appCtlAgent, mode })
+    });
+    const d = await r.json().catch(() => ({}));
+    alert(r.ok && d.ok ? `Application control (${mode}) sent to ${who}.` : `Could not apply app-control: ${d.error || r.status}`);
+  } catch (e) { alert('Could not apply app-control: ' + e); }
+  closeAppControl();
 }
 
 async function loadPlaybooks() {

@@ -3530,6 +3530,33 @@ def api_ar_isolate():
         return _api_error(e)
 
 
+@app.route("/api/active-response/app-control", methods=["POST"])
+def api_ar_app_control():
+    """Apply Windows AppLocker application-control on an agent.
+
+    mode = audit (log-only) | enforce (block) | clear (remove). The agent applies
+    Microsoft's default-rules policy, which blocks execution from user-writable
+    folders (Downloads/%TEMP%/%APPDATA%) — real pre-execution prevention.
+    """
+    _user, role = _check_login() or (None, None)
+    if role not in (ROLE_SUPER_ADMIN, "administrator", "admin"):
+        return jsonify({"error": "Insufficient permissions"}), 403
+    try:
+        body = request.get_json(silent=True) or {}
+        agent_id = (body.get("agent_id") or "").strip()
+        mode = (body.get("mode") or "").strip().lower()
+        if not agent_id:
+            return jsonify({"error": "agent_id required"}), 400
+        if mode not in ("audit", "enforce", "clear"):
+            return jsonify({"error": "mode must be audit, enforce, or clear"}), 400
+        from watchtower_client import watchtower_request
+        payload = {"agent_id": agent_id, "action": "app-control", "parameters": {"mode": mode}}
+        res = watchtower_request("/api/v1/active-response", method="POST", json_body=payload)
+        return jsonify({"ok": True, "agent_id": agent_id, "mode": mode, "response": res})
+    except Exception as e:
+        return _api_error(e)
+
+
 @app.route("/api/active-response/history", methods=["GET"])
 def api_ar_history():
     """Return recent active response actions from WatchTower."""

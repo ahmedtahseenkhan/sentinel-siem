@@ -89,6 +89,7 @@ var defaultBuiltinCommands = map[string]bool{
 	"firewall-unblock": true,
 	"isolate-host":     true,
 	"unisolate-host":   true,
+	"app-control":      true,
 }
 
 func (a *Agent) commandTimeout() time.Duration {
@@ -255,6 +256,8 @@ func (a *Agent) executeCommand(commandType, arg string) error {
 		return a.runIsolateHost()
 	case "unisolate-host":
 		return a.runUnisolateHost()
+	case "app-control":
+		return a.runAppControl(arg)
 	default:
 		return fmt.Errorf("unsupported manager command type: %s", commandType)
 	}
