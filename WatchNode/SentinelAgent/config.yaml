@@ -146,6 +146,15 @@ collectors:
     services: true
     hotfixes: true
 
+  # Ransomware canary — plants decoy files and alerts the instant one is touched.
+  ransomware_canary:
+    enabled: true
+    interval: "10s"
+    file_count: 3
+    paths:
+      - "C:\\Users\\Public\\Documents"
+      - "C:\\Users\\Public\\Desktop"
+
 performance:
   max_cpu_percent: 25
   max_memory_bytes: 268435456

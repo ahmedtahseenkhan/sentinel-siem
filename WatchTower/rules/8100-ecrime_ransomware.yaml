@@ -518,3 +518,19 @@
       subject_user: {regex: "(?i)(?!.*(it_|admin_)).+"}
   alert: {title: "Ransomware: DA added by non-IT user"}
   enabled: true
+
+# Canary / decoy-file tripwire — emitted by the WatchNode ransomware_canary
+# collector when one of its planted decoy files is modified, renamed, or deleted.
+# A single hit is high-confidence (no user should ever touch these), so it fires
+# immediately with no correlation threshold. Attach an isolate-host playbook for
+# automated containment.
+- id: 19570
+  level: 14
+  description: "Ransomware canary file tampered — decoy modified/deleted, likely mass file encryption"
+  groups: [ecrime, ransomware, canary, impact]
+  match:
+    type: "ransomware.canary"
+  mitre:
+    - {tactic_id: "TA0040", tactic_name: "Impact", technique_id: "T1486", technique_name: "Data Encrypted for Impact"}
+  alert: {title: "RANSOMWARE: canary file tampered — likely encryption in progress"}
+  enabled: true

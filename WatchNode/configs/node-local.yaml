@@ -28,6 +28,12 @@ collectors:
   syscollector:
     enabled: true
     interval: "5m"
+  ransomware_canary:
+    enabled: true
+    interval: "10s"
+    file_count: 2
+    paths:
+      - "/tmp"
 
 # Active Response — lets SOAR playbooks run firewall-drop/kill-process here.
 # NOTE: inside Docker, iptables needs the NET_ADMIN capability, so the watchnode
