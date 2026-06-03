@@ -8582,7 +8582,17 @@ async function _ensureEntityAgentMap() {
   if (Object.keys(_entityAgentMap).length > 0) return;
   try {
     const res = await fetch('/api/agents?limit=500').then(r => r.json()).catch(() => ({}));
-    const list = Array.isArray(res) ? res : (res.agents || res.data || []);
+    // /api/agents returns the Wazuh-style envelope {data:{affected_items:[...]}}.
+    // The old code grabbed res.data (the OBJECT) and called .forEach on it, which
+    // threw and left the map empty — so every entity fell back to raw hex. Dig
+    // into affected_items, and stay tolerant of the bare-array / {data:[]} shapes.
+    const d = res && res.data;
+    const list = Array.isArray(res)              ? res
+      : Array.isArray(res.agents)                ? res.agents
+      : (d && Array.isArray(d.affected_items))   ? d.affected_items
+      : Array.isArray(d)                         ? d
+      : Array.isArray(res.affected_items)        ? res.affected_items
+      : [];
     list.forEach(a => {
       const id = a.id || a.agent_id || '';
       if (id) _entityAgentMap[id] = a.hostname || a.name || a.agent_name || id;
