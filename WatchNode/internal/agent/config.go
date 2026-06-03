@@ -83,21 +83,36 @@ type ReconnectConfig struct {
 
 // CollectorsConfig holds all collector settings.
 type CollectorsConfig struct {
-	System         SystemCollectorConfig         `yaml:"system"`
-	FileIntegrity  FileIntegrityCollectorConfig  `yaml:"file_integrity"`
-	Logs           LogsCollectorConfig           `yaml:"logs"`
-	Process        ProcessCollectorConfig        `yaml:"process"`
-	Network        NetworkCollectorConfig        `yaml:"network"`
-	Vulnerability  VulnerabilityCollectorConfig  `yaml:"vulnerability"`
-	SCA            SCACollectorConfig            `yaml:"sca"`
-	Rootcheck      RootcheckCollectorConfig      `yaml:"rootcheck"`
-	Docker         DockerCollectorConfig         `yaml:"docker"`
-	Syscollector   SyscollectorConfig            `yaml:"syscollector"`
-	Registry       RegistryCollectorConfig       `yaml:"registry"`
-	Osquery        OsqueryCollectorConfig        `yaml:"osquery"`
-	Cloud          CloudCollectorConfig          `yaml:"cloud"`
-	Audit          AuditCollectorConfig          `yaml:"audit"`
-	Canary         CanaryCollectorConfig         `yaml:"ransomware_canary"`
+	System        SystemCollectorConfig        `yaml:"system"`
+	FileIntegrity FileIntegrityCollectorConfig `yaml:"file_integrity"`
+	Logs          LogsCollectorConfig          `yaml:"logs"`
+	Process       ProcessCollectorConfig       `yaml:"process"`
+	Network       NetworkCollectorConfig       `yaml:"network"`
+	Vulnerability VulnerabilityCollectorConfig `yaml:"vulnerability"`
+	SCA           SCACollectorConfig           `yaml:"sca"`
+	Rootcheck     RootcheckCollectorConfig     `yaml:"rootcheck"`
+	Docker        DockerCollectorConfig        `yaml:"docker"`
+	Syscollector  SyscollectorConfig           `yaml:"syscollector"`
+	Registry      RegistryCollectorConfig      `yaml:"registry"`
+	Osquery       OsqueryCollectorConfig       `yaml:"osquery"`
+	Cloud         CloudCollectorConfig         `yaml:"cloud"`
+	Audit         AuditCollectorConfig         `yaml:"audit"`
+	Canary        CanaryCollectorConfig        `yaml:"ransomware_canary"`
+	Yara          YaraCollectorConfig          `yaml:"yara_memory"`
+}
+
+// YaraCollectorConfig configures in-memory YARA scanning of running processes —
+// catching fileless/injected/packed malware that disk scans miss. It shells out
+// to the `yara` binary (no CGO), so that binary must be present on the endpoint
+// (Linux: the yara package; Windows: drop yara64.exe next to the agent). Left
+// disabled by default; if the binary is missing the collector quietly no-ops.
+type YaraCollectorConfig struct {
+	Enabled        bool   `yaml:"enabled"`
+	Interval       string `yaml:"interval"`          // scan cadence (default 10m — memory scans are heavy)
+	YaraPath       string `yaml:"yara_path"`         // binary path/name (default: yara / yara64.exe)
+	RulesFile      string `yaml:"rules_file"`        // optional override; empty = bundled default ruleset
+	MaxProcs       int    `yaml:"max_procs"`         // cap processes scanned per cycle (0 = all)
+	ScanTimeoutSec int    `yaml:"scan_timeout_secs"` // per-process yara timeout (default 20)
 }
 
 // CanaryCollectorConfig configures ransomware decoy-file monitoring. The agent
@@ -113,12 +128,12 @@ type CanaryCollectorConfig struct {
 
 // CloudCollectorConfig for cloud provider log ingestion.
 type CloudCollectorConfig struct {
-	Enabled  bool              `yaml:"enabled"`
-	Interval string            `yaml:"interval"`
-	AWS      AWSCloudConfig    `yaml:"aws"`
-	Azure    AzureCloudConfig  `yaml:"azure"`
-	GCP      GCPCloudConfig    `yaml:"gcp"`
-	O365     O365CloudConfig   `yaml:"o365"`
+	Enabled   bool                 `yaml:"enabled"`
+	Interval  string               `yaml:"interval"`
+	AWS       AWSCloudConfig       `yaml:"aws"`
+	Azure     AzureCloudConfig     `yaml:"azure"`
+	GCP       GCPCloudConfig       `yaml:"gcp"`
+	O365      O365CloudConfig      `yaml:"o365"`
 	Workspace WorkspaceCloudConfig `yaml:"workspace"`
 	Defender  DefenderCloudConfig  `yaml:"defender"`
 }
@@ -136,7 +151,7 @@ type DefenderCloudConfig struct {
 	// MinSeverity restricts the fetch filter. Defaults to "medium"
 	// (medium + high + critical via $filter in('high','medium')); set to
 	// "low" or "informational" to pull more.
-	MinSeverity  string `yaml:"min_severity"`
+	MinSeverity string `yaml:"min_severity"`
 }
 
 // WorkspaceCloudConfig for Google Workspace Admin Reports API. Reuses the
@@ -153,10 +168,10 @@ type WorkspaceCloudConfig struct {
 // app credentials as the Azure connector; needs separate scope grant
 // (ActivityFeed.Read on the Office 365 Management APIs application).
 type O365CloudConfig struct {
-	Enabled      bool     `yaml:"enabled"`
-	TenantID     string   `yaml:"tenant_id"`
-	ClientID     string   `yaml:"client_id"`
-	ClientSecret string   `yaml:"client_secret"`
+	Enabled      bool   `yaml:"enabled"`
+	TenantID     string `yaml:"tenant_id"`
+	ClientID     string `yaml:"client_id"`
+	ClientSecret string `yaml:"client_secret"`
 	// ContentTypes restricts which audit streams to subscribe to. Defaults
 	// to all four standard streams: Audit.AzureActiveDirectory, Audit.Exchange,
 	// Audit.SharePoint, Audit.General. DLP.All requires an extra license.
@@ -165,10 +180,10 @@ type O365CloudConfig struct {
 
 // AWSCloudConfig for AWS CloudTrail and GuardDuty ingestion.
 type AWSCloudConfig struct {
-	Enabled         bool   `yaml:"enabled"`
-	Region          string `yaml:"region"`
-	AccessKeyID     string `yaml:"access_key_id"`
-	SecretAccessKey string `yaml:"secret_access_key"`
+	Enabled          bool   `yaml:"enabled"`
+	Region           string `yaml:"region"`
+	AccessKeyID      string `yaml:"access_key_id"`
+	SecretAccessKey  string `yaml:"secret_access_key"`
 	CloudTrailBucket string `yaml:"cloudtrail_bucket"` // S3 bucket for CloudTrail logs
 	GuardDutyRegion  string `yaml:"guardduty_region"`
 }
@@ -206,11 +221,11 @@ type FIMPathConfig struct {
 
 // FileIntegrityCollectorConfig for FIM.
 type FileIntegrityCollectorConfig struct {
-	Enabled       bool           `yaml:"enabled"`
-	Interval      string         `yaml:"interval"`
-	Paths         []FIMPathConfig `yaml:"paths"`
-	HashAlgorithms []string      `yaml:"hash_algorithms"`
-	ScanOnStart   bool           `yaml:"scan_on_start"`
+	Enabled        bool            `yaml:"enabled"`
+	Interval       string          `yaml:"interval"`
+	Paths          []FIMPathConfig `yaml:"paths"`
+	HashAlgorithms []string        `yaml:"hash_algorithms"`
+	ScanOnStart    bool            `yaml:"scan_on_start"`
 	// Whodata enables user-attribution enrichment on FIM events. On Linux it
 	// causes the FIM collector to drop its path list into a helper file that
 	// the audit collector reads to install `auditctl -w <path>` rules; on
@@ -239,10 +254,10 @@ type LogSourceConfig struct {
 
 // LogsCollectorConfig for log collection.
 type LogsCollectorConfig struct {
-	Enabled        bool             `yaml:"enabled"`
-	Sources        []LogSourceConfig `yaml:"sources"`
-	MaxLineLength  int              `yaml:"max_line_length"`
-	MaxBufferSize  int              `yaml:"max_buffer_size"`
+	Enabled       bool              `yaml:"enabled"`
+	Sources       []LogSourceConfig `yaml:"sources"`
+	MaxLineLength int               `yaml:"max_line_length"`
+	MaxBufferSize int               `yaml:"max_buffer_size"`
 }
 
 // ProcessCollectorConfig for process monitoring.
@@ -259,10 +274,10 @@ type NetworkCollectorConfig struct {
 
 // VulnerabilityCollectorConfig for optional CVE scanning.
 type VulnerabilityCollectorConfig struct {
-	Enabled      bool   `yaml:"enabled"`
-	Interval     string `yaml:"interval"`
-	DBPath       string `yaml:"db_path"`
-	DBUpdateURL  string `yaml:"db_update_url"`
+	Enabled     bool   `yaml:"enabled"`
+	Interval    string `yaml:"interval"`
+	DBPath      string `yaml:"db_path"`
+	DBUpdateURL string `yaml:"db_update_url"`
 }
 
 // SCACollectorConfig for Security Configuration Assessment.
@@ -274,14 +289,14 @@ type SCACollectorConfig struct {
 
 // SCACheck is a single check within a policy.
 type SCACheck struct {
-	ID          int    `yaml:"id"`
-	Title       string `yaml:"title"`
-	Description string `yaml:"description"`
-	Rationale   string `yaml:"rationale"`
-	Remediation string `yaml:"remediation"`
-	Compliance  string `yaml:"compliance"`
-	Type        string `yaml:"type"` // file, process, command, registry
-	Condition   string `yaml:"condition"` // all, any, none
+	ID          int      `yaml:"id"`
+	Title       string   `yaml:"title"`
+	Description string   `yaml:"description"`
+	Rationale   string   `yaml:"rationale"`
+	Remediation string   `yaml:"remediation"`
+	Compliance  string   `yaml:"compliance"`
+	Type        string   `yaml:"type"`      // file, process, command, registry
+	Condition   string   `yaml:"condition"` // all, any, none
 	Rules       []string `yaml:"rules"`
 }
 
@@ -328,8 +343,8 @@ type SyscollectorConfig struct {
 
 // RegistryCollectorConfig for Windows Registry monitoring.
 type RegistryCollectorConfig struct {
-	Enabled  bool               `yaml:"enabled"`
-	Interval string             `yaml:"interval"`
+	Enabled  bool                `yaml:"enabled"`
+	Interval string              `yaml:"interval"`
 	Keys     []RegistryKeyConfig `yaml:"keys"`
 }
 
@@ -356,12 +371,12 @@ type OsqueryQuery struct {
 
 // PerformanceConfig for resource limits and batching.
 type PerformanceConfig struct {
-	MaxCPUPercent  float64        `yaml:"max_cpu_percent"`
-	MaxMemoryBytes uint64         `yaml:"max_memory_bytes"`
-	MaxDiskBytes   uint64         `yaml:"max_disk_bytes"`
-	BatchSize      int            `yaml:"batch_size"`
-	FlushInterval  string         `yaml:"flush_interval"`
-	QueueSize      int            `yaml:"queue_size"`
+	MaxCPUPercent  float64         `yaml:"max_cpu_percent"`
+	MaxMemoryBytes uint64          `yaml:"max_memory_bytes"`
+	MaxDiskBytes   uint64          `yaml:"max_disk_bytes"`
+	BatchSize      int             `yaml:"batch_size"`
+	FlushInterval  string          `yaml:"flush_interval"`
+	QueueSize      int             `yaml:"queue_size"`
 	DiskQueue      DiskQueueConfig `yaml:"disk_queue"`
 }
 
@@ -437,10 +452,10 @@ func DefaultConfig() *Config {
 				ScanOnStart:    true,
 			},
 			Logs: LogsCollectorConfig{
-				Enabled:        true,
-				Sources:        []LogSourceConfig{},
-				MaxLineLength:  1048576,
-				MaxBufferSize:  10485760,
+				Enabled:       true,
+				Sources:       []LogSourceConfig{},
+				MaxLineLength: 1048576,
+				MaxBufferSize: 10485760,
 			},
 			Process: ProcessCollectorConfig{
 				Enabled:  true,

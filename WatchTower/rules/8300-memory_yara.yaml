@@ -1,0 +1,16 @@
+# WatchTower — In-memory YARA detections
+# Fired by the WatchNode `yara_memory` collector, which scans running process
+# memory with the `yara` binary and emits a "yara.match" event per hit.
+
+rules:
+  - id: 19860
+    level: 13
+    description: "YARA memory match — malware signature found in a running process's memory"
+    groups: [malware, memory, yara, defense_evasion]
+    match:
+      type: "yara.match"
+    mitre:
+      - {tactic_id: "TA0005", tactic_name: "Defense Evasion", technique_id: "T1620", technique_name: "Reflective Code Loading"}
+    alert:
+      title: "YARA: malware signature in process memory"
+    enabled: true
