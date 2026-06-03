@@ -97,6 +97,18 @@ type CollectorsConfig struct {
 	Osquery        OsqueryCollectorConfig        `yaml:"osquery"`
 	Cloud          CloudCollectorConfig          `yaml:"cloud"`
 	Audit          AuditCollectorConfig          `yaml:"audit"`
+	Canary         CanaryCollectorConfig         `yaml:"ransomware_canary"`
+}
+
+// CanaryCollectorConfig configures ransomware decoy-file monitoring. The agent
+// plants enticing-but-fake "canary" files in the watched directories and raises
+// a critical alert the instant one is modified, renamed, or deleted — an early
+// signal of mass file encryption.
+type CanaryCollectorConfig struct {
+	Enabled   bool     `yaml:"enabled"`
+	Interval  string   `yaml:"interval"`   // re-check cadence (default 10s)
+	Paths     []string `yaml:"paths"`      // directories to plant canaries in (must exist)
+	FileCount int      `yaml:"file_count"` // canaries per directory (default 2)
 }
 
 // CloudCollectorConfig for cloud provider log ingestion.
