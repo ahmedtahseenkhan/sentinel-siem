@@ -9745,6 +9745,8 @@ const ACTION_TEMPLATES = {
   block_ip:        { label: 'Block IP',            params: { ip: '{{src_ip}}' } },
   kill_process:    { label: 'Kill Process',         params: { pid: '{{pid}}' } },
   isolate_host:    { label: 'Isolate Host',         params: { reason: '{{title}}' } },
+  quarantine_file: { label: 'Quarantine File',      params: { path: '{{file_path}}' } },
+  force_logoff:    { label: 'Force Logoff',          params: { username: '{{username}}' } },
   create_case:     { label: 'Create Case',          params: { title: 'Auto: {{title}}', priority: 'high' } },
   create_ticket:   { label: 'Create Ticket',        params: { dashboard_url: 'http://dashboard:5050', summary: 'Alert L{{level}}: {{title}}', priority: 'high' } },
   notify_slack:    { label: 'Notify Slack',         params: { webhook_url: '', message: '🚨 [{{level}}] {{title}} — Agent: {{agent_id}}' } },
