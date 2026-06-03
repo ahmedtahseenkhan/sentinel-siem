@@ -75,6 +75,10 @@
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
             Discover
           </a>
+          <a href="#" class="sb2-item nav-item" data-page="process-tree">
+            <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="9" r="2"/><circle cx="18" cy="18" r="2"/><path d="M8 6h6a2 2 0 0 1 2 2v1M8 6v9a2 2 0 0 0 2 2h6"/></svg>
+            Process Tree
+          </a>
           <a href="#" class="sb2-item nav-item" data-page="logs">
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
             Logs
@@ -3982,6 +3986,33 @@ CLOUD_SYNC_INTERVAL=15m</pre>
         </section>
 
         <!-- RBA PAGE -->
+        <!-- PROCESS TREE PAGE -->
+        <section id="page-process-tree" class="page page-v2">
+          <div class="page-h">
+            <div class="page-h-title">
+              <h1>Process Tree <span class="accent">Investigate · Lineage</span></h1>
+              <p>Parent → child process relationships per host, built from process-creation telemetry. Spot suspicious spawns (e.g. office app → powershell → net).</p>
+            </div>
+            <div class="page-h-actions" style="display:flex;gap:8px;align-items:center">
+              <select id="ptHost" class="fld" style="height:32px;font-size:12px;min-width:200px"></select>
+              <select id="ptWindow" class="fld" style="height:32px;font-size:12px">
+                <option value="1">Last 1h</option>
+                <option value="24" selected>Last 24h</option>
+                <option value="168">Last 7d</option>
+              </select>
+              <input id="ptSearch" class="fld" placeholder="filter by name / cmdline…" style="height:32px;font-size:12px;width:200px">
+              <button class="act-btn" onclick="loadProcessTreePage()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5"/></svg>
+                Refresh
+              </button>
+            </div>
+          </div>
+          <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:12px">
+            <div id="ptMeta" style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Select a host to load its process tree.</div>
+            <div id="ptTree" style="font-family:var(--font-mono);font-size:12px;line-height:1.7;overflow-x:auto"></div>
+          </div>
+        </section>
+
         <!-- RISK SCORING (RBA) PAGE -->
         <section id="page-rba" class="page page-v2">
           <div class="page-h">
