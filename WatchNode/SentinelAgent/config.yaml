@@ -156,3 +156,23 @@ performance:
     enabled: true
     dir: "C:\\ProgramData\\SentinelAgent\\queue"
     max_bytes: 524288000  # 500 MB
+
+# ── Active Response (SOAR enforcement) ─────────────────────────────────────────
+# Lets WatchTower SOAR playbooks actually execute response commands on this host
+# (firewall-drop / kill-process / disable-account / restart-service). Without
+# this block, enabled defaults to false and the agent DENIES every command (logs
+# only). The agent runs as SYSTEM via the scheduled-task install, so the netsh
+# firewall rules below apply with the privileges they need.
+active_response:
+  enabled: true
+  # Empty = the built-in set (firewall-drop, kill-process, restart-service,
+  # disable-account, firewall-unblock). List specific commands to narrow it.
+  allowed_commands: []
+  command_timeout_secs: 15
+  block_ttl_secs: 3600          # auto-remove a firewall block after 1 hour
+  safelist_ips:                 # firewall-drop will NEVER block these
+    - "192.168.100.0/24"        # management subnet / jump host / RMM — don't lock yourself out
+    - "127.0.0.1"
+  safelist_users:               # disable-account will NEVER touch these
+    - "Administrator"
+    - "SYSTEM"

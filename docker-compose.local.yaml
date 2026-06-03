@@ -147,6 +147,10 @@ services:
     command: ["--config", "/etc/watchnode/agent/config.yaml"]
     volumes:
       - ./WatchNode/configs/node-local.yaml:/etc/watchnode/agent/config.yaml:ro
+    # Active-response firewall-drop shells out to iptables; inside a container
+    # that needs NET_ADMIN, else the DROP rule insert fails.
+    cap_add:
+      - NET_ADMIN
     depends_on:
       - watchtower
     restart: unless-stopped
@@ -157,6 +161,8 @@ services:
     command: ["--config", "/etc/watchnode/agent/config.yaml"]
     volumes:
       - ./WatchNode/configs/node-local.yaml:/etc/watchnode/agent/config.yaml:ro
+    cap_add:
+      - NET_ADMIN
     depends_on:
       - watchtower
     restart: unless-stopped
