@@ -1718,6 +1718,7 @@ const GEO_CONTINENTS = [
     return agents.map(a => {
       const { dot, label } = _agStatusMeta(a.status);
       const hostname = escapeHtml(a.name || a.hostname || '—');
+      const hostnameRaw = String(a.name || a.hostname || '').replace(/['"\\]/g, '');
       const fullId = String(a.id || '');
       const agId = escapeHtml(fullId.slice(0, 14)) + (fullId.length > 14 ? '…' : '');
       const os = _agOsLabel(a.os_label);
@@ -1741,9 +1742,17 @@ const GEO_CONTINENTS = [
         <span role="cell" class="adt-num">${alerts}</span>
         <span role="cell" class="adt-num ${crits>0?'crit':'zero'}">${crits}</span>
         <span role="cell" class="adt-time">${lastSeen}</span>
-        <span role="cell" class="adt-act"><button type="button" class="adt-act-btn btn-agent-view" data-agent-id="${escapeHtml(fullId)}" title="Open node detail" aria-label="Open node detail">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
-        </button></span>
+        <span role="cell" class="adt-act">
+          <button type="button" class="adt-act-btn" title="Isolate host — network quarantine (keeps manager channel)" aria-label="Isolate host" onclick="event.stopPropagation();isolateAgent('${escapeHtml(fullId)}','${escapeHtml(hostnameRaw)}')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </button>
+          <button type="button" class="adt-act-btn" title="Release isolation" aria-label="Release isolation" onclick="event.stopPropagation();releaseAgent('${escapeHtml(fullId)}','${escapeHtml(hostnameRaw)}')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M4 4l16 16"/></svg>
+          </button>
+          <button type="button" class="adt-act-btn btn-agent-view" data-agent-id="${escapeHtml(fullId)}" title="Open node detail" aria-label="Open node detail">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+        </span>
       </div>`;
     }).join('');
   }
@@ -9741,6 +9750,34 @@ const ACTION_TEMPLATES = {
 };
 
 let _pbActions = [];
+
+// Host isolation — quarantine a compromised endpoint (keeps the manager channel
+// so it can be released remotely). Auto-releases after the agent's block TTL.
+async function isolateAgent(agentId, hostname) {
+  const who = hostname || agentId;
+  if (!confirm(`Isolate ${who}?\n\nThis network-quarantines the host — all traffic is blocked except the WatchTower channel. It auto-releases after the configured TTL, or use the Release button.`)) return;
+  try {
+    const r = await fetch('/api/active-response/isolate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_id: agentId })
+    });
+    const d = await r.json().catch(() => ({}));
+    alert(r.ok && d.ok ? `Isolation command sent to ${who}.` : `Could not isolate ${who}: ${d.error || r.status}`);
+  } catch (e) { alert('Could not isolate: ' + e); }
+}
+
+async function releaseAgent(agentId, hostname) {
+  const who = hostname || agentId;
+  if (!confirm(`Release isolation on ${who}?`)) return;
+  try {
+    const r = await fetch('/api/active-response/isolate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_id: agentId, release: true })
+    });
+    const d = await r.json().catch(() => ({}));
+    alert(r.ok && d.ok ? `Release command sent to ${who}.` : `Could not release ${who}: ${d.error || r.status}`);
+  } catch (e) { alert('Could not release: ' + e); }
+}
 
 async function loadPlaybooks() {
   const res = await fetch('/api/playbooks?all=true').then(r => r.json()).catch(() => ({}));

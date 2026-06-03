@@ -87,6 +87,8 @@ var defaultBuiltinCommands = map[string]bool{
 	"disable-account":  true,
 	"firewall-drop":    true,
 	"firewall-unblock": true,
+	"isolate-host":     true,
+	"unisolate-host":   true,
 }
 
 func (a *Agent) commandTimeout() time.Duration {
@@ -249,6 +251,10 @@ func (a *Agent) executeCommand(commandType, arg string) error {
 		err := runFirewallUnblock(arg, a.commandTimeout())
 		forgetBlock(arg)
 		return err
+	case "isolate-host":
+		return a.runIsolateHost()
+	case "unisolate-host":
+		return a.runUnisolateHost()
 	default:
 		return fmt.Errorf("unsupported manager command type: %s", commandType)
 	}
@@ -422,6 +428,174 @@ func runFirewallUnblock(target string, timeout time.Duration) error {
 		return nil
 	}
 	_ = exec.CommandContext(ctx, "iptables", "-D", "INPUT", "-s", target, "-j", "DROP").Run()
+	return nil
+}
+
+// ── Host isolation ──────────────────────────────────────────────────────────────
+// isolate-host quarantines the endpoint: it blocks all network traffic EXCEPT the
+// channel back to WatchTower, so a compromised box is contained but the manager can
+// still send the un-isolate command. Two hard safety rules:
+//   1. We resolve the manager's IP(s) BEFORE blocking and refuse to isolate if we
+//      can't — otherwise we'd cut our own lifeline and the host could never be
+//      released remotely.
+//   2. If a block TTL is configured, we schedule an auto-unisolate so a mistaken or
+//      stranded isolation self-heals.
+var (
+	isolationMu     sync.Mutex
+	isolationActive bool
+	isolationIPs    []string // manager IPs allow-listed during the current isolation
+)
+
+// managerAllowIPs resolves the manager host (from manager.url) to one or more IPs
+// while the network is still up. Returns nil if it can't be resolved.
+func (a *Agent) managerAllowIPs() []string {
+	a.configMu.RLock()
+	url := a.Config.Manager.URL
+	a.configMu.RUnlock()
+	host := url
+	if h, _, err := net.SplitHostPort(url); err == nil {
+		host = h
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return []string{host}
+	}
+	ips, err := net.LookupHost(host)
+	if err != nil {
+		return nil
+	}
+	return ips
+}
+
+func isolateRuleName(ip, dir string) string {
+	return "WatchNode_Isolate_" + strings.ReplaceAll(ip, ":", "_") + "_" + dir
+}
+
+func (a *Agent) runIsolateHost() error {
+	isolationMu.Lock()
+	defer isolationMu.Unlock()
+	if isolationActive {
+		return nil // idempotent
+	}
+	ips := a.managerAllowIPs()
+	if len(ips) == 0 {
+		return fmt.Errorf("isolate-host: cannot resolve manager address — refusing to isolate (would lose remote control)")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), a.commandTimeout())
+	defer cancel()
+	if err := isolateNetwork(ctx, ips); err != nil {
+		return err
+	}
+	isolationActive = true
+	isolationIPs = ips
+
+	// Safety net: auto-release after the configured TTL so a stranded isolation
+	// can't brick the host permanently.
+	a.configMu.RLock()
+	ttl := a.Config.ActiveResponse.BlockTTLSecs
+	a.configMu.RUnlock()
+	if ttl > 0 {
+		go a.scheduleUnisolate(time.Duration(ttl) * time.Second)
+	}
+	return nil
+}
+
+func (a *Agent) runUnisolateHost() error {
+	isolationMu.Lock()
+	defer isolationMu.Unlock()
+	ips := isolationIPs
+	if len(ips) == 0 {
+		// State lost (e.g. agent restarted while isolated) — re-resolve so we can
+		// still tear down the per-IP allow rules by their deterministic names.
+		ips = a.managerAllowIPs()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), a.commandTimeout())
+	defer cancel()
+	err := unisolateNetwork(ctx, ips)
+	isolationActive = false
+	isolationIPs = nil
+	return err
+}
+
+// scheduleUnisolate releases isolation after ttl, unless it was already lifted.
+func (a *Agent) scheduleUnisolate(ttl time.Duration) {
+	time.Sleep(ttl)
+	isolationMu.Lock()
+	active := isolationActive
+	isolationMu.Unlock()
+	if !active {
+		return
+	}
+	if err := a.runUnisolateHost(); err != nil {
+		a.Logger.Warn("auto-unisolate failed", zap.Error(err))
+		return
+	}
+	a.Logger.Info("auto-unisolate executed (TTL safety net)", zap.Duration("ttl", ttl))
+	a.reportCommandResult("unisolate-host", "", "executed", "auto-ttl")
+}
+
+// isolateNetwork blocks all traffic except loopback, established flows, and the
+// manager IPs. Windows uses the default firewall policy + allow rules; Linux uses
+// iptables. managerIPs is guaranteed non-empty by the caller.
+func isolateNetwork(ctx context.Context, managerIPs []string) error {
+	if runtime.GOOS == "windows" {
+		// Allow the manager channel first, THEN flip the default to block.
+		for _, ip := range managerIPs {
+			_ = exec.CommandContext(ctx, "netsh", "advfirewall", "firewall", "add", "rule",
+				"name="+isolateRuleName(ip, "out"), "dir=out", "action=allow", "remoteip="+ip).Run()
+			_ = exec.CommandContext(ctx, "netsh", "advfirewall", "firewall", "add", "rule",
+				"name="+isolateRuleName(ip, "in"), "dir=in", "action=allow", "remoteip="+ip).Run()
+		}
+		// The Windows firewall is stateful, so replies to the (allowed) outbound
+		// manager connection are permitted even with inbound blocked.
+		return exec.CommandContext(ctx, "netsh", "advfirewall", "set", "allprofiles",
+			"firewallpolicy", "blockinbound,blockoutbound").Run()
+	}
+
+	// Linux: insert allow rules at the top, then default-drop the chains.
+	run := func(args ...string) { _ = exec.CommandContext(ctx, "iptables", args...).Run() }
+	run("-I", "INPUT", "1", "-i", "lo", "-j", "ACCEPT")
+	run("-I", "OUTPUT", "1", "-o", "lo", "-j", "ACCEPT")
+	run("-I", "INPUT", "1", "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT")
+	run("-I", "OUTPUT", "1", "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT")
+	for _, ip := range managerIPs {
+		run("-I", "OUTPUT", "1", "-d", ip, "-j", "ACCEPT")
+		run("-I", "INPUT", "1", "-s", ip, "-j", "ACCEPT")
+	}
+	if err := exec.CommandContext(ctx, "iptables", "-P", "INPUT", "DROP").Run(); err != nil {
+		return err
+	}
+	return exec.CommandContext(ctx, "iptables", "-P", "OUTPUT", "DROP").Run()
+}
+
+// unisolateNetwork reverses isolateNetwork. Tolerant of "not found" since rules
+// may have been removed manually or the policy already restored.
+func unisolateNetwork(ctx context.Context, managerIPs []string) error {
+	if runtime.GOOS == "windows" {
+		// Restore the normal default (inbound blocked, outbound allowed) first so
+		// connectivity returns even if rule deletion below partially fails.
+		err := exec.CommandContext(ctx, "netsh", "advfirewall", "set", "allprofiles",
+			"firewallpolicy", "blockinbound,allowoutbound").Run()
+		for _, ip := range managerIPs {
+			_ = exec.CommandContext(ctx, "netsh", "advfirewall", "firewall", "delete", "rule",
+				"name="+isolateRuleName(ip, "out")).Run()
+			_ = exec.CommandContext(ctx, "netsh", "advfirewall", "firewall", "delete", "rule",
+				"name="+isolateRuleName(ip, "in")).Run()
+		}
+		return err
+	}
+
+	// Linux: restore accept policy, then remove the allow rules we inserted.
+	_ = exec.CommandContext(ctx, "iptables", "-P", "INPUT", "ACCEPT").Run()
+	_ = exec.CommandContext(ctx, "iptables", "-P", "OUTPUT", "ACCEPT").Run()
+	run := func(args ...string) { _ = exec.CommandContext(ctx, "iptables", args...).Run() }
+	for _, ip := range managerIPs {
+		run("-D", "OUTPUT", "-d", ip, "-j", "ACCEPT")
+		run("-D", "INPUT", "-s", ip, "-j", "ACCEPT")
+	}
+	run("-D", "INPUT", "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT")
+	run("-D", "OUTPUT", "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT")
+	run("-D", "INPUT", "-i", "lo", "-j", "ACCEPT")
+	run("-D", "OUTPUT", "-o", "lo", "-j", "ACCEPT")
 	return nil
 }
 

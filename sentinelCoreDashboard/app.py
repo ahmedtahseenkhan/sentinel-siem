@@ -3506,6 +3506,30 @@ def api_ar_kill_process():
         return _api_error(e)
 
 
+@app.route("/api/active-response/isolate", methods=["POST"])
+def api_ar_isolate():
+    """Isolate (network-quarantine) a specific agent, keeping the manager channel.
+
+    Pass {"agent_id": "...", "release": true} to lift isolation instead.
+    """
+    _user, role = _check_login() or (None, None)
+    if role not in (ROLE_SUPER_ADMIN, "administrator", "admin"):
+        return jsonify({"error": "Insufficient permissions"}), 403
+    try:
+        body = request.get_json(silent=True) or {}
+        agent_id = (body.get("agent_id") or "").strip()
+        if not agent_id:
+            return jsonify({"error": "agent_id required"}), 400
+        action = "unisolate-host" if body.get("release") else "isolate-host"
+        from watchtower_client import watchtower_request
+        payload = {"agent_id": agent_id, "action": action,
+                   "parameters": {"reason": (body.get("reason") or "manual SOC action")}}
+        res = watchtower_request("/api/v1/active-response", method="POST", json_body=payload)
+        return jsonify({"ok": True, "agent_id": agent_id, "action": action, "response": res})
+    except Exception as e:
+        return _api_error(e)
+
+
 @app.route("/api/active-response/history", methods=["GET"])
 def api_ar_history():
     """Return recent active response actions from WatchTower."""
