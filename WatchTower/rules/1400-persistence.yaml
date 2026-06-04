@@ -229,3 +229,18 @@ rules:
     alert:
       title: "Persistence: Scheduled task created via schtasks.exe"
     enabled: true
+
+  # Registry deception tripwire — emitted by the WatchNode registry_deception
+  # collector when a decoy autorun value is modified or deleted. No legitimate
+  # software touches it, so a single hit is high-confidence.
+  - id: 19871
+    level: 13
+    description: "Registry deception token modified or deleted — likely persistence tampering"
+    groups: ["persistence", "deception", "registry"]
+    match:
+      type: "registry.deception"
+    mitre:
+      - {tactic_id: "TA0003", tactic_name: "Persistence", technique_id: "T1547.001", technique_name: "Registry Run Keys / Startup Folder"}
+    alert:
+      title: "Deception: registry autorun token tampered"
+    enabled: true

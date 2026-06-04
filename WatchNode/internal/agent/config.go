@@ -99,6 +99,7 @@ type CollectorsConfig struct {
 	Audit         AuditCollectorConfig         `yaml:"audit"`
 	Canary        CanaryCollectorConfig        `yaml:"ransomware_canary"`
 	Yara          YaraCollectorConfig          `yaml:"yara_memory"`
+	RegDeception  RegCanaryCollectorConfig     `yaml:"registry_deception"`
 }
 
 // YaraCollectorConfig configures in-memory YARA scanning of running processes —
@@ -124,6 +125,15 @@ type CanaryCollectorConfig struct {
 	Interval  string   `yaml:"interval"`   // re-check cadence (default 10s)
 	Paths     []string `yaml:"paths"`      // directories to plant canaries in (must exist)
 	FileCount int      `yaml:"file_count"` // canaries per directory (default 2)
+}
+
+// RegCanaryCollectorConfig configures registry deception tokens — decoy values
+// planted in autorun keys that alert (critical) if modified or deleted. A
+// modify/delete tripwire for persistence tampering. Windows-only.
+type RegCanaryCollectorConfig struct {
+	Enabled  bool     `yaml:"enabled"`
+	Interval string   `yaml:"interval"` // poll cadence (default 30s)
+	Keys     []string `yaml:"keys"`     // keys to plant decoys in (default: HKLM Run)
 }
 
 // CloudCollectorConfig for cloud provider log ingestion.
