@@ -6297,6 +6297,25 @@ const GEO_CONTINENTS = [
          : 'var(--fg-3)';
   }
 
+  // Per-detector one-line summary for the incident row (XDR-aware).
+  function _corrDetail(inc) {
+    const ev = inc.evidence || {};
+    switch (inc.detector) {
+      case 'multi_location_logon': {
+        const ips = ev.distinct_ips || [], hosts = ev.distinct_hosts || [], cc = ev.distinct_countries || [];
+        return `${ips.length} IP / ${hosts.length} host${cc.length ? ` / ${cc.length} country` : ''}`;
+      }
+      case 'lateral_movement':
+        return `→ ${ev.host_count || 0} hosts`;
+      case 'data_exfiltration':
+        return `${ev.endpoint_events || 0} endpoint / ${ev.cloud_events || 0} cloud egress`;
+      case 'compromised_identity':
+        return `signals across ${(inc.domains || []).length} domains`;
+      default:
+        return (inc.domains || []).join(', ') || 'correlation';
+    }
+  }
+
   async function _corrLoad() {
     const el = id => document.getElementById(id);
     const status = (el('corrStatus') || {}).value || 'open';
@@ -6318,11 +6337,13 @@ const GEO_CONTINENTS = [
     body.innerHTML = incs.length ? incs.map((inc, i) => {
       const first = inc.first_seen_ms ? new Date(inc.first_seen_ms).toLocaleString() : '—';
       const ev = inc.evidence || {};
-      const ips = ev.distinct_ips || [];
-      const hosts = ev.distinct_hosts || [];
-      const summary = `<b>${escapeHtml(inc.entity)}</b> · ${ev.logon_count || 0} logons · IPs: ${escapeHtml(ips.slice(0, 3).join(', '))}${ips.length > 3 ? '…' : ''}${hosts.length ? ` · hosts: ${escapeHtml(hosts.slice(0, 2).join(', '))}` : ''}`;
+      const domains = (inc.domains || []);
+      const caseTag = inc.case_id ? ` · <span style="color:var(--accent)">case #${inc.case_id}</span>` : '';
+      const summary = `<b>${escapeHtml(inc.entity)}</b> · ${escapeHtml(_corrDetail(inc))}${caseTag}`;
       const sevCol = _corrSevColor(inc.severity);
-      const sources = `${ips.length} IP${ips.length !== 1 ? 's' : ''} · ${hosts.length} host${hosts.length !== 1 ? 's' : ''}`;
+      const domainBadges = domains.length
+        ? domains.map(d => `<span style="padding:1px 6px;border-radius:8px;background:rgba(88,166,255,.15);color:var(--accent);font-size:9px;margin-right:3px">${escapeHtml(d)}</span>`).join('')
+        : '<span style="color:var(--fg-4)">—</span>';
       const statusBadge = inc.status === 'resolved'
         ? '<span style="padding:2px 8px;border-radius:10px;background:rgba(51,204,153,.15);color:var(--ok);font-size:10px;font-weight:600">RESOLVED</span>'
         : '<span style="padding:2px 8px;border-radius:10px;background:rgba(255,51,51,.15);color:var(--crit);font-size:10px;font-weight:600">OPEN</span>';
@@ -6331,23 +6352,42 @@ const GEO_CONTINENTS = [
         <span class="tbl-mono">${escapeHtml(inc.detector)}</span>
         <span class="tbl-pri">${summary}</span>
         <span style="font-family:var(--font-mono);font-weight:600;color:${sevCol}">${escapeHtml(inc.severity)}</span>
-        <span class="tbl-mono">${sources}</span>
+        <span>${domainBadges}</span>
         <span>${statusBadge}</span>
         <span style="display:flex;gap:4px">
-          <button type="button" class="act-btn corr-view" data-idx="${i}" style="height:22px;padding:0 8px;font-size:11px">View</button>
+          <button type="button" class="act-btn corr-view" data-id="${inc.id}" style="height:22px;padding:0 8px;font-size:11px">View</button>
+          ${inc.status === 'open' ? `<button type="button" class="act-btn corr-respond" data-id="${inc.id}" style="height:22px;padding:0 8px;font-size:11px;color:var(--high)">Respond</button>` : ''}
           ${inc.status === 'open' ? `<button type="button" class="act-btn corr-resolve" data-id="${inc.id}" style="height:22px;padding:0 8px;font-size:11px">Resolve</button>` : ''}
         </span>
       </div>`;
     }).join('') : `<div class="sigil-block"><div class="sigil-text"><h4>No ${escapeHtml(status)} correlations</h4><p>The engine runs every 2 minutes. Click <strong>▶ Run all now</strong> to force a check.</p></div></div>`;
 
-    body.querySelectorAll('.corr-view').forEach(b => b.addEventListener('click', () => {
-      const idx = parseInt(b.getAttribute('data-idx'), 10);
+    body.querySelectorAll('.corr-view').forEach(b => b.addEventListener('click', async () => {
+      const id = b.getAttribute('data-id');
       const drawer = el('corrDetailDrawer');
       const dbody = el('corrDetailBody');
-      if (drawer && dbody) {
-        dbody.textContent = JSON.stringify(_corrLast[idx], null, 2);
-        drawer.classList.remove('hidden');
-      }
+      if (!drawer || !dbody) return;
+      dbody.textContent = 'Loading…';
+      drawer.classList.remove('hidden');
+      // Detail endpoint enriches with recommended cross-domain response actions.
+      const detail = await fetchJson(`${API.corrIncidents}/${id}`).catch(() => null);
+      const inc = (detail && detail.incident) || _corrLast.find(x => String(x.id) === String(id)) || {};
+      dbody.textContent = JSON.stringify(inc, null, 2);
+    }));
+
+    body.querySelectorAll('.corr-respond').forEach(b => b.addEventListener('click', async () => {
+      const id = b.getAttribute('data-id');
+      if (!confirm(`Execute the recommended cross-domain containment for incident #${id}?\n\nThis may isolate hosts / disable accounts / block IPs via active response.`)) return;
+      b.disabled = true; const o = b.textContent; b.textContent = '…';
+      try {
+        const res = await fetch(`${API.corrIncidents}/${id}/respond`, { method: 'POST', credentials: 'same-origin' });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) { alert('Respond failed: ' + (j.error || res.status)); }
+        else {
+          const ok = (j.results || []).filter(r => r.ok).length;
+          alert(`Response executed: ${ok}/${(j.results || []).length} action(s) succeeded.`);
+        }
+      } finally { b.disabled = false; b.textContent = o; await _corrLoad(); }
     }));
     body.querySelectorAll('.corr-resolve').forEach(b => b.addEventListener('click', async () => {
       const id = b.getAttribute('data-id');

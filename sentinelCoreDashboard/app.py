@@ -4647,6 +4647,8 @@ def _correlations_run_job() -> None:
         for inc in new_inc:
             _notify_correlation_incident(inc)
             _corr.mark_notified(inc["id"])
+            _xdr_link_case(inc)            # XDR: every incident becomes a case
+            _xdr_maybe_auto_respond(inc)   # XDR: tiered auto-containment
     except Exception as e:
         try:
             _logger.warning("correlations job failed: %s", e)
@@ -4658,26 +4660,85 @@ def _notify_correlation_incident(inc: dict) -> None:
     try:
         from notifier import notify_alert
         ev = inc.get("evidence") or {}
-        ips = ev.get("distinct_ips") or []
-        hosts = ev.get("distinct_hosts") or []
-        sources = ", ".join(ips or hosts)[:200]
+        domains = ", ".join(inc.get("domains") or []) or "correlation"
         sev_level = {"low": 5, "medium": 8, "high": 11, "critical": 14}.get(inc["severity"], 11)
         alert = {
-            "rule_id": "correlation-multi-location-logon",
+            "rule_id": f"xdr-{inc.get('detector')}",
             "rule_description": (
-                f"User '{inc['entity']}' logged in from {len(ips)} IP(s) "
-                f"and {len(hosts)} workstation(s) within {ev.get('window_minutes', '?')}m"
+                f"XDR {inc.get('detector')} for '{inc['entity']}' across [{domains}]"
             ),
             "rule_level": sev_level,
             "agent_name": inc["entity"],
             "severity": inc["severity"],
-            "tags": ["correlation", "impossible_travel", "multi_location_logon"],
-            "evidence_sources": sources,
-            "logon_count": ev.get("logon_count"),
+            "tags": ["xdr", inc.get("detector")] + (inc.get("domains") or []),
+            "evidence_sources": str(ev)[:300],
         }
         notify_alert(alert)
     except Exception:
         pass
+
+
+def _xdr_case_description(inc: dict) -> str:
+    ev = inc.get("evidence") or {}
+    domains = ", ".join(inc.get("domains") or []) or "n/a"
+    mitre = ", ".join(
+        f"{m.get('tactic')}/{m.get('technique')}" for m in (inc.get("mitre") or [])
+    ) or "n/a"
+    lines = [
+        f"XDR incident: {inc.get('detector')} on {inc.get('entity_type')} '{inc.get('entity')}'.",
+        f"Domains: {domains}",
+        f"MITRE: {mitre}",
+        f"Risk: {inc.get('risk', 0)}",
+        f"Evidence: {str(ev)[:800]}",
+    ]
+    return "\n".join(lines)
+
+
+def _xdr_link_case(inc: dict) -> None:
+    """Auto-create a WatchTower case for an XDR incident and link it back."""
+    try:
+        from watchtower_client import watchtower_request
+        detector = inc.get("detector") or "xdr"
+        tags = ["xdr", detector]
+        if inc.get("entity_type"):
+            tags.append(inc["entity_type"])
+        body = {
+            "title": f"[XDR] {detector}: {inc.get('entity')}",
+            "description": _xdr_case_description(inc),
+            "priority": inc.get("severity", "high"),
+            "created_by": "xdr-correlation",
+            "tags": tags,
+        }
+        res = watchtower_request("/api/v1/cases", method="POST", json_body=body)
+        cid = ((res or {}).get("data") or {}).get("id")
+        if cid:
+            _corr.set_case_id(inc["id"], cid)
+    except Exception as e:
+        try:
+            _logger.warning("xdr: case link failed for incident %s: %s", inc.get("id"), e)
+        except Exception:
+            pass
+
+
+def _xdr_maybe_auto_respond(inc: dict) -> None:
+    """Tiered policy: auto-contain only when the operator opted in and severity
+    meets the bar (response_orchestrator.should_auto_respond)."""
+    try:
+        import response_orchestrator as _ro
+        if not _ro.should_auto_respond(inc):
+            return
+        actions = _ro.bundle_for(inc, os_search=_os_search)
+        if not actions:
+            return
+        results = _ro.execute(actions)
+        ok = sum(1 for r in results if r.get("ok"))
+        _logger.info("xdr: auto-response for incident %s — %d/%d actions ok",
+                     inc.get("id"), ok, len(results))
+    except Exception as e:
+        try:
+            _logger.warning("xdr: auto-response failed for incident %s: %s", inc.get("id"), e)
+        except Exception:
+            pass
 
 
 @app.route("/api/correlations/incidents", methods=["GET"])
@@ -4709,6 +4770,45 @@ def api_correlation_resolve(inc_id):
         if not _corr.resolve_incident(inc_id):
             return jsonify({"error": "Not found or already resolved"}), 404
         return jsonify({"resolved": inc_id})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/correlations/incidents/<int:inc_id>", methods=["GET"])
+def api_correlation_incident_detail(inc_id):
+    """Incident detail incl. recommended cross-domain response actions + linked case."""
+    try:
+        inc = _corr.get_incident(inc_id)
+        if not inc:
+            return jsonify({"error": "Not found"}), 404
+        import response_orchestrator as _ro
+        inc["recommended_actions"] = _ro.bundle_for(inc, os_search=_os_search)
+        inc["auto_response_eligible"] = _ro.should_auto_respond(inc)
+        return jsonify({"incident": inc})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/correlations/incidents/<int:inc_id>/respond", methods=["POST"])
+def api_correlation_respond(inc_id):
+    """Execute a cross-domain response bundle for an incident (one-click contain).
+
+    Body may pass {"actions": [...]} to run a chosen subset; otherwise the
+    recommended bundle is executed. Admin-only, like the active-response routes."""
+    _user, role = _check_login() or (None, None)
+    if role not in (ROLE_SUPER_ADMIN, "administrator", "admin"):
+        return jsonify({"error": "Insufficient permissions"}), 403
+    try:
+        inc = _corr.get_incident(inc_id)
+        if not inc:
+            return jsonify({"error": "Not found"}), 404
+        import response_orchestrator as _ro
+        body = request.get_json(silent=True) or {}
+        actions = body.get("actions") or _ro.bundle_for(inc, os_search=_os_search)
+        if not actions:
+            return jsonify({"ok": False, "error": "no targetable actions (could not resolve entity assets)"}), 422
+        results = _ro.execute(actions)
+        return jsonify({"ok": True, "incident_id": inc_id, "results": results})
     except Exception as e:
         return _api_error(e)
 
