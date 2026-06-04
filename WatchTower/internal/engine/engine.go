@@ -59,6 +59,14 @@ type NotifierHook interface {
 	OnAlert(alert *models.Alert, event *models.Event)
 }
 
+// CaseHook is called after every stored alert so the auto-case generator can
+// open a new ticket (or append the alert to an existing open one). Same
+// signature as NotifierHook; runs on the engine hot path so it must be fast
+// and return early for alerts below the configured threshold.
+type CaseHook interface {
+	OnAlert(alert *models.Alert, event *models.Event)
+}
+
 // EnricherHook is called BEFORE alert storage so any context attached
 // (VirusTotal reputation, GeoIP, etc.) lands in the stored alert and is
 // visible to forwarders, notifiers, and the dashboard. Implementations
@@ -95,6 +103,7 @@ type Engine struct {
 	rbaHook      RBAHook
 	uebaHook     UebaHook
 	notifierHook NotifierHook
+	caseHook     CaseHook
 	enricherHook EnricherHook
 	agentResolver AgentResolver
 	deduper      *dedup.Manager
@@ -308,6 +317,10 @@ func (e *Engine) generateAlert(event *models.Event, rule *models.Rule) {
 		e.notifierHook.OnAlert(a, event)
 	}
 
+	if e.caseHook != nil {
+		e.caseHook.OnAlert(a, event)
+	}
+
 	e.alertOut.Emit(a, event)
 }
 
@@ -344,6 +357,10 @@ func (e *Engine) SetEnricherHook(h EnricherHook) {
 
 func (e *Engine) SetNotifierHook(h NotifierHook) {
 	e.notifierHook = h
+}
+
+func (e *Engine) SetCaseHook(h CaseHook) {
+	e.caseHook = h
 }
 
 func (e *Engine) SetAgentResolver(r AgentResolver) {

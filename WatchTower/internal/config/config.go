@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -23,6 +24,7 @@ type Config struct {
 	Identity    IdentityConfig    `yaml:"identity"`
 	Notifier    NotifierConfig    `yaml:"notifier"`
 	Enrich      EnrichConfig      `yaml:"enrich"`
+	Cases       CasesConfig       `yaml:"cases"`
 }
 
 // EnrichConfig groups alert-enrichment sources called between rule match
@@ -316,6 +318,78 @@ type NotifierConfig struct {
 	Enabled               bool                  `yaml:"enabled"`
 	Destinations          []NotifierDestination `yaml:"destinations"`
 	RatePerDestPerMinute  int                   `yaml:"rate_per_destination_per_minute"`
+}
+
+// CasesConfig controls native ticketing built on top of cases: automatic
+// case creation from alerts, per-priority SLA deadlines, and the escalation
+// sweeper. All of it is opt-in and safe to leave disabled.
+type CasesConfig struct {
+	AutoCreate        CaseAutoCreateConfig `yaml:"auto_create"`
+	SLA               CaseSLAConfig        `yaml:"sla"`
+	SweepIntervalSecs int                  `yaml:"sweep_interval_secs"`
+}
+
+// CaseAutoCreateConfig: when enabled, alerts at or above MinLevel open (or
+// append to) a case automatically.
+type CaseAutoCreateConfig struct {
+	Enabled  bool `yaml:"enabled"`
+	MinLevel int  `yaml:"min_level"`
+}
+
+// CaseSLAConfig holds per-priority response deadlines as Go durations
+// (e.g. "1h", "4h", "24h"). Empty falls back to the built-in default for that
+// priority; "0" or "none" disables the SLA for that priority.
+type CaseSLAConfig struct {
+	Critical string `yaml:"critical"`
+	High     string `yaml:"high"`
+	Medium   string `yaml:"medium"`
+	Low      string `yaml:"low"`
+}
+
+// MinLevelOrDefault returns the auto-create severity threshold, defaulting to
+// 10 (high+) when unset.
+func (c CasesConfig) MinLevelOrDefault() int {
+	if c.AutoCreate.MinLevel > 0 {
+		return c.AutoCreate.MinLevel
+	}
+	return 10
+}
+
+// SweepInterval returns how often the SLA sweeper runs, defaulting to 60s.
+func (c CasesConfig) SweepInterval() time.Duration {
+	if c.SweepIntervalSecs > 0 {
+		return time.Duration(c.SweepIntervalSecs) * time.Second
+	}
+	return 60 * time.Second
+}
+
+// SLAFor resolves a priority to an SLA duration. Returns 0 when the SLA is
+// explicitly disabled ("0"/"none") so callers treat the case as having no
+// deadline. Defaults: critical 1h, high 4h, medium 24h, low 72h.
+func (c CasesConfig) SLAFor(priority string) time.Duration {
+	raw, def := "", time.Duration(0)
+	switch strings.ToLower(priority) {
+	case "critical":
+		raw, def = c.SLA.Critical, 1*time.Hour
+	case "high":
+		raw, def = c.SLA.High, 4*time.Hour
+	case "medium":
+		raw, def = c.SLA.Medium, 24*time.Hour
+	default: // low / unknown
+		raw, def = c.SLA.Low, 72*time.Hour
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return def
+	}
+	if raw == "0" || strings.EqualFold(raw, "none") {
+		return 0
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return def
+	}
+	return d
 }
 
 // NotifierDestination describes a single outbound alert channel.

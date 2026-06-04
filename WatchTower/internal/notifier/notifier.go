@@ -130,6 +130,98 @@ func (n *Notifier) dispatchDisconnect(agent *models.Agent) {
 	}
 }
 
+// OnCaseEvent fires a notification for a case lifecycle change (assignment or
+// status change). Like agent-disconnect notices, it bypasses the per-alert
+// min_level filter — case workflow is independent of alert severity.
+func (n *Notifier) OnCaseEvent(c *models.Case, action, actor string) {
+	if n == nil || !n.cfg.Enabled || c == nil {
+		return
+	}
+	go n.dispatchCase(c, caseTitle(c, action), caseBody(c, action, actor), "#0d6efd")
+}
+
+// OnCaseBreach fires a notification when a case passes its SLA deadline.
+func (n *Notifier) OnCaseBreach(c *models.Case) {
+	if n == nil || !n.cfg.Enabled || c == nil {
+		return
+	}
+	title := fmt.Sprintf("SLA breached: case #%d — %s", c.ID, c.Title)
+	go n.dispatchCase(c, title, caseBreachBody(c), "#dc3545")
+}
+
+func (n *Notifier) dispatchCase(c *models.Case, title, body, color string) {
+	teamsColor := strings.TrimPrefix(color, "#")
+	for _, dest := range n.cfg.Destinations {
+		if !dest.Enabled {
+			continue
+		}
+		if !n.allowSend(dest.Type + ":" + dest.URL) {
+			n.logger.Warn("notifier rate-limited (case)",
+				zap.String("dest_type", dest.Type), zap.Int64("case_id", c.ID))
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		var err error
+		switch dest.Type {
+		case "slack":
+			err = n.sendSlackText(ctx, dest, title, body, color)
+		case "teams":
+			err = n.sendTeamsText(ctx, dest, title, body, teamsColor)
+		case "webhook":
+			err = n.postJSON(ctx, dest.URL, map[string]interface{}{
+				"event":        "case",
+				"case_id":      c.ID,
+				"title":        c.Title,
+				"status":       string(c.Status),
+				"priority":     string(c.Priority),
+				"assignee":     c.Assignee,
+				"sla_breached": c.SLABreached,
+			})
+		case "email":
+			err = n.sendEmailText(dest, title, body)
+		default:
+			err = fmt.Errorf("unknown destination type: %s", dest.Type)
+		}
+		cancel()
+		if err != nil {
+			n.logger.Warn("notifier dispatch failed (case)",
+				zap.String("dest_type", dest.Type), zap.Int64("case_id", c.ID), zap.Error(err))
+		}
+	}
+}
+
+func caseTitle(c *models.Case, action string) string {
+	switch action {
+	case "status_changed":
+		return fmt.Sprintf("Case #%d status → %s", c.ID, c.Status)
+	case "assignee_changed":
+		return fmt.Sprintf("Case #%d assigned to %s", c.ID, strOr(c.Assignee, "(unassigned)"))
+	default:
+		return fmt.Sprintf("Case #%d updated", c.ID)
+	}
+}
+
+func caseBody(c *models.Case, action, actor string) string {
+	return fmt.Sprintf("Title: %s\nStatus: %s\nPriority: %s\nAssignee: %s\nChanged by: %s\nAction: %s",
+		c.Title, c.Status, c.Priority, strOr(c.Assignee, "(unassigned)"), strOr(actor, "system"), action)
+}
+
+func caseBreachBody(c *models.Case) string {
+	due := "n/a"
+	if c.DueAt > 0 {
+		due = time.UnixMilli(c.DueAt).UTC().Format(time.RFC3339)
+	}
+	return fmt.Sprintf("Title: %s\nPriority (escalated): %s\nAssignee: %s\nDue: %s\nStatus: %s",
+		c.Title, c.Priority, strOr(c.Assignee, "(unassigned)"), due, c.Status)
+}
+
+func strOr(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
+}
+
 func (n *Notifier) sendSlackText(ctx context.Context, dest Destination, title, body, color string) error {
 	payload := map[string]interface{}{
 		"text": title,

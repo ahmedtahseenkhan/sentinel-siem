@@ -2,7 +2,7 @@
 
 ## 1. At a Glance
 **Project:** Sentinel SIEM - An end-to-end security monitoring, threat detection, and compliance platform.
-**Stack:** Go, Python (Flask), OpenSearch, SQLite, Docker, gRPC, Sigma rules
+**Stack:** Go, Python (Flask), OpenSearch, PostgreSQL, SQLite, Docker, gRPC, Sigma rules
 **Platform:** Endpoint Agent (Windows/Linux) + Backend Server (Web App + REST/gRPC APIs)
 **Status:** Active deployment / Production-ready
 
@@ -23,7 +23,7 @@
 
 ## 3. Architecture
 - `/WatchNode` → Go-based endpoint agent (collectors for FIM, osquery, registry, SCA, etc.)
-- `/WatchTower` → Go-based manager (Sigma rules engine, SQLite state management, active response, gRPC API)
+- `/WatchTower` → Go-based manager (Sigma rules engine, PostgreSQL state management via pgx, active response, gRPC API)
 - `/WatchVault` → Go-based indexer (OpenSearch routing, data pipeline)
 - `/sentinelCoreDashboard` → Python/Flask web dashboard application
 - `/WatchTower/rules` → Sigma YAML detection rules directory
@@ -32,7 +32,7 @@
 
 ## 4. Key Patterns
 - **Communication:** Strict use of gRPC between the Agent (WatchNode) → Manager (WatchTower) → Indexer (WatchVault).
-- **Data Storage:** SQLite is used in WatchTower for agent state and quick alert lookups. OpenSearch is used via WatchVault for heavy event indexing and historical aggregation.
+- **Data Storage:** PostgreSQL (via `pgx`/`pgxpool`, DSN from `WATCHTOWER_DATABASE_URL`) is the WatchTower state store for agent state, cases, and quick alert lookups — schema in [WatchTower/internal/store/migrations/](WatchTower/internal/store/migrations/). The Flask dashboard keeps its own small local stores in SQLite (`*.db` files). OpenSearch is used via WatchVault for heavy event indexing and historical aggregation.
 - **Rule Engine:** Native Wazuh-style YAML schema (NOT Sigma — Sigma support exists in `sigma/` as a secondary engine). Rules use `field: {equals: X}` or the legacy `{value: X}` (both honoured by the compiler since the Week-3 loader fix). 3,000+ rules across 90 files in [WatchTower/rules/](WatchTower/rules/). Both `rules:`-wrapped and bare-list YAML files load.
 - **Web Dashboard:** Connects to both WatchTower APIs (for agent/alert summaries) and OpenSearch (for deep discovery, aggregations, and metrics like MITRE ATT&CK or compliance).
 - **Alert enrichment:** `EnricherHook` interface on the engine, called between dedup and store so attached context (VirusTotal reputation, etc.) lands in the persisted alert. See [WatchTower/internal/enrich/](WatchTower/internal/enrich/).
@@ -98,7 +98,7 @@ The platform is built using a modern, microservices-oriented architecture divide
     *   **Rules Engine:** Evaluates incoming events against detection rules. It natively supports parsing and executing community **Sigma rules**.
     *   **Threat Intelligence & Vulnerability Scanning:** Matches system inventory against known vulnerabilities (CVEs) and threat intel feeds.
     *   **Active Response:** Orchestrates automated responses to detected threats.
-    *   **State Management:** Uses a local SQLite database to maintain the state of agents, groups, and recent alerts.
+    *   **State Management:** Uses a PostgreSQL database (via `pgx`) to maintain the state of agents, groups, cases, and recent alerts.
 
 #### C. WatchVault (The Indexer)
 *   **Language:** Go

@@ -25,5 +25,19 @@ forwarder:
 store:
   path: "/var/lib/watchtower/state.db"
 
+# Native ticketing built on cases: auto-open a case for high-severity alerts
+# (grouped per rule+agent so repeats append), with per-priority SLAs and an
+# escalation sweeper. Notifications reuse the `notifier:` destinations.
+cases:
+  auto_create:
+    enabled: true
+    min_level: 10        # level >= 10 (high + critical) opens a case
+  sla:                   # response deadlines per priority (Go durations)
+    critical: "1h"
+    high: "4h"
+    medium: "24h"
+    low: "72h"
+  sweep_interval_secs: 60
+
 logging:
   level: "info"
