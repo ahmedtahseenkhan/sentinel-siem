@@ -1752,6 +1752,9 @@ const GEO_CONTINENTS = [
           <button type="button" class="adt-act-btn" title="Application control (AppLocker prevention)" aria-label="Application control" onclick="event.stopPropagation();openAppControl('${escapeHtml(fullId)}','${escapeHtml(hostnameRaw)}')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           </button>
+          <button type="button" class="adt-act-btn" title="Collect forensic evidence" aria-label="Collect forensic evidence" onclick="event.stopPropagation();openForensics('${escapeHtml(fullId)}','${escapeHtml(hostnameRaw)}')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>
+          </button>
           <button type="button" class="adt-act-btn btn-agent-view" data-agent-id="${escapeHtml(fullId)}" title="Open node detail" aria-label="Open node detail">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
           </button>
@@ -9756,6 +9759,51 @@ const ACTION_TEMPLATES = {
 };
 
 let _pbActions = [];
+
+// Forensic evidence collection.
+let _fxAgent = null, _fxHost = null;
+function openForensics(agentId, hostname) {
+  _fxAgent = agentId; _fxHost = hostname || agentId;
+  const t = document.getElementById('fxTarget');
+  if (t) t.textContent = _fxHost;
+  const m = document.getElementById('forensicsModal');
+  if (m) m.style.display = 'flex';
+  _loadArtifacts();
+}
+function closeForensics() {
+  const m = document.getElementById('forensicsModal');
+  if (m) m.style.display = 'none';
+}
+async function collectEvidence() {
+  if (!_fxAgent) return;
+  if (!confirm(`Collect a forensic snapshot from ${_fxHost}?\n\nGathers process list, network connections, autoruns, scheduled tasks, and recent logs — zips them and uploads to the manager.`)) return;
+  try {
+    const r = await fetch('/api/active-response/collect', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agent_id: _fxAgent })
+    });
+    const d = await r.json().catch(() => ({}));
+    alert(r.ok && d.ok ? `Collection requested from ${_fxHost}. The bundle appears below once uploaded — Refresh in ~30s.` : `Could not request collection: ${d.error || r.status}`);
+  } catch (e) { alert('Could not request collection: ' + e); }
+}
+async function _loadArtifacts() {
+  const c = document.getElementById('fxList');
+  if (!c || !_fxAgent) return;
+  c.innerHTML = '<div style="color:var(--text-muted);font-size:12px">Loading…</div>';
+  try {
+    const res = await fetch(`/api/artifacts?agent_id=${encodeURIComponent(_fxAgent)}&limit=50`).then(r => r.json());
+    const items = (res && res.data) || [];
+    if (!items.length) { c.innerHTML = '<div style="color:var(--text-muted);font-size:12px">No artifacts yet — click "Collect new evidence".</div>'; return; }
+    c.innerHTML = items.map(a => {
+      const kb = Math.max(1, Math.round((a.size_bytes || 0) / 1024));
+      const when = a.created_at ? new Date(a.created_at).toLocaleString() : '';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px">
+        <span style="font-family:var(--font-mono);font-size:11.5px">${escapeHtml(a.filename || ('#' + a.id))}<span style="color:var(--text-muted)"> · ${kb} KB · ${escapeHtml(when)}</span></span>
+        <a href="/api/artifacts/${encodeURIComponent(a.id)}/download" class="act-btn" style="text-decoration:none">Download</a>
+      </div>`;
+    }).join('');
+  } catch (e) { c.innerHTML = '<div style="color:var(--crit);font-size:12px">Error loading artifacts.</div>'; }
+}
 
 // Host isolation — quarantine a compromised endpoint (keeps the manager channel
 // so it can be released remotely). Auto-releases after the agent's block TTL.

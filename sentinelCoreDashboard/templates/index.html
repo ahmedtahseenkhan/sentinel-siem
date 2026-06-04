@@ -4487,6 +4487,24 @@ CLOUD_SYNC_INTERVAL=15m</pre>
         </section>
 
         <!-- Create Playbook Modal -->
+        <div id="forensicsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1001;align-items:center;justify-content:center">
+          <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:26px;width:560px;max-width:94vw">
+            <h3 style="margin:0 0 6px">Forensic evidence · <span id="fxTarget" style="color:var(--accent)">—</span></h3>
+            <p style="margin:0 0 14px;font-size:12px;color:var(--text-muted);line-height:1.5">
+              Collects a snapshot from the host — running processes, network connections, autoruns, scheduled tasks,
+              and recent logs — zips it, and uploads it to the manager for download. The bundle appears below shortly after.
+            </p>
+            <div style="display:flex;gap:8px;margin-bottom:14px">
+              <button onclick="collectEvidence()" class="btn btn-primary" style="font-size:13px">Collect new evidence</button>
+              <button onclick="_loadArtifacts()" class="act-btn">Refresh list</button>
+            </div>
+            <div id="fxList" style="max-height:300px;overflow-y:auto"></div>
+            <div style="display:flex;justify-content:flex-end;margin-top:14px">
+              <button onclick="closeForensics()" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:8px 18px;border-radius:6px;cursor:pointer">Close</button>
+            </div>
+          </div>
+        </div>
+
         <div id="appControlModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1001;align-items:center;justify-content:center">
           <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:12px;padding:26px;width:520px;max-width:94vw">
             <h3 style="margin:0 0 6px">Application control · <span id="appControlTarget" style="color:var(--accent)">—</span></h3>

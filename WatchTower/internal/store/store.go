@@ -66,6 +66,7 @@ func (s *Store) migrate() error {
 		"migrations/007_rba.sql",
 		"migrations/008_partitioning.sql",
 		"migrations/010_playbook_dryrun.sql",
+		"migrations/011_artifacts.sql",
 	}
 	for _, f := range files {
 		data, err := migrations.ReadFile(f)

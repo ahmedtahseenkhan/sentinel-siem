@@ -269,6 +269,7 @@ func main() {
 	apiSrv := api.NewServer(cfg.Server.API, logger, reg, st, eng, auditLogger)
 	apiSrv.SetSyslogDecoder(syslogDecoderEngine)
 	apiSrv.SetUebaAnalyzer(uebaAnalyzer)
+	apiSrv.SetArtifactConfig(cfg.Server.GRPC.EnrollToken, os.Getenv("WATCHTOWER_ARTIFACT_DIR"))
 	if cfg.Identity.Enabled {
 		apiSrv.SetIdentitySyncer(idMgr)
 	}

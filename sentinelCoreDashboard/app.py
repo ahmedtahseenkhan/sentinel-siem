@@ -3543,6 +3543,58 @@ def api_process_tree():
         return _api_error(e)
 
 
+@app.route("/api/active-response/collect", methods=["POST"])
+def api_ar_collect():
+    """Trigger a forensic-artifact collection on an agent."""
+    _user, role = _check_login() or (None, None)
+    if role not in (ROLE_SUPER_ADMIN, "administrator", "admin"):
+        return jsonify({"error": "Insufficient permissions"}), 403
+    try:
+        body = request.get_json(silent=True) or {}
+        agent_id = (body.get("agent_id") or "").strip()
+        if not agent_id:
+            return jsonify({"error": "agent_id required"}), 400
+        from watchtower_client import watchtower_request
+        payload = {"agent_id": agent_id, "action": "collect-artifact", "parameters": {}}
+        res = watchtower_request("/api/v1/active-response", method="POST", json_body=payload)
+        return jsonify({"ok": True, "agent_id": agent_id, "response": res})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/artifacts")
+def api_artifacts():
+    """List forensic artifacts (optionally filtered by agent_id)."""
+    try:
+        from watchtower_client import watchtower_request
+        params = {k: v for k, v in request.args.items()}
+        res = watchtower_request("/api/v1/artifacts", method="GET", params=params)
+        return jsonify(res or {"data": [], "total": 0})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/artifacts/<int:aid>/download")
+def api_artifact_download(aid):
+    """Stream a forensic artifact zip from WatchTower through to the browser."""
+    try:
+        import requests as _rq
+        from flask import Response
+        from watchtower_client import WATCHTOWER_URL, WATCHTOWER_API_KEY
+        url = f"{WATCHTOWER_URL.rstrip('/')}/api/v1/artifacts/{aid}/download"
+        headers = {"Authorization": f"Bearer {WATCHTOWER_API_KEY}"} if WATCHTOWER_API_KEY else {}
+        r = _rq.get(url, headers=headers, stream=True, timeout=120, verify=False)
+        if r.status_code != 200:
+            return jsonify({"error": f"download failed: {r.status_code}"}), r.status_code
+        return Response(
+            r.iter_content(chunk_size=8192),
+            content_type=r.headers.get("Content-Type", "application/zip"),
+            headers={"Content-Disposition": r.headers.get("Content-Disposition", f'attachment; filename="artifact_{aid}.zip"')},
+        )
+    except Exception as e:
+        return _api_error(e)
+
+
 @app.route("/api/active-response/isolate", methods=["POST"])
 def api_ar_isolate():
     """Isolate (network-quarantine) a specific agent, keeping the manager channel.

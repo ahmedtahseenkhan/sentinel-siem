@@ -92,6 +92,7 @@ var defaultBuiltinCommands = map[string]bool{
 	"app-control":      true,
 	"quarantine-file":  true,
 	"force-logoff":     true,
+	"collect-artifact": true,
 }
 
 func (a *Agent) commandTimeout() time.Duration {
@@ -264,6 +265,8 @@ func (a *Agent) executeCommand(commandType, arg string) error {
 		return a.runQuarantineFile(arg)
 	case "force-logoff":
 		return a.runForceLogoff(arg)
+	case "collect-artifact":
+		return a.runCollectArtifact(arg)
 	default:
 		return fmt.Errorf("unsupported manager command type: %s", commandType)
 	}
