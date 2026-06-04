@@ -35,6 +35,19 @@ type Server struct {
 	identitySyncer IdentitySyncer
 	uebaAnalyzer   UebaRunner
 	http           *http.Server
+	enrollToken    string
+	artifactDir    string
+}
+
+// SetArtifactConfig wires the enroll token (used to authenticate agent artifact
+// uploads — agents hold the enroll token but not the API key) and the directory
+// where uploaded forensic bundles are stored.
+func (s *Server) SetArtifactConfig(enrollToken, dir string) {
+	s.enrollToken = enrollToken
+	if dir == "" {
+		dir = "/var/lib/watchtower/artifacts"
+	}
+	s.artifactDir = dir
 }
 
 // SetSyslogDecoder wires the syslog decoder engine into the API server.

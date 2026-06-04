@@ -23,8 +23,18 @@ func (s *Server) routes() *chi.Mux {
 	r.Get("/ready", handlers.Ready(s.store))
 	r.Get("/metrics", handlers.Metrics(nil))
 
+	// Agent forensic-artifact upload — authenticated by the enroll token (agents
+	// hold it, not the API key), so it lives outside the /api/v1 API-key group.
+	arth := handlers.NewArtifactHandler(s.store, s.artifactDir, s.enrollToken)
+	r.Post("/ingest/artifact/{agent_id}", arth.Upload)
+
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(middleware.APIKeyAuth(s.cfg.Auth.APIKey))
+
+		r.Route("/artifacts", func(r chi.Router) {
+			r.Get("/", arth.List)
+			r.Get("/{id}/download", arth.Download)
+		})
 
 		ah := handlers.NewAgentHandler(s.registry)
 		r.Route("/agents", func(r chi.Router) {
