@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/watchtower/watchtower/internal/audit"
+	"github.com/watchtower/watchtower/internal/casegen"
+	"github.com/watchtower/watchtower/internal/casesla"
 	"github.com/watchtower/watchtower/internal/config"
 	"github.com/watchtower/watchtower/internal/license"
 	"github.com/watchtower/watchtower/internal/engine"
@@ -180,9 +182,11 @@ func main() {
 			zap.Int("min_level", cfg.Enrich.VirusTotal.MinLevel))
 	}
 
-	// Outbound notifier (Slack/Teams/webhook/email)
+	// Outbound notifier (Slack/Teams/webhook/email). Hoisted so the case
+	// ticketing subsystem (auto-create, SLA sweeper, API handler) can reuse it.
+	var notif *notifier.Notifier
 	if cfg.Notifier.Enabled {
-		notif := notifier.New(cfg.Notifier, logger)
+		notif = notifier.New(cfg.Notifier, logger)
 		eng.SetNotifierHook(notif)
 
 		// Fire a notification whenever an agent goes disconnected.
@@ -194,6 +198,21 @@ func main() {
 			zap.Int("destinations", len(cfg.Notifier.Destinations)),
 		)
 	}
+
+	// Auto-create cases (native ticketing) from high-severity alerts.
+	if cfg.Cases.AutoCreate.Enabled {
+		eng.SetCaseHook(casegen.New(st, cfg.Cases, logger))
+		logger.Info("auto-case generation enabled",
+			zap.Int("min_level", cfg.Cases.MinLevelOrDefault()))
+	}
+
+	// Case SLA sweeper — flags overdue cases, escalates, and notifies. Runs
+	// even without auto-create so manually opened cases still get SLA tracking.
+	var slaNotif casesla.Notifier
+	if notif != nil {
+		slaNotif = notif
+	}
+	go casesla.New(st, slaNotif, cfg.Cases, logger).Start(ctx)
 
 	eng.Start()
 	defer eng.Stop()
@@ -270,6 +289,7 @@ func main() {
 	apiSrv.SetSyslogDecoder(syslogDecoderEngine)
 	apiSrv.SetUebaAnalyzer(uebaAnalyzer)
 	apiSrv.SetArtifactConfig(cfg.Server.GRPC.EnrollToken, os.Getenv("WATCHTOWER_ARTIFACT_DIR"))
+	apiSrv.SetCaseTicketing(cfg.Cases, notif)
 	if cfg.Identity.Enabled {
 		apiSrv.SetIdentitySyncer(idMgr)
 	}

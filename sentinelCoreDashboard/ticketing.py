@@ -1,7 +1,12 @@
 """
 Ticketing integration for Sentinel SIEM.
-Supports Jira (Cloud/Server) and ServiceNow.
+Supports a built-in "native" provider (creates a WatchTower case — no external
+ITSM required), Jira (Cloud/Server), and ServiceNow.
 Ticket references are persisted in a local JSON store.
+
+The default provider is "native" so a fresh deployment has a working ticket
+queue out of the box; set TICKETING_PROVIDER=jira|servicenow to push to an
+external system instead.
 """
 import json
 import logging
@@ -38,10 +43,12 @@ def _snow_cfg():
     }
 
 def get_provider():
-    return os.getenv("TICKETING_PROVIDER", "none").lower()
+    return os.getenv("TICKETING_PROVIDER", "native").lower()
 
 def is_configured():
     p = get_provider()
+    if p == "native":
+        return True  # built-in cases need no external credentials
     if p == "jira":
         cfg = _jira_cfg()
         return bool(cfg["url"] and cfg["email"] and cfg["token"])
@@ -53,6 +60,16 @@ def is_configured():
 def get_config_status():
     """Return provider config for the settings UI (no secrets)."""
     p = get_provider()
+    if p == "native":
+        try:
+            from config import WATCHTOWER_URL
+        except Exception:
+            WATCHTOWER_URL = ""
+        return {
+            "provider": "native",
+            "configured": True,
+            "url": WATCHTOWER_URL,
+        }
     if p == "jira":
         cfg = _jira_cfg()
         return {
@@ -159,6 +176,41 @@ def _snow_create(summary: str, description: str, priority: str = "medium") -> di
     }
 
 
+# ── Native provider (built-in WatchTower case) ─────────────────────────────────
+
+NATIVE_PRIORITIES = {"critical", "high", "medium", "low"}
+
+def _native_create(summary: str, description: str, priority: str = "medium",
+                   alert_id: int = None, created_by: str = "system") -> dict:
+    """Create a WatchTower case as a ticket — no external ITSM required.
+
+    The case priority/SLA and (optional) auto-escalation are handled by
+    WatchTower; here we just open the case and return a dashboard deep-link.
+    """
+    from watchtower_client import watchtower_request
+
+    pr = (priority or "medium").lower()
+    if pr not in NATIVE_PRIORITIES:
+        pr = "medium"
+
+    payload = {
+        "title":       summary,
+        "description": description,
+        "priority":    pr,
+        "created_by":  created_by,
+        "tags":        ["ticket"],
+        "alert_ids":   [alert_id] if alert_id else [],
+    }
+    res = watchtower_request("/api/v1/cases", method="POST", json_body=payload)
+    data = (res or {}).get("data", {}) or {}
+    case_id = data.get("id")
+    return {
+        "ticket_id":  f"CASE-{case_id}" if case_id else "CASE-?",
+        "ticket_url": "/#cases",
+        "case_id":    case_id,
+    }
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def create_ticket(summary: str, description: str, priority: str = "medium",
@@ -169,7 +221,13 @@ def create_ticket(summary: str, description: str, priority: str = "medium",
     Returns the ticket record saved to local store.
     """
     p = get_provider()
-    if p == "jira":
+    if p == "native":
+        result = _native_create(summary, description, priority,
+                                alert_id=alert_id, created_by=created_by)
+        # The created case *is* the ticket — link the record to it.
+        if result.get("case_id") is not None:
+            case_id = result["case_id"]
+    elif p == "jira":
         result = _jira_create(summary, description, priority)
     elif p == "servicenow":
         result = _snow_create(summary, description, priority)

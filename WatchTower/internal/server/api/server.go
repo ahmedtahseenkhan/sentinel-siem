@@ -9,7 +9,9 @@ import (
 	"github.com/watchtower/watchtower/internal/config"
 	"github.com/watchtower/watchtower/internal/engine"
 	"github.com/watchtower/watchtower/internal/engine/decoder"
+	"github.com/watchtower/watchtower/internal/notifier"
 	"github.com/watchtower/watchtower/internal/registry"
+	"github.com/watchtower/watchtower/internal/server/api/handlers"
 	"github.com/watchtower/watchtower/internal/store"
 	"go.uber.org/zap"
 )
@@ -34,6 +36,8 @@ type Server struct {
 	audit          *audit.Logger
 	identitySyncer IdentitySyncer
 	uebaAnalyzer   UebaRunner
+	casesCfg       config.CasesConfig
+	caseNotifier   handlers.CaseNotifier
 	http           *http.Server
 	enrollToken    string
 	artifactDir    string
@@ -48,6 +52,16 @@ func (s *Server) SetArtifactConfig(enrollToken, dir string) {
 		dir = "/var/lib/watchtower/artifacts"
 	}
 	s.artifactDir = dir
+}
+
+// SetCaseTicketing wires the case SLA config and (optional) notifier into the
+// API server so the case handler can stamp due dates and announce changes.
+// A nil notifier leaves notifications disabled.
+func (s *Server) SetCaseTicketing(cfg config.CasesConfig, n *notifier.Notifier) {
+	s.casesCfg = cfg
+	if n != nil {
+		s.caseNotifier = n
+	}
 }
 
 // SetSyslogDecoder wires the syslog decoder engine into the API server.

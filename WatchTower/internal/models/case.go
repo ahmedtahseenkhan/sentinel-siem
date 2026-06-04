@@ -34,6 +34,15 @@ type Case struct {
 	AlertIDs    []int64      `json:"alert_ids"`
 	AgentIDs    []string     `json:"agent_ids"`
 	NoteCount   int          `json:"note_count,omitempty"`
+
+	// Ticketing fields (migration 009). GroupKey ties auto-created cases to a
+	// (rule + agent) so repeat alerts append rather than spawn new cases.
+	// DueAt is an SLA deadline in epoch millis (0 = no SLA). SLABreached and
+	// Escalated are set by the SLA sweeper when DueAt passes.
+	GroupKey    string `json:"group_key,omitempty"`
+	DueAt       int64  `json:"due_at,omitempty"`
+	SLABreached bool   `json:"sla_breached"`
+	Escalated   bool   `json:"escalated"`
 }
 
 type CaseNote struct {
@@ -52,4 +61,17 @@ type CaseEvidence struct {
 	Content string `json:"content"`
 	AddedBy string `json:"added_by"`
 	AddedAt int64  `json:"added_at"`
+}
+
+// CaseHistory is one entry in a case's state-change audit trail. Actions:
+// created, status_changed, assignee_changed, priority_changed, sla_breached.
+type CaseHistory struct {
+	ID        int64  `json:"id"`
+	CaseID    int64  `json:"case_id"`
+	Actor     string `json:"actor"`
+	Action    string `json:"action"`
+	Field     string `json:"field,omitempty"`
+	OldValue  string `json:"old_value,omitempty"`
+	NewValue  string `json:"new_value,omitempty"`
+	CreatedAt int64  `json:"created_at"`
 }
