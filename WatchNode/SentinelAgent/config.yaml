@@ -165,6 +165,15 @@ collectors:
     scan_timeout_secs: 20
     max_procs: 200
 
+  # Registry deception — plants a decoy value in HKLM Run and alerts (critical)
+  # if it's modified or deleted (persistence tampering). Agent runs as SYSTEM so
+  # it can write HKLM.
+  registry_deception:
+    enabled: true
+    interval: "30s"
+    keys:
+      - "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"
+
 performance:
   max_cpu_percent: 25
   max_memory_bytes: 268435456

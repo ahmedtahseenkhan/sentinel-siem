@@ -18,6 +18,7 @@ import (
 	"github.com/watchnode/watchnode/internal/collectors/network"
 	"github.com/watchnode/watchnode/internal/collectors/osquery"
 	"github.com/watchnode/watchnode/internal/collectors/process"
+	"github.com/watchnode/watchnode/internal/collectors/regcanary"
 	"github.com/watchnode/watchnode/internal/collectors/registry"
 	"github.com/watchnode/watchnode/internal/collectors/rootcheck"
 	"github.com/watchnode/watchnode/internal/collectors/sca"
@@ -207,6 +208,9 @@ func buildCollectors(cfg *agent.Config) []models.Collector {
 	}
 	if cfg.Collectors.Yara.Enabled {
 		collectors = append(collectors, yarascan.New(cfg.Collectors.Yara))
+	}
+	if cfg.Collectors.RegDeception.Enabled {
+		collectors = append(collectors, regcanary.New(cfg.Collectors.RegDeception))
 	}
 	if cfg.Collectors.Vulnerability.Enabled {
 		collectors = append(collectors, vulnerability.New(cfg.Collectors.Vulnerability))
