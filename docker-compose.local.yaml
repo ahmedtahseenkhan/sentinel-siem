@@ -110,6 +110,9 @@ services:
       - WATCHTOWER_GRPC_ENROLL_TOKEN=sentinel-enroll-secret-2024
       - WATCHTOWER_KAFKA_BROKERS=kafka:9092
       - WATCHTOWER_SYSLOG_ADDR=:5140
+      # Native ticketing: auto-open a case for level>=10 alerts (set =false to disable)
+      - WATCHTOWER_CASES_AUTO_CREATE=true
+      - WATCHTOWER_CASES_MIN_LEVEL=10
     depends_on:
       postgres:
         condition: service_healthy

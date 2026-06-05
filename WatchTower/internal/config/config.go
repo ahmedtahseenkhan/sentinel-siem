@@ -198,6 +198,22 @@ func DefaultConfig() *Config {
 			Level:  "info",
 			Output: "stdout",
 		},
+		// Native ticketing on by default: high+critical alerts open a case
+		// (grouped per rule+agent), with per-priority SLAs and the escalation
+		// sweeper. Toggle via WATCHTOWER_CASES_* env vars.
+		Cases: CasesConfig{
+			AutoCreate: CaseAutoCreateConfig{
+				Enabled:  true,
+				MinLevel: 10,
+			},
+			SLA: CaseSLAConfig{
+				Critical: "1h",
+				High:     "4h",
+				Medium:   "24h",
+				Low:      "72h",
+			},
+			SweepIntervalSecs: 60,
+		},
 	}
 }
 
@@ -310,6 +326,32 @@ func applyEnvOverrides(cfg *Config) {
 		if err := json.Unmarshal([]byte(v), &dests); err == nil {
 			cfg.Notifier.Destinations = dests
 		}
+	}
+	// Native ticketing (cases). Auto-create defaults ON; set =false to disable.
+	if v := os.Getenv("WATCHTOWER_CASES_AUTO_CREATE"); v != "" {
+		cfg.Cases.AutoCreate.Enabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv("WATCHTOWER_CASES_MIN_LEVEL"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.Cases.AutoCreate.MinLevel = n
+		}
+	}
+	if v := os.Getenv("WATCHTOWER_CASES_SWEEP_INTERVAL_SECS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.Cases.SweepIntervalSecs = n
+		}
+	}
+	if v := os.Getenv("WATCHTOWER_CASES_SLA_CRITICAL"); v != "" {
+		cfg.Cases.SLA.Critical = v
+	}
+	if v := os.Getenv("WATCHTOWER_CASES_SLA_HIGH"); v != "" {
+		cfg.Cases.SLA.High = v
+	}
+	if v := os.Getenv("WATCHTOWER_CASES_SLA_MEDIUM"); v != "" {
+		cfg.Cases.SLA.Medium = v
+	}
+	if v := os.Getenv("WATCHTOWER_CASES_SLA_LOW"); v != "" {
+		cfg.Cases.SLA.Low = v
 	}
 }
 
