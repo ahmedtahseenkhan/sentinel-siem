@@ -131,7 +131,7 @@ services:
 
   # ── Dashboard ────────────────────────────────────────────────────────────
   dashboard:
-    build: ./sentinelCoreDashboard
+    build: ./corenestDashboard
     environment:
       - WATCHTOWER_URL=http://watchtower:9400
       - WATCHTOWER_API_KEY=${WATCHTOWER_API_KEY:-SentinelWT_Prod_2024!}

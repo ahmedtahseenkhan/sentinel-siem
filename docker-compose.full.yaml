@@ -235,7 +235,7 @@ services:
 
 
   dashboard:
-    build: ./sentinelCoreDashboard
+    build: ./corenestDashboard
     ports:
       - "5050:5050"
     environment:
@@ -252,7 +252,7 @@ services:
       - WATCHTOWER_API_KEY=${WATCHTOWER_API_KEY:-sentinel-dev-api-key}
     volumes:
       # Mount agent packages so the deploy page can serve them to endpoints.
-      # The dashboard container only contains sentinelCoreDashboard/ — WatchNode/
+      # The dashboard container only contains corenestDashboard/ — WatchNode/
       # is outside its build context, so we mount the parent dir at the path
       # app.py expects.
       #

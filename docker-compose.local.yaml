@@ -171,7 +171,7 @@ services:
     restart: unless-stopped
 
   dashboard:
-    build: ./sentinelCoreDashboard
+    build: ./corenestDashboard
     ports:
       - "5050:5050"
     volumes:
