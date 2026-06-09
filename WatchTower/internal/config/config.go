@@ -53,6 +53,7 @@ type IdentityConfig struct {
 	BaseDN       string `yaml:"base_dn"`       // e.g. DC=company,DC=com
 	SyncInterval string `yaml:"sync_interval"` // e.g. "1h"
 	UserFilter   string `yaml:"user_filter"`   // default: (objectClass=person)
+	SOCGroup     string `yaml:"soc_group"`     // AD group whose members auto-join the SOC roster
 }
 
 // SyslogConfig enables the built-in UDP/TCP syslog receiver.
@@ -305,6 +306,9 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if v := os.Getenv("WATCHTOWER_LDAP_BASE_DN"); v != "" {
 		cfg.Identity.BaseDN = v
+	}
+	if v := os.Getenv("WATCHTOWER_SOC_GROUP"); v != "" {
+		cfg.Identity.SOCGroup = v
 	}
 	if v := os.Getenv("WATCHTOWER_THREATINTEL_ENABLED"); v != "" {
 		cfg.ThreatIntel.Enabled = v == "true" || v == "1"
