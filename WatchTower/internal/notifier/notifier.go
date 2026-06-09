@@ -137,7 +137,7 @@ func (n *Notifier) OnCaseEvent(c *models.Case, action, actor string) {
 	if n == nil || !n.cfg.Enabled || c == nil {
 		return
 	}
-	go n.dispatchCase(c, caseTitle(c, action), caseBody(c, action, actor), "#0d6efd")
+	go n.dispatchCase(c, caseTitle(c, action), caseBody(c, action, actor), "#0d6efd", false)
 }
 
 // OnCaseBreach fires a notification when a case passes its SLA deadline.
@@ -146,10 +146,21 @@ func (n *Notifier) OnCaseBreach(c *models.Case) {
 		return
 	}
 	title := fmt.Sprintf("SLA breached: case #%d — %s", c.ID, c.Title)
-	go n.dispatchCase(c, title, caseBreachBody(c), "#dc3545")
+	go n.dispatchCase(c, title, caseBreachBody(c), "#dc3545", true)
 }
 
-func (n *Notifier) dispatchCase(c *models.Case, title, body, color string) {
+// OnCaseWarning fires when a case crosses ~80% of its SLA window.
+func (n *Notifier) OnCaseWarning(c *models.Case) {
+	if n == nil || !n.cfg.Enabled || c == nil {
+		return
+	}
+	title := fmt.Sprintf("SLA warning (80%%): case #%d — %s", c.ID, c.Title)
+	go n.dispatchCase(c, title, caseBreachBody(c), "#ffc107", false)
+}
+
+// dispatchCase fans a case notification to all destinations. urgent marks
+// breach/critical events that should also page (PagerDuty).
+func (n *Notifier) dispatchCase(c *models.Case, title, body, color string, urgent bool) {
 	teamsColor := strings.TrimPrefix(color, "#")
 	for _, dest := range n.cfg.Destinations {
 		if !dest.Enabled {
@@ -179,6 +190,11 @@ func (n *Notifier) dispatchCase(c *models.Case, title, body, color string) {
 			})
 		case "email":
 			err = n.sendEmailText(dest, title, body)
+		case "pagerduty":
+			// Page only on urgent (breach) or critical cases — avoid alert storms.
+			if urgent || strings.EqualFold(string(c.Priority), "critical") {
+				err = n.sendPagerDuty(ctx, dest, c, title, body)
+			}
 		default:
 			err = fmt.Errorf("unknown destination type: %s", dest.Type)
 		}
@@ -220,6 +236,41 @@ func strOr(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// sendPagerDuty triggers a PagerDuty Events API v2 incident. dest.URL holds the
+// integration routing key. Deduped per case so repeated pages collapse.
+func (n *Notifier) sendPagerDuty(ctx context.Context, dest Destination, c *models.Case, title, body string) error {
+	if dest.URL == "" {
+		return fmt.Errorf("pagerduty: routing key (url) required")
+	}
+	sev := "warning"
+	switch strings.ToLower(string(c.Priority)) {
+	case "critical":
+		sev = "critical"
+	case "high":
+		sev = "error"
+	case "low":
+		sev = "info"
+	}
+	payload := map[string]interface{}{
+		"routing_key":  dest.URL,
+		"event_action": "trigger",
+		"dedup_key":    fmt.Sprintf("case-%d", c.ID),
+		"payload": map[string]interface{}{
+			"summary":   title,
+			"severity":  sev,
+			"source":    "Sentinel SIEM",
+			"component": "cases",
+			"custom_details": map[string]interface{}{
+				"case_id":  c.ID,
+				"assignee": c.Assignee,
+				"status":   string(c.Status),
+				"detail":   body,
+			},
+		},
+	}
+	return n.postJSON(ctx, "https://events.pagerduty.com/v2/enqueue", payload)
 }
 
 func (n *Notifier) sendSlackText(ctx context.Context, dest Destination, title, body, color string) error {

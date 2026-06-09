@@ -26,15 +26,25 @@ type Store interface {
 	AddCaseHistory(h *models.CaseHistory) (int64, error)
 }
 
+// Assigner routes a new case to an engineer. *assign.Engine satisfies it via
+// Route; nil means assignment is disabled (cases stay unassigned).
+type Assigner interface {
+	Route(c *models.Case) (assignee, reason string)
+}
+
 type Generator struct {
-	store  Store
-	cfg    config.CasesConfig
-	logger *zap.Logger
+	store    Store
+	cfg      config.CasesConfig
+	logger   *zap.Logger
+	assigner Assigner
 }
 
 func New(st Store, cfg config.CasesConfig, logger *zap.Logger) *Generator {
 	return &Generator{store: st, cfg: cfg, logger: logger}
 }
+
+// SetAssigner wires the auto-assignment engine (optional).
+func (g *Generator) SetAssigner(a Assigner) { g.assigner = a }
 
 // GroupKey is the (rule + agent) identity used to coalesce repeat alerts into
 // one open case. Exported so tests and the store can agree on the format.
@@ -79,15 +89,20 @@ func (g *Generator) appendToCase(c *models.Case, alert *models.Alert) {
 
 func (g *Generator) createCase(groupKey string, alert *models.Alert) {
 	priority := PriorityForLevel(alert.Level)
-	due := int64(0)
+	now := time.Now().UnixMilli()
+	due, warn := int64(0), int64(0)
 	if d := g.cfg.SLAFor(string(priority)); d > 0 {
-		due = time.Now().UnixMilli() + d.Milliseconds()
+		due = now + d.Milliseconds()
+		warn = now + d.Milliseconds()*8/10 // ~80% of the SLA window
 	}
 
 	agentIDs := []string{}
 	if alert.AgentID != "" {
 		agentIDs = []string{alert.AgentID}
 	}
+
+	// Carry the rule's groups as tags so the assignment engine can skill-match.
+	tags := append([]string{"auto-created"}, alert.RuleGroups...)
 
 	c := &models.Case{
 		Title:       alert.Title,
@@ -96,16 +111,33 @@ func (g *Generator) createCase(groupKey string, alert *models.Alert) {
 		Priority:    priority,
 		Severity:    alert.Level,
 		CreatedBy:   "auto",
-		Tags:        []string{"auto-created"},
+		Tags:        tags,
 		AlertIDs:    []int64{alert.ID},
 		AgentIDs:    agentIDs,
 		GroupKey:    groupKey,
 		DueAt:       due,
+		WarnAt:      warn,
 	}
+
+	// Auto-assign before insert so the assignee is persisted with the case.
+	if g.assigner != nil {
+		if assignee, reason := g.assigner.Route(c); assignee != "" {
+			c.Assignee = assignee
+			g.logger.Info("casegen: auto-assigned case", zap.String("assignee", assignee), zap.String("reason", reason))
+		} else {
+			c.Tags = append(c.Tags, "unassigned-queue")
+		}
+	}
+
 	id, err := g.store.CreateCase(c)
 	if err != nil {
 		g.logger.Warn("casegen: create case failed", zap.String("group_key", groupKey), zap.Error(err))
 		return
+	}
+	if c.Assignee != "" {
+		_, _ = g.store.AddCaseHistory(&models.CaseHistory{
+			CaseID: id, Actor: "auto", Action: "assigned", NewValue: c.Assignee,
+		})
 	}
 	if _, err := g.store.AddCaseHistory(&models.CaseHistory{
 		CaseID:   id,

@@ -209,6 +209,10 @@
             Correlations
             <span class="sb2-badge sb2-badge--crit" id="navBadgeCorr" style="display:none"></span>
           </a>
+          <a href="#" class="sb2-item nav-item" data-page="soc">
+            <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            SOC Workflow
+          </a>
           <a href="#" class="sb2-item nav-item" data-page="silent-sources" data-requires-role="super_admin">
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
             Silent Sources
@@ -767,6 +771,51 @@
               <button type="button" id="corrDetailClose" class="act-btn" style="height:24px;padding:0 8px;font-size:11px">✕ Close</button>
             </div>
             <pre id="corrDetailBody" style="margin:0;padding:14px 16px;font-family:var(--font-mono);font-size:11px;color:var(--fg-2);white-space:pre-wrap;word-break:break-word"></pre>
+          </div>
+        </section>
+
+        <!-- ===================== SOC WORKFLOW ===================== -->
+        <section id="page-soc" class="page page-v2">
+          <div class="ag2-header" style="margin-bottom:16px">
+            <div class="ag2-header-left">
+              <h2 class="ag2-title">SOC Workflow <span class="ag2-fleet-badge">Cases</span></h2>
+              <p class="ag2-subtitle">Manager metrics, the engineer roster &amp; on-call schedule that drive auto-assignment, and false-positive tuning.</p>
+            </div>
+            <div class="ag2-header-right">
+              <button type="button" id="socRefresh" class="act-btn" style="height:30px;padding:0 14px;font-size:12px">↻ Refresh</button>
+            </div>
+          </div>
+
+          <div class="grid grid-4" style="margin-bottom:12px">
+            <div class="kpi"><span class="kpi-band kpi-band low"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--accent)">MTTR</span><span class="kpi-tag ok">7-DAY</span></div><div class="kpi-value" id="socMttr">—</div><div class="kpi-foot"><span class="kpi-sub">mean time to resolve</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band crit"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--crit)">Open cases</span><span class="kpi-tag ok">NOW</span></div><div class="kpi-value" id="socOpen">—</div><div class="kpi-foot"><span class="kpi-sub" id="socOpenSev">by severity</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band" style="background:var(--high)"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--high)">SLA breach rate</span><span class="kpi-tag ok">7-DAY</span></div><div class="kpi-value" id="socBreach">—</div><div class="kpi-foot"><span class="kpi-sub">of resolved cases</span></div></div>
+            <div class="kpi"><span class="kpi-band kpi-band" style="background:var(--ok)"></span><div class="kpi-h"><span class="kpi-label" style="color:var(--ok)">Unassigned</span><span class="kpi-tag ok">QUEUE</span></div><div class="kpi-value" id="socUnassigned">—</div><div class="kpi-foot"><span class="kpi-sub">fallback queue</span></div></div>
+          </div>
+
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-h"><h3 class="card-h-title"><span class="dot" style="background:var(--accent)"></span>SOC ENGINEERS <span id="socEngCount" style="font-size:11px;color:var(--fg-4);margin-left:6px">0</span></h3></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;padding:10px 12px;border-bottom:1px solid var(--border)">
+              <input id="socNewSam" placeholder="sam_account" class="fld" style="height:28px;font-size:12px;width:140px">
+              <input id="socNewSkills" placeholder="skills (comma sep)" class="fld" style="height:28px;font-size:12px;flex:1;min-width:160px">
+              <select id="socNewTier" class="fld" style="height:28px;font-size:12px"><option value="1">Tier 1 (junior)</option><option value="2">Tier 2</option><option value="3">Tier 3 (senior)</option></select>
+              <input id="socNewMax" type="number" value="25" title="max load" class="fld" style="height:28px;font-size:12px;width:70px">
+              <button type="button" id="socAddEng" class="act-btn primary" style="height:28px;padding:0 12px;font-size:12px">+ Add</button>
+            </div>
+            <div class="tbl">
+              <div class="tbl-h" style="grid-template-columns:150px 1fr 80px 90px 90px 1fr 80px">
+                <span>Account</span><span>Name</span><span>Tier</span><span>Load</span><span>Skills</span><span>Shifts (UTC)</span><span></span>
+              </div>
+              <div id="socEngBody"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h"><h3 class="card-h-title"><span class="dot" style="background:var(--high)"></span>NOISY RULES <span style="font-size:11px;color:var(--fg-4);margin-left:6px">by false-positive cases</span></h3></div>
+            <div class="tbl">
+              <div class="tbl-h" style="grid-template-columns:120px 120px 1fr"><span>Rule ID</span><span>FP cases</span><span>Action</span></div>
+              <div id="socFpBody"></div>
+            </div>
           </div>
         </section>
 

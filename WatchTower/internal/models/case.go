@@ -43,6 +43,13 @@ type Case struct {
 	DueAt       int64  `json:"due_at,omitempty"`
 	SLABreached bool   `json:"sla_breached"`
 	Escalated   bool   `json:"escalated"`
+
+	// SOC workflow (migration 012). WarnAt is the ~80%-of-SLA warning deadline
+	// (0 = none); Warned is set once the sweeper has sent the warning. FPReason
+	// is captured when a case is closed as a false positive.
+	WarnAt   int64  `json:"warn_at,omitempty"`
+	Warned   bool   `json:"warned"`
+	FPReason string `json:"fp_reason,omitempty"`
 }
 
 type CaseNote struct {

@@ -168,10 +168,15 @@ func (s *Server) routes() *chi.Mux {
 		})
 		r.Get("/playbook-executions", pbh.AllExecutions)
 
+		soch := handlers.NewSOCHandler(s.store)
 		csh := handlers.NewCaseHandler(s.store, s.casesCfg, s.caseNotifier)
+		csh.SetAssigner(s.caseAssigner)
 		r.Route("/cases", func(r chi.Router) {
 			r.Get("/", csh.List)
 			r.Post("/", csh.Create)
+			// Static sub-paths must precede /{id} so they aren't captured as an id.
+			r.Get("/metrics", soch.Metrics)
+			r.Get("/fp-stats", soch.FPStats)
 			r.Get("/{id}", csh.Get)
 			r.Put("/{id}", csh.Update)
 			r.Delete("/{id}", csh.Delete)
@@ -180,6 +185,16 @@ func (s *Server) routes() *chi.Mux {
 			r.Get("/{id}/evidence", csh.ListEvidence)
 			r.Post("/{id}/evidence", csh.AddEvidence)
 			r.Get("/{id}/history", csh.ListHistory)
+		})
+
+		// SOC workflow roster/schedule (metrics + fp-stats are under /cases above).
+		r.Route("/soc", func(r chi.Router) {
+			r.Get("/engineers", soch.ListEngineers)
+			r.Post("/engineers", soch.UpsertEngineer)
+			r.Delete("/engineers/{sam}", soch.DeleteEngineer)
+			r.Get("/shifts", soch.ListShifts)
+			r.Post("/shifts", soch.AddShift)
+			r.Delete("/shifts/{id}", soch.DeleteShift)
 		})
 	})
 

@@ -38,6 +38,7 @@ type Server struct {
 	uebaAnalyzer   UebaRunner
 	casesCfg       config.CasesConfig
 	caseNotifier   handlers.CaseNotifier
+	caseAssigner   handlers.CaseAssigner
 	http           *http.Server
 	enrollToken    string
 	artifactDir    string
@@ -57,6 +58,10 @@ func (s *Server) SetArtifactConfig(enrollToken, dir string) {
 // SetCaseTicketing wires the case SLA config and (optional) notifier into the
 // API server so the case handler can stamp due dates and announce changes.
 // A nil notifier leaves notifications disabled.
+// SetCaseAssigner wires the auto-assignment engine so the case handler routes
+// manually/XDR-created cases. nil leaves cases unassigned.
+func (s *Server) SetCaseAssigner(a handlers.CaseAssigner) { s.caseAssigner = a }
+
 func (s *Server) SetCaseTicketing(cfg config.CasesConfig, n *notifier.Notifier) {
 	s.casesCfg = cfg
 	if n != nil {
@@ -90,9 +95,11 @@ func NewServer(cfg config.APIConfig, logger *zap.Logger, reg *registry.Registry,
 	if addr == "" {
 		addr = "0.0.0.0:9400"
 	}
+	// Routes are built in Start(), not here: the SetX wiring (case ticketing,
+	// assigner, artifact config, ueba, identity) is applied after NewServer, and
+	// the handlers must capture those values rather than the zero/nil defaults.
 	s.http = &http.Server{
 		Addr:         addr,
-		Handler:      s.routes(),
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -111,6 +118,7 @@ func (s *Server) SetIdentitySyncer(syncer IdentitySyncer) {
 }
 
 func (s *Server) Start() error {
+	s.http.Handler = s.routes() // built now so all SetX wiring is in effect
 	s.logger.Info("API server listening", zap.String("addr", s.http.Addr))
 	return s.http.ListenAndServe()
 }
