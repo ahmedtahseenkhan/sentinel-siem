@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/watchtower/watchtower/internal/assign"
 	"github.com/watchtower/watchtower/internal/audit"
 	"github.com/watchtower/watchtower/internal/casegen"
 	"github.com/watchtower/watchtower/internal/casesla"
@@ -165,7 +166,12 @@ func main() {
 	eng.SetPlaybookHook(pbExec)
 
 	// Risk-Based Alerting engine
+	// Auto-assignment engine — routes new cases to on-shift SOC engineers.
+	assignEngine := assign.New(st, logger)
+
 	rbaEngine := rba.NewEngine(st, logger)
+	rbaEngine.SetAssigner(assignEngine)
+	rbaEngine.SetCasesConfig(cfg.Cases)
 	eng.SetRBAHook(rbaEngine)
 
 	// VirusTotal alert enrichment. Synchronous on the alert hot path, but
@@ -201,7 +207,9 @@ func main() {
 
 	// Auto-create cases (native ticketing) from high-severity alerts.
 	if cfg.Cases.AutoCreate.Enabled {
-		eng.SetCaseHook(casegen.New(st, cfg.Cases, logger))
+		gen := casegen.New(st, cfg.Cases, logger)
+		gen.SetAssigner(assignEngine)
+		eng.SetCaseHook(gen)
 		logger.Info("auto-case generation enabled",
 			zap.Int("min_level", cfg.Cases.MinLevelOrDefault()))
 	}
@@ -212,7 +220,9 @@ func main() {
 	if notif != nil {
 		slaNotif = notif
 	}
-	go casesla.New(st, slaNotif, cfg.Cases, logger).Start(ctx)
+	slaSweeper := casesla.New(st, slaNotif, cfg.Cases, logger)
+	slaSweeper.SetAssigner(assignEngine) // breach → escalate ownership to a senior tier
+	go slaSweeper.Start(ctx)
 
 	eng.Start()
 	defer eng.Stop()
@@ -290,6 +300,7 @@ func main() {
 	apiSrv.SetUebaAnalyzer(uebaAnalyzer)
 	apiSrv.SetArtifactConfig(cfg.Server.GRPC.EnrollToken, os.Getenv("WATCHTOWER_ARTIFACT_DIR"))
 	apiSrv.SetCaseTicketing(cfg.Cases, notif)
+	apiSrv.SetCaseAssigner(assignEngine)
 	if cfg.Identity.Enabled {
 		apiSrv.SetIdentitySyncer(idMgr)
 	}

@@ -18,16 +18,27 @@ type Store interface {
 	ListOverdueCases(now int64) ([]*models.Case, error)
 	MarkCaseBreached(id int64, newPriority string) error
 	AddCaseHistory(h *models.CaseHistory) (int64, error)
+	ListWarnableCases(now int64) ([]*models.Case, error)
+	MarkCaseWarned(id int64) error
+	SetCaseAssignee(id int64, assignee string) error
 }
 
-// Notifier dispatches a breach notification. *notifier.Notifier satisfies it.
+// Notifier dispatches SLA notifications. *notifier.Notifier satisfies it.
 type Notifier interface {
 	OnCaseBreach(c *models.Case)
+	OnCaseWarning(c *models.Case)
+}
+
+// Assigner reassigns a breached case to a more senior tier (the case's priority
+// is already escalated when this is called). *assign.Engine satisfies it.
+type Assigner interface {
+	Route(c *models.Case) (assignee, reason string)
 }
 
 type Sweeper struct {
 	store    Store
 	notifier Notifier // may be nil when notifications are disabled
+	assigner Assigner // may be nil when assignment is disabled
 	cfg      config.CasesConfig
 	logger   *zap.Logger
 }
@@ -35,6 +46,9 @@ type Sweeper struct {
 func New(st Store, n Notifier, cfg config.CasesConfig, logger *zap.Logger) *Sweeper {
 	return &Sweeper{store: st, notifier: n, cfg: cfg, logger: logger}
 }
+
+// SetAssigner wires the assignment engine for breach tier-escalation (optional).
+func (s *Sweeper) SetAssigner(a Assigner) { s.assigner = a }
 
 // Start runs the sweep loop until ctx is cancelled. Call with `go`.
 func (s *Sweeper) Start(ctx context.Context) {
@@ -56,6 +70,30 @@ func (s *Sweeper) Start(ctx context.Context) {
 // Sweep performs one pass. Exported so tests can drive it deterministically.
 func (s *Sweeper) Sweep() {
 	now := time.Now().UnixMilli()
+
+	// 1) Warning pass — cases approaching their SLA (~80%) that haven't breached.
+	warns, err := s.store.ListWarnableCases(now)
+	if err != nil {
+		s.logger.Warn("case SLA sweep: list warnable failed", zap.Error(err))
+	}
+	for _, c := range warns {
+		if err := s.store.MarkCaseWarned(c.ID); err != nil {
+			s.logger.Warn("case SLA sweep: mark warned failed", zap.Int64("case_id", c.ID), zap.Error(err))
+			continue
+		}
+		_, _ = s.store.AddCaseHistory(&models.CaseHistory{
+			CaseID: c.ID, Actor: "sla", Action: "sla_warning", Field: "warn_at",
+		})
+		c.Warned = true
+		if s.notifier != nil {
+			s.notifier.OnCaseWarning(c)
+		}
+	}
+	if len(warns) > 0 {
+		s.logger.Info("case SLA sweep: warnings sent", zap.Int("count", len(warns)))
+	}
+
+	// 2) Breach pass.
 	cases, err := s.store.ListOverdueCases(now)
 	if err != nil {
 		s.logger.Warn("case SLA sweep: list overdue failed", zap.Error(err))
@@ -85,6 +123,23 @@ func (s *Sweeper) Sweep() {
 		c.Priority = newPriority
 		c.SLABreached = true
 		c.Escalated = true
+
+		// Escalate ownership: re-route to a more senior tier (Route picks tier
+		// from the now-escalated priority). Skip if it lands on the same person.
+		if s.assigner != nil {
+			if assignee, reason := s.assigner.Route(c); assignee != "" && assignee != c.Assignee {
+				if err := s.store.SetCaseAssignee(c.ID, assignee); err == nil {
+					_, _ = s.store.AddCaseHistory(&models.CaseHistory{
+						CaseID: c.ID, Actor: "sla", Action: "escalated", Field: "assignee",
+						OldValue: c.Assignee, NewValue: assignee,
+					})
+					s.logger.Info("case SLA sweep: escalated owner",
+						zap.Int64("case_id", c.ID), zap.String("assignee", assignee), zap.String("reason", reason))
+					c.Assignee = assignee
+				}
+			}
+		}
+
 		if s.notifier != nil {
 			s.notifier.OnCaseBreach(c)
 		}

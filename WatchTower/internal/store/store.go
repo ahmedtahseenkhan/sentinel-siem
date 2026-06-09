@@ -69,6 +69,7 @@ func (s *Store) migrate() error {
 		"migrations/009_case_ticketing.sql",
 		"migrations/010_playbook_dryrun.sql",
 		"migrations/011_artifacts.sql",
+		"migrations/012_soc_workflow.sql",
 	}
 	for _, f := range files {
 		data, err := migrations.ReadFile(f)
@@ -380,12 +381,12 @@ func (s *Store) CreateCase(c *models.Case) (int64, error) {
 	agentsJSON, _ := json.Marshal(c.AgentIDs)
 	var id int64
 	err := s.pool.QueryRow(context.Background(), `
-		INSERT INTO cases (title, description, status, priority, severity, assignee, created_by, created_at, updated_at, tags, alert_ids, agent_ids, group_key, due_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+		INSERT INTO cases (title, description, status, priority, severity, assignee, created_by, created_at, updated_at, tags, alert_ids, agent_ids, group_key, due_at, warn_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 		RETURNING id`,
 		c.Title, c.Description, string(c.Status), string(c.Priority), c.Severity,
 		c.Assignee, c.CreatedBy, c.CreatedAt, c.UpdatedAt,
-		string(tagsJSON), string(alertsJSON), string(agentsJSON), c.GroupKey, c.DueAt,
+		string(tagsJSON), string(alertsJSON), string(agentsJSON), c.GroupKey, c.DueAt, c.WarnAt,
 	).Scan(&id)
 	return id, err
 }
@@ -395,7 +396,7 @@ func (s *Store) GetCase(id int64) (*models.Case, error) {
 		SELECT c.id, c.title, c.description, c.status, c.priority, c.severity,
 		       c.assignee, c.created_by, c.created_at, c.updated_at, c.closed_at,
 		       c.tags, c.alert_ids, c.agent_ids,
-		       c.group_key, c.due_at, c.sla_breached, c.escalated,
+		       c.group_key, c.due_at, c.sla_breached, c.escalated, c.warn_at, c.warned,
 		       (SELECT COUNT(*) FROM case_notes n WHERE n.case_id = c.id) AS note_count
 		FROM cases c WHERE c.id = $1`, id)
 	return scanCase(row)
@@ -426,7 +427,7 @@ func (s *Store) ListCases(status, priority, assignee string, limit, offset int) 
 		SELECT c.id, c.title, c.description, c.status, c.priority, c.severity,
 		       c.assignee, c.created_by, c.created_at, c.updated_at, c.closed_at,
 		       c.tags, c.alert_ids, c.agent_ids,
-		       c.group_key, c.due_at, c.sla_breached, c.escalated,
+		       c.group_key, c.due_at, c.sla_breached, c.escalated, c.warn_at, c.warned,
 		       (SELECT COUNT(*) FROM case_notes n WHERE n.case_id = c.id) AS note_count
 		FROM cases c %s ORDER BY c.created_at DESC`, where)
 	if limit > 0 {
@@ -489,7 +490,7 @@ func (s *Store) FindOpenCaseByGroup(groupKey string) (*models.Case, error) {
 		SELECT c.id, c.title, c.description, c.status, c.priority, c.severity,
 		       c.assignee, c.created_by, c.created_at, c.updated_at, c.closed_at,
 		       c.tags, c.alert_ids, c.agent_ids,
-		       c.group_key, c.due_at, c.sla_breached, c.escalated,
+		       c.group_key, c.due_at, c.sla_breached, c.escalated, c.warn_at, c.warned,
 		       (SELECT COUNT(*) FROM case_notes n WHERE n.case_id = c.id) AS note_count
 		FROM cases c
 		WHERE c.group_key = $1 AND c.status IN ('open','investigating')
@@ -526,7 +527,7 @@ func (s *Store) ListOverdueCases(now int64) ([]*models.Case, error) {
 		SELECT c.id, c.title, c.description, c.status, c.priority, c.severity,
 		       c.assignee, c.created_by, c.created_at, c.updated_at, c.closed_at,
 		       c.tags, c.alert_ids, c.agent_ids,
-		       c.group_key, c.due_at, c.sla_breached, c.escalated,
+		       c.group_key, c.due_at, c.sla_breached, c.escalated, c.warn_at, c.warned,
 		       (SELECT COUNT(*) FROM case_notes n WHERE n.case_id = c.id) AS note_count
 		FROM cases c
 		WHERE c.status IN ('open','investigating')
@@ -623,6 +624,276 @@ func (s *Store) CountCases() (total, open, investigating, resolved int, err erro
 	}
 	err = rows.Err()
 	return
+}
+
+// === SOC workflow: engineers, shifts, assignment, metrics, FP ===
+
+func (s *Store) UpsertSOCEngineer(e *models.SOCEngineer) error {
+	now := time.Now().UnixMilli()
+	if e.CreatedAt == 0 {
+		e.CreatedAt = now
+	}
+	e.UpdatedAt = now
+	if e.Tier <= 0 {
+		e.Tier = 1
+	}
+	if e.MaxLoad <= 0 {
+		e.MaxLoad = 25
+	}
+	skills, _ := json.Marshal(e.SkillGroups)
+	_, err := s.pool.Exec(context.Background(), `
+		INSERT INTO soc_engineers (sam_account, skill_groups, tier, max_load, active, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)
+		ON CONFLICT (sam_account) DO UPDATE SET
+		  skill_groups=$2, tier=$3, max_load=$4, active=$5, updated_at=$7`,
+		e.SamAccount, string(skills), e.Tier, e.MaxLoad, e.Active, e.CreatedAt, e.UpdatedAt)
+	return err
+}
+
+func (s *Store) DeleteSOCEngineer(sam string) error {
+	_, err := s.pool.Exec(context.Background(), "DELETE FROM soc_engineers WHERE sam_account=$1", sam)
+	return err
+}
+
+// ListSOCEngineers returns the roster, each enriched with their identity
+// display name/email and current open-case load.
+func (s *Store) ListSOCEngineers(activeOnly bool) ([]*models.SOCEngineer, error) {
+	where := ""
+	if activeOnly {
+		where = "WHERE e.active = TRUE"
+	}
+	rows, err := s.pool.Query(context.Background(), fmt.Sprintf(`
+		SELECT e.sam_account, e.skill_groups, e.tier, e.max_load, e.active, e.created_at, e.updated_at,
+		       COALESCE(iu.display_name,''), COALESCE(iu.email,''),
+		       (SELECT COUNT(*) FROM cases c WHERE c.assignee = e.sam_account
+		            AND c.status IN ('open','investigating')) AS open_load
+		FROM soc_engineers e
+		LEFT JOIN identity_users iu ON iu.sam_account = e.sam_account
+		%s ORDER BY e.sam_account`, where))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*models.SOCEngineer
+	for rows.Next() {
+		e := &models.SOCEngineer{}
+		var skillsJSON string
+		if err := rows.Scan(&e.SamAccount, &skillsJSON, &e.Tier, &e.MaxLoad, &e.Active,
+			&e.CreatedAt, &e.UpdatedAt, &e.DisplayName, &e.Email, &e.OpenLoad); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal([]byte(skillsJSON), &e.SkillGroups)
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) AddSOCShift(sh *models.SOCShift) (int64, error) {
+	var id int64
+	err := s.pool.QueryRow(context.Background(), `
+		INSERT INTO soc_shifts (sam_account, weekday, start_min, end_min, on_call)
+		VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+		sh.SamAccount, sh.Weekday, sh.StartMin, sh.EndMin, sh.OnCall).Scan(&id)
+	return id, err
+}
+
+func (s *Store) DeleteSOCShift(id int64) error {
+	_, err := s.pool.Exec(context.Background(), "DELETE FROM soc_shifts WHERE id=$1", id)
+	return err
+}
+
+func (s *Store) ListSOCShifts(sam string) ([]*models.SOCShift, error) {
+	q := "SELECT id, sam_account, weekday, start_min, end_min, on_call FROM soc_shifts"
+	args := []interface{}{}
+	if sam != "" {
+		q += " WHERE sam_account=$1"
+		args = append(args, sam)
+	}
+	q += " ORDER BY weekday, start_min"
+	rows, err := s.pool.Query(context.Background(), q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*models.SOCShift
+	for rows.Next() {
+		sh := &models.SOCShift{}
+		if err := rows.Scan(&sh.ID, &sh.SamAccount, &sh.Weekday, &sh.StartMin, &sh.EndMin, &sh.OnCall); err != nil {
+			return nil, err
+		}
+		out = append(out, sh)
+	}
+	return out, rows.Err()
+}
+
+// OnShiftSams returns {sam_account: on_call} for engineers covering the given
+// weekday/minute-of-day (UTC). Handles same-day and overnight windows.
+func (s *Store) OnShiftSams(weekday, nowMin int) (map[string]bool, error) {
+	rows, err := s.pool.Query(context.Background(), `
+		SELECT sam_account, bool_or(on_call) FROM soc_shifts
+		WHERE weekday = $1 AND (
+		    (start_min <= end_min AND $2 >= start_min AND $2 < end_min) OR
+		    (start_min >  end_min AND ($2 >= start_min OR $2 < end_min))
+		)
+		GROUP BY sam_account`, weekday, nowMin)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var sam string
+		var onCall bool
+		if err := rows.Scan(&sam, &onCall); err != nil {
+			return nil, err
+		}
+		out[sam] = onCall
+	}
+	return out, rows.Err()
+}
+
+// SetCaseAssignee updates the assignee and bumps updated_at.
+func (s *Store) SetCaseAssignee(id int64, assignee string) error {
+	_, err := s.pool.Exec(context.Background(),
+		"UPDATE cases SET assignee=$2, updated_at=$3 WHERE id=$1",
+		id, assignee, time.Now().UnixMilli())
+	return err
+}
+
+// === SLA warning support (complements ListOverdueCases) ===
+
+func (s *Store) ListWarnableCases(now int64) ([]*models.Case, error) {
+	rows, err := s.pool.Query(context.Background(), `
+		SELECT c.id, c.title, c.description, c.status, c.priority, c.severity,
+		       c.assignee, c.created_by, c.created_at, c.updated_at, c.closed_at,
+		       c.tags, c.alert_ids, c.agent_ids,
+		       c.group_key, c.due_at, c.sla_breached, c.escalated, c.warn_at, c.warned,
+		       (SELECT COUNT(*) FROM case_notes n WHERE n.case_id = c.id) AS note_count
+		FROM cases c
+		WHERE c.status IN ('open','investigating')
+		  AND c.warn_at > 0 AND c.warn_at < $1 AND c.warned = FALSE AND c.sla_breached = FALSE
+		ORDER BY c.warn_at ASC`, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var cases []*models.Case
+	for rows.Next() {
+		c, err := scanCaseRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		cases = append(cases, c)
+	}
+	return cases, rows.Err()
+}
+
+func (s *Store) MarkCaseWarned(id int64) error {
+	_, err := s.pool.Exec(context.Background(),
+		"UPDATE cases SET warned = TRUE WHERE id=$1", id)
+	return err
+}
+
+// === Manager metrics + false-positive tuning ===
+
+// CaseMetrics rolls up MTTR, open-by-severity, breach rate and load over the
+// window (cases closed within windowMs back from now count toward MTTR/breach).
+func (s *Store) CaseMetrics(windowMs int64) (*models.CaseMetrics, error) {
+	ctx := context.Background()
+	m := &models.CaseMetrics{
+		OpenBySeverity: map[string]int{},
+		OpenByAssignee: map[string]int{},
+	}
+	since := time.Now().UnixMilli() - windowMs
+
+	// MTTR + resolved count + breach rate over closed cases in the window.
+	var avgMs *float64
+	var resolved, breached int
+	err := s.pool.QueryRow(ctx, `
+		SELECT AVG(closed_at - created_at), COUNT(*),
+		       COUNT(*) FILTER (WHERE sla_breached)
+		FROM cases
+		WHERE status IN ('resolved','closed') AND closed_at >= $1`, since).
+		Scan(&avgMs, &resolved, &breached)
+	if err != nil {
+		return nil, err
+	}
+	if avgMs != nil {
+		m.MTTRMin = int(*avgMs / 60000.0)
+	}
+	m.Resolved = resolved
+	if resolved > 0 {
+		m.SLABreachRate = float64(breached) / float64(resolved)
+	}
+
+	// Open-by-severity + open total.
+	rows, err := s.pool.Query(ctx, `
+		SELECT priority, COUNT(*) FROM cases
+		WHERE status IN ('open','investigating') GROUP BY priority`)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var p string
+		var n int
+		if err := rows.Scan(&p, &n); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		m.OpenBySeverity[p] = n
+		m.OpenTotal += n
+	}
+	rows.Close()
+
+	// Open-by-assignee (unassigned bucketed as "(unassigned)").
+	rows2, err := s.pool.Query(ctx, `
+		SELECT CASE WHEN assignee='' THEN '(unassigned)' ELSE assignee END, COUNT(*)
+		FROM cases WHERE status IN ('open','investigating') GROUP BY 1`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows2.Close()
+	for rows2.Next() {
+		var a string
+		var n int
+		if err := rows2.Scan(&a, &n); err != nil {
+			return nil, err
+		}
+		m.OpenByAssignee[a] = n
+	}
+	return m, rows2.Err()
+}
+
+// FPRuleStats ranks rules by how often their auto-created cases were closed as
+// false positives. Rule ID is parsed from the case group_key ("rule:<id>|...").
+func (s *Store) FPRuleStats(limit int) ([]*models.FPRuleStat, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.pool.Query(context.Background(), `
+		SELECT split_part(split_part(group_key,'|',1),':',2)::int AS rule_id, COUNT(*) AS n
+		FROM cases
+		WHERE status='false_positive' AND group_key LIKE 'rule:%'
+		GROUP BY rule_id ORDER BY n DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*models.FPRuleStat
+	for rows.Next() {
+		st := &models.FPRuleStat{}
+		if err := rows.Scan(&st.RuleID, &st.FPCount); err != nil {
+			return nil, err
+		}
+		out = append(out, st)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) SetCaseFPReason(id int64, reason string) error {
+	_, err := s.pool.Exec(context.Background(),
+		"UPDATE cases SET fp_reason=$2 WHERE id=$1", id, reason)
+	return err
 }
 
 // === Case Notes ===
@@ -1494,7 +1765,7 @@ func scanCase(row pgx.Row) (*models.Case, error) {
 	err := row.Scan(&c.ID, &c.Title, &c.Description, &status, &priority, &c.Severity,
 		&c.Assignee, &c.CreatedBy, &c.CreatedAt, &c.UpdatedAt, &c.ClosedAt,
 		&tagsJSON, &alertsJSON, &agentsJSON,
-		&c.GroupKey, &c.DueAt, &c.SLABreached, &c.Escalated, &c.NoteCount)
+		&c.GroupKey, &c.DueAt, &c.SLABreached, &c.Escalated, &c.WarnAt, &c.Warned, &c.NoteCount)
 	if err != nil {
 		return nil, err
 	}
@@ -1512,7 +1783,7 @@ func scanCaseRows(rows pgx.Rows) (*models.Case, error) {
 	err := rows.Scan(&c.ID, &c.Title, &c.Description, &status, &priority, &c.Severity,
 		&c.Assignee, &c.CreatedBy, &c.CreatedAt, &c.UpdatedAt, &c.ClosedAt,
 		&tagsJSON, &alertsJSON, &agentsJSON,
-		&c.GroupKey, &c.DueAt, &c.SLABreached, &c.Escalated, &c.NoteCount)
+		&c.GroupKey, &c.DueAt, &c.SLABreached, &c.Escalated, &c.WarnAt, &c.Warned, &c.NoteCount)
 	if err != nil {
 		return nil, err
 	}

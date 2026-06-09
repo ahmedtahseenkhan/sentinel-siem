@@ -90,6 +90,10 @@ const GEO_CONTINENTS = [
     silentRunNow:  '/api/silent-sources/run-now',
     users:         '/api/users',
     corrIncidents: '/api/correlations/incidents',
+    socEngineers: '/api/soc/engineers',
+    socShifts: '/api/soc/shifts',
+    caseMetrics: '/api/cases/metrics',
+    fpStats: '/api/cases/fp-stats',
     corrRunNow:    '/api/correlations/run-now',
     sysLogsList:   '/api/admin/system-logs/services',
     sysLogsRead:   '/api/admin/system-logs',
@@ -5019,6 +5023,7 @@ const GEO_CONTINENTS = [
     'silent-sources': loadSilentSourcesPage,
     'users': loadUsersPage,
     'correlations': loadCorrelationsPage,
+    'soc': loadSOCPage,
     sca: loadScaPage,
     'threat-hunting': loadThreatHunting,
     'process-tree': loadProcessTreePage,
@@ -6439,6 +6444,105 @@ const GEO_CONTINENTS = [
   // Correlations — stateful UEBA-style incidents.
   // ---------------------------------------------------------------------------
   let _corrLast = [];
+
+  // ── SOC Workflow (metrics + roster/schedule + FP tuning) ───────────────────
+  let _socWired = false;
+  async function loadSOCPage() {
+    await _socLoadMetrics();
+    await _socLoadEngineers();
+    await _socLoadFp();
+    if (_socWired) return;
+    _socWired = true;
+    const el = id => document.getElementById(id);
+    el('socRefresh') && el('socRefresh').addEventListener('click', () => { _socLoadMetrics(); _socLoadEngineers(); _socLoadFp(); });
+    el('socAddEng') && el('socAddEng').addEventListener('click', _socAddEngineer);
+  }
+
+  async function _socLoadMetrics() {
+    const el = id => document.getElementById(id);
+    const m = (await fetchJson(API.caseMetrics).catch(() => ({}))).data || {};
+    const sev = m.open_by_severity || {};
+    if (el('socMttr')) el('socMttr').textContent = (m.mttr_min != null ? m.mttr_min + 'm' : '—');
+    if (el('socOpen')) el('socOpen').textContent = (m.open_total != null ? m.open_total : '—');
+    if (el('socOpenSev')) el('socOpenSev').textContent = ['critical', 'high', 'medium', 'low'].map(s => `${s[0].toUpperCase()}:${sev[s] || 0}`).join('  ');
+    if (el('socBreach')) el('socBreach').textContent = Math.round((m.sla_breach_rate || 0) * 100) + '%';
+    if (el('socUnassigned')) el('socUnassigned').textContent = (m.open_by_assignee || {})['(unassigned)'] || 0;
+  }
+
+  async function _socLoadEngineers() {
+    const body = document.getElementById('socEngBody');
+    if (!body) return;
+    const engs = (await fetchJson(API.socEngineers).catch(() => ({}))).data || [];
+    const shifts = (await fetchJson(API.socShifts).catch(() => ({}))).data || [];
+    const byEng = {};
+    shifts.forEach(s => { (byEng[s.sam_account] = byEng[s.sam_account] || []).push(s); });
+    const cnt = document.getElementById('socEngCount');
+    if (cnt) cnt.textContent = engs.length + ' engineer' + (engs.length === 1 ? '' : 's');
+    const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const fmt = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+    const cols = 'grid-template-columns:150px 1fr 80px 90px 90px 1fr 80px';
+    body.innerHTML = engs.length ? engs.map(e => {
+      const sh = (byEng[e.sam_account] || []).map(s => `${wd[s.weekday]} ${fmt(s.start_min)}-${fmt(s.end_min)}${s.on_call ? ' (on-call)' : ''}`).join(', ') || '<span style="color:var(--fg-4)">none</span>';
+      const load = (e.open_load || 0) + '/' + e.max_load;
+      return `<div class="tbl-r" style="${cols}">
+        <span class="tbl-mono">${escapeHtml(e.sam_account)}</span>
+        <span class="tbl-pri">${escapeHtml(e.display_name || '—')}</span>
+        <span>T${e.tier}</span>
+        <span class="tbl-mono">${load}</span>
+        <span class="tbl-mono">${escapeHtml((e.skill_groups || []).join(', '))}</span>
+        <span style="font-size:11px">${sh}</span>
+        <span style="display:flex;gap:4px">
+          <button type="button" class="act-btn soc-shift" data-sam="${escapeHtml(e.sam_account)}" style="height:22px;padding:0 6px;font-size:11px">+Shift</button>
+          <button type="button" class="act-btn soc-del" data-sam="${escapeHtml(e.sam_account)}" style="height:22px;padding:0 6px;font-size:11px;color:var(--crit)">Del</button>
+        </span>
+      </div>`;
+    }).join('') : '<div class="sigil-block"><div class="sigil-text"><h4>No SOC engineers</h4><p>Add engineers above to enable auto-assignment.</p></div></div>';
+    body.querySelectorAll('.soc-del').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm(`Remove ${b.dataset.sam} from the SOC roster?`)) return;
+      await fetch(`${API.socEngineers}/${encodeURIComponent(b.dataset.sam)}`, { method: 'DELETE', credentials: 'same-origin' });
+      _socLoadEngineers();
+    }));
+    body.querySelectorAll('.soc-shift').forEach(b => b.addEventListener('click', () => _socAddShift(b.dataset.sam)));
+  }
+
+  async function _socAddEngineer() {
+    const el = id => document.getElementById(id);
+    const sam = (el('socNewSam').value || '').trim();
+    if (!sam) { alert('sam_account is required'); return; }
+    const body = {
+      sam_account: sam,
+      skill_groups: (el('socNewSkills').value || '').split(',').map(s => s.trim()).filter(Boolean),
+      tier: parseInt(el('socNewTier').value, 10),
+      max_load: parseInt(el('socNewMax').value, 10) || 25,
+      active: true,
+    };
+    const r = await fetch(API.socEngineers, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body) });
+    if (!r.ok) { alert('Add failed: ' + await r.text()); return; }
+    el('socNewSam').value = ''; el('socNewSkills').value = '';
+    _socLoadEngineers();
+  }
+
+  async function _socAddShift(sam) {
+    const wd = prompt(`Add shift for ${sam}\nWeekday (0=Sun .. 6=Sat):`, '1'); if (wd === null) return;
+    const sh = prompt('Start hour (UTC, 0-23):', '9'); if (sh === null) return;
+    const eh = prompt('End hour (UTC, 1-24):', '17'); if (eh === null) return;
+    const onCall = confirm('On-call shift?  (OK = yes, Cancel = no)');
+    const body = { sam_account: sam, weekday: parseInt(wd, 10), start_min: parseInt(sh, 10) * 60, end_min: parseInt(eh, 10) * 60, on_call: onCall };
+    const r = await fetch(API.socShifts, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body) });
+    if (!r.ok) { alert('Add shift failed: ' + await r.text()); return; }
+    _socLoadEngineers();
+  }
+
+  async function _socLoadFp() {
+    const body = document.getElementById('socFpBody');
+    if (!body) return;
+    const stats = (await fetchJson(API.fpStats).catch(() => ({}))).data || [];
+    body.innerHTML = stats.length ? stats.map(s => `<div class="tbl-r" style="grid-template-columns:120px 120px 1fr">
+      <span class="tbl-mono">${s.rule_id}</span>
+      <span class="tbl-mono">${s.fp_count}</span>
+      <span style="color:var(--fg-4);font-size:11px">Disable or raise level/threshold for rule ${s.rule_id} in Rule Versions</span>
+    </div>`).join('') : '<div class="sigil-block"><div class="sigil-text"><h4>No false positives yet</h4><p>Resolve a case as false-positive to populate noisy-rule stats.</p></div></div>';
+  }
 
   function _corrSevColor(s) {
     return s === 'critical' ? 'var(--crit)'

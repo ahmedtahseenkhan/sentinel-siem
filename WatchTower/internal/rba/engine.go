@@ -17,10 +17,16 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/watchtower/watchtower/internal/config"
 	"github.com/watchtower/watchtower/internal/models"
 	"github.com/watchtower/watchtower/internal/store"
 	"go.uber.org/zap"
 )
+
+// Assigner routes a case to an engineer. *assign.Engine satisfies it.
+type Assigner interface {
+	Route(c *models.Case) (assignee, reason string)
+}
 
 const (
 	defaultThreshold  = 100           // risk points to trigger a notable
@@ -30,13 +36,21 @@ const (
 
 // Engine processes every alert and maintains entity risk scores.
 type Engine struct {
-	store  *store.Store
-	logger *zap.Logger
+	store    *store.Store
+	logger   *zap.Logger
+	assigner Assigner
+	casesCfg config.CasesConfig
 }
 
 func NewEngine(st *store.Store, logger *zap.Logger) *Engine {
 	return &Engine{store: st, logger: logger}
 }
+
+// SetAssigner wires the auto-assignment engine (optional).
+func (e *Engine) SetAssigner(a Assigner) { e.assigner = a }
+
+// SetCasesConfig provides the per-priority SLA windows for RBA-created cases.
+func (e *Engine) SetCasesConfig(cfg config.CasesConfig) { e.casesCfg = cfg }
 
 // OnAlert is called by the detection engine after every stored alert.
 // It creates a risk event, recomputes the entity score, and fires a
@@ -128,21 +142,41 @@ func (e *Engine) fireNotable(entity *store.RbaEntityRisk, alert *models.Alert, s
 	)
 
 	// Auto-create a linked case.
+	priority := riskToPriority(score)
 	c := &models.Case{
 		Title:       fmt.Sprintf("[RBA] Risk threshold exceeded: %s (score %d)", entity.EntityID, score),
 		Description: desc,
 		Status:      models.CaseStatusOpen,
-		Priority:    riskToPriority(score),
+		Priority:    priority,
 		CreatedBy:   "rba-engine",
 		Tags:        []string{"rba", "auto-created", entity.EntityType},
 		AgentIDs:    []string{entity.EntityID},
+	}
+	// SLA deadline + ~80% warning from the per-priority window.
+	if d := e.casesCfg.SLAFor(string(priority)); d > 0 {
+		now := time.Now().UnixMilli()
+		c.DueAt = now + d.Milliseconds()
+		c.WarnAt = now + d.Milliseconds()*8/10
+	}
+	// Auto-assign before insert.
+	if e.assigner != nil {
+		if assignee, _ := e.assigner.Route(c); assignee != "" {
+			c.Assignee = assignee
+		} else {
+			c.Tags = append(c.Tags, "unassigned-queue")
+		}
 	}
 	caseID, err := e.store.CreateCase(c)
 	if err != nil {
 		e.logger.Warn("rba: failed to create case for notable", zap.Error(err))
 	} else {
 		e.store.UpdateRbaNotableCaseID(notableID, caseID)
-		e.logger.Info("rba: auto-created case", zap.Int64("case_id", caseID))
+		if c.Assignee != "" {
+			_, _ = e.store.AddCaseHistory(&models.CaseHistory{
+				CaseID: caseID, Actor: "auto", Action: "assigned", NewValue: c.Assignee,
+			})
+		}
+		e.logger.Info("rba: auto-created case", zap.Int64("case_id", caseID), zap.String("assignee", c.Assignee))
 	}
 }
 

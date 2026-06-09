@@ -1185,7 +1185,15 @@ def api_dashboard_overview():
         sev_24h = sev_24h_res if isinstance(sev_24h_res, dict) else {}
         critical_count = int(sev_24h.get("critical", 0))
         out["critical_incidents"] = critical_count
-        out["mttr_min"] = 18 + (critical_count % 30)
+        # Real MTTR + SLA breach rate from the case store (7-day window),
+        # replacing the former placeholder. Falls back to 0 if unavailable.
+        try:
+            from watchtower_client import watchtower_request
+            _m = (watchtower_request("/api/v1/cases/metrics", method="GET") or {}).get("data") or {}
+            out["mttr_min"] = int(_m.get("mttr_min") or 0)
+            out["sla_breach_rate"] = round(float(_m.get("sla_breach_rate") or 0) * 100, 1)
+        except Exception:
+            out["mttr_min"] = 0
 
         # system_health computed below after conn is available; placeholder for now
         out["ingestion_lag"] = "<1SEC"
@@ -3802,6 +3810,82 @@ def api_cases_history_list(case_id):
         from watchtower_client import watchtower_request
         res = watchtower_request(f"/api/v1/cases/{case_id}/history", method="GET")
         return jsonify(res or {"data": []})
+    except Exception as e:
+        return _api_error(e)
+
+
+# ── SOC workflow: manager metrics, FP stats, roster & schedule ────────────────
+
+@app.route("/api/cases/metrics", methods=["GET"])
+def api_cases_metrics():
+    """Manager metrics: real MTTR, open-by-severity, SLA breach rate, load."""
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request("/api/v1/cases/metrics", method="GET",
+                                 params={k: v for k, v in request.args.items()})
+        return jsonify(res or {"data": {}})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/cases/fp-stats", methods=["GET"])
+def api_cases_fp_stats():
+    """Noisy rules ranked by false-positive case count (rule-tuning input)."""
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request("/api/v1/cases/fp-stats", method="GET",
+                                 params={k: v for k, v in request.args.items()})
+        return jsonify(res or {"data": []})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/soc/engineers", methods=["GET", "POST"])
+def api_soc_engineers():
+    try:
+        from watchtower_client import watchtower_request
+        if request.method == "POST":
+            res = watchtower_request("/api/v1/soc/engineers", method="POST",
+                                     json_body=request.get_json(force=True) or {})
+            return jsonify(res or {}), 201
+        res = watchtower_request("/api/v1/soc/engineers", method="GET",
+                                 params={k: v for k, v in request.args.items()})
+        return jsonify(res or {"data": []})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/soc/engineers/<sam>", methods=["DELETE"])
+def api_soc_engineer_delete(sam):
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request(f"/api/v1/soc/engineers/{sam}", method="DELETE")
+        return jsonify(res or {})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/soc/shifts", methods=["GET", "POST"])
+def api_soc_shifts():
+    try:
+        from watchtower_client import watchtower_request
+        if request.method == "POST":
+            res = watchtower_request("/api/v1/soc/shifts", method="POST",
+                                     json_body=request.get_json(force=True) or {})
+            return jsonify(res or {}), 201
+        res = watchtower_request("/api/v1/soc/shifts", method="GET",
+                                 params={k: v for k, v in request.args.items()})
+        return jsonify(res or {"data": []})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/soc/shifts/<int:shift_id>", methods=["DELETE"])
+def api_soc_shift_delete(shift_id):
+    try:
+        from watchtower_client import watchtower_request
+        res = watchtower_request(f"/api/v1/soc/shifts/{shift_id}", method="DELETE")
+        return jsonify(res or {})
     except Exception as e:
         return _api_error(e)
 

@@ -18,15 +18,24 @@ type CaseNotifier interface {
 	OnCaseEvent(c *models.Case, action, actor string)
 }
 
+// CaseAssigner routes a case to an engineer. *assign.Engine satisfies it.
+type CaseAssigner interface {
+	Route(c *models.Case) (assignee, reason string)
+}
+
 type CaseHandler struct {
 	store    *store.Store
 	cfg      config.CasesConfig
 	notifier CaseNotifier
+	assigner CaseAssigner
 }
 
 func NewCaseHandler(st *store.Store, cfg config.CasesConfig, n CaseNotifier) *CaseHandler {
 	return &CaseHandler{store: st, cfg: cfg, notifier: n}
 }
+
+// SetAssigner wires the auto-assignment engine (optional).
+func (h *CaseHandler) SetAssigner(a CaseAssigner) { h.assigner = a }
 
 // List GET /api/v1/cases
 func (h *CaseHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -119,9 +128,20 @@ func (h *CaseHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if c.AgentIDs == nil {
 		c.AgentIDs = []string{}
 	}
-	// Stamp the SLA deadline from the configured per-priority window.
+	// Stamp the SLA deadline + ~80% warning from the per-priority window.
 	if d := h.cfg.SLAFor(req.Priority); d > 0 {
-		c.DueAt = time.Now().UnixMilli() + d.Milliseconds()
+		now := time.Now().UnixMilli()
+		c.DueAt = now + d.Milliseconds()
+		c.WarnAt = now + d.Milliseconds()*8/10
+	}
+
+	// Auto-assign (when the caller didn't pin an assignee) before insert.
+	if c.Assignee == "" && h.assigner != nil {
+		if assignee, _ := h.assigner.Route(c); assignee != "" {
+			c.Assignee = assignee
+		} else {
+			c.Tags = append(c.Tags, "unassigned-queue")
+		}
 	}
 
 	id, err := h.store.CreateCase(c)
@@ -136,6 +156,14 @@ func (h *CaseHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Action:   "created",
 		NewValue: string(c.Status),
 	})
+	if c.Assignee != "" {
+		_, _ = h.store.AddCaseHistory(&models.CaseHistory{
+			CaseID: id, Actor: "auto", Action: "assigned", NewValue: c.Assignee,
+		})
+		if h.notifier != nil {
+			h.notifier.OnCaseEvent(c, "assignee_changed", "auto")
+		}
+	}
 	writeJSON(w, http.StatusCreated, map[string]interface{}{"data": c})
 }
 
@@ -164,6 +192,7 @@ func (h *CaseHandler) Update(w http.ResponseWriter, r *http.Request) {
 		AlertIDs    []int64  `json:"alert_ids"`
 		AgentIDs    []string `json:"agent_ids"`
 		Actor       string   `json:"actor"`
+		FPReason    string   `json:"fp_reason"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -220,6 +249,12 @@ func (h *CaseHandler) Update(w http.ResponseWriter, r *http.Request) {
 			due = time.Now().UnixMilli() + d.Milliseconds()
 		}
 		_ = h.store.SetCaseDueAt(id, due)
+	}
+
+	// Capture the false-positive reason when a case is closed as an FP (feeds
+	// the rule-tuning workflow / fp-stats).
+	if status == string(models.CaseStatusFalsePositive) && req.FPReason != "" {
+		_ = h.store.SetCaseFPReason(id, req.FPReason)
 	}
 
 	actor := strOrDefault(req.Actor, "api")
