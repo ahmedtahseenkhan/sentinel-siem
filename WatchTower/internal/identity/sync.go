@@ -88,11 +88,72 @@ func (m *Manager) sync() error {
 		}
 	}
 
+	// Auto-seed the SOC roster from the configured AD group (recommended way to
+	// populate auto-assignment). No-op when soc_group is unset.
+	if m.cfg.SOCGroup != "" {
+		m.seedSOCRoster(users)
+	}
+
 	m.logger.Info("identity: LDAP sync complete",
 		zap.Int("users_fetched", len(users)),
 		zap.Int("upserted", upserted),
 	)
 	return nil
+}
+
+// seedSOCRoster adds LDAP members of the configured SOC group to the
+// soc_engineers roster (defaults: tier 1, no skills). Existing entries are left
+// untouched so operator edits (tier/skills/shifts) are preserved.
+func (m *Manager) seedSOCRoster(users []*models.IdentityUser) {
+	existing := map[string]bool{}
+	if engs, err := m.store.ListSOCEngineers(false); err == nil {
+		for _, e := range engs {
+			existing[e.SamAccount] = true
+		}
+	}
+	added := 0
+	for _, e := range socSeedCandidates(users, m.cfg.SOCGroup, existing) {
+		if err := m.store.UpsertSOCEngineer(e); err != nil {
+			m.logger.Warn("identity: soc seed failed", zap.String("user", e.SamAccount), zap.Error(err))
+			continue
+		}
+		added++
+	}
+	if added > 0 {
+		m.logger.Info("identity: seeded SOC roster from group",
+			zap.String("group", m.cfg.SOCGroup), zap.Int("added", added))
+	}
+}
+
+// socSeedCandidates returns the new SOC engineers to create — members of the
+// group not already on the roster. Pure, for testability.
+func socSeedCandidates(users []*models.IdentityUser, group string, existing map[string]bool) []*models.SOCEngineer {
+	var out []*models.SOCEngineer
+	for _, u := range users {
+		if u.SamAccount == "" || existing[u.SamAccount] {
+			continue
+		}
+		if !containsFold(u.Groups, group) {
+			continue
+		}
+		out = append(out, &models.SOCEngineer{
+			SamAccount:  u.SamAccount,
+			SkillGroups: []string{},
+			Tier:        1,
+			MaxLoad:     25,
+			Active:      u.Enabled,
+		})
+	}
+	return out
+}
+
+func containsFold(ss []string, want string) bool {
+	for _, s := range ss {
+		if strings.EqualFold(s, want) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Manager) connect() (*ldap.Conn, error) {
