@@ -667,25 +667,34 @@ def get_alerts_high_level_count():
 
 
 def get_mitre_techniques(size=15):
-    """Top MITRE tactic/technique groups from rule_groups — rule_groups is keyword so agg works."""
-    # Map rule_groups values to MITRE-style technique labels
+    """Synthesize MITRE technique+tactic counts from rule_groups.
+
+    Alerts in this stack carry no native rule.mitre.* fields, so we derive the
+    ATT&CK mapping from each alert's rule_groups (a keyword field, so the terms
+    agg works). Each group maps to a real ATT&CK technique AND tactic so both the
+    technique matrix and the tactic-coverage KPIs populate correctly.
+
+    Returns enriched buckets: key, technique_id, technique_name, tactic
+    (tactic_id, e.g. TA0011), tactic_name, doc_count.
+    """
+    # rule_group → (technique_id, technique_name, tactic_id, tactic_name)
     MITRE_GROUPS = {
-        "credential_dumping": "T1003 Credential Dumping",
-        "lateral_movement": "T1021 Lateral Movement",
-        "privilege_escalation": "T1068 Privilege Escalation",
-        "persistence": "T1053 Persistence",
-        "discovery": "T1082 System Discovery",
-        "execution": "T1059 Command Execution",
-        "exfiltration": "T1041 Exfiltration",
-        "defense_evasion": "T1055 Defense Evasion",
-        "initial_access": "T1190 Initial Access",
-        "malware": "T1204 Malware Execution",
-        "brute_force": "T1110 Brute Force",
-        "attack": "T1190 Exploit",
-        "authentication": "T1078 Valid Accounts",
-        "ransomware": "T1486 Data Encrypted",
-        "network": "T1043 Network Activity",
-        "fim": "T1565 Data Manipulation",
+        "credential_dumping":   ("T1003", "OS Credential Dumping",                "TA0006", "Credential Access"),
+        "lateral_movement":     ("T1021", "Remote Services",                      "TA0008", "Lateral Movement"),
+        "privilege_escalation": ("T1068", "Exploitation for Privilege Escalation","TA0004", "Privilege Escalation"),
+        "persistence":          ("T1543", "Create or Modify System Process",      "TA0003", "Persistence"),
+        "discovery":            ("T1082", "System Information Discovery",          "TA0007", "Discovery"),
+        "execution":            ("T1059", "Command and Scripting Interpreter",    "TA0002", "Execution"),
+        "exfiltration":         ("T1041", "Exfiltration Over C2 Channel",         "TA0010", "Exfiltration"),
+        "defense_evasion":      ("T1070", "Indicator Removal",                    "TA0005", "Defense Evasion"),
+        "initial_access":       ("T1190", "Exploit Public-Facing Application",    "TA0001", "Initial Access"),
+        "malware":              ("T1204", "User Execution",                       "TA0002", "Execution"),
+        "brute_force":          ("T1110", "Brute Force",                          "TA0006", "Credential Access"),
+        "attack":               ("T1190", "Exploit Public-Facing Application",    "TA0001", "Initial Access"),
+        "authentication":       ("T1078", "Valid Accounts",                       "TA0005", "Defense Evasion"),
+        "ransomware":           ("T1486", "Data Encrypted for Impact",            "TA0040", "Impact"),
+        "network":              ("T1071", "Application Layer Protocol",           "TA0011", "Command and Control"),
+        "fim":                  ("T1565", "Data Manipulation",                    "TA0040", "Impact"),
     }
     body = {
         "size": 0,
@@ -698,15 +707,26 @@ def get_mitre_techniques(size=15):
     try:
         res = indexer_search(ALERTS_INDEX, body)
         buckets_raw = (res.get("aggregations") or {}).get("by_group", {}).get("buckets", [])
-        # Collapse raw groups into MITRE technique labels
+        # Collapse raw groups into ATT&CK techniques (multiple groups can fold
+        # into the same technique — sum their counts).
         seen = {}
         for b in buckets_raw:
             grp = (b.get("key") or "").lower()
-            label = MITRE_GROUPS.get(grp)
-            if label:
-                seen[label] = seen.get(label, 0) + b.get("doc_count", 0)
-        buckets = [{"key": label, "doc_count": c} for label, c in
-                   sorted(seen.items(), key=lambda x: x[1], reverse=True)[:size]]
+            m = MITRE_GROUPS.get(grp)
+            if not m:
+                continue
+            tid, tname, tac, tac_name = m
+            if tid not in seen:
+                seen[tid] = {
+                    "key": f"{tid} {tname}",
+                    "technique_id": tid,
+                    "technique_name": tname,
+                    "tactic": tac,
+                    "tactic_name": tac_name,
+                    "doc_count": 0,
+                }
+            seen[tid]["doc_count"] += b.get("doc_count", 0)
+        buckets = sorted(seen.values(), key=lambda x: x["doc_count"], reverse=True)[:size]
         return {"aggregations": {"by_technique": {"buckets": buckets}}}
     except Exception:
         return {"aggregations": {"by_technique": {"buckets": []}}}

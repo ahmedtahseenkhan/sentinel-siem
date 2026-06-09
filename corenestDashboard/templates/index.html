@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sentinel Core SIEM</title>
+  <title>CoreNest SIEM</title>
   <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -32,7 +32,7 @@
             </svg>
           </div>
           <div class="sb2-brand-text">
-            <div class="sb2-brand-name">Sentinel Core</div>
+            <div class="sb2-brand-name">CoreNest</div>
             <div class="sb2-brand-sub">Enterprise SIEM · v4.2</div>
           </div>
         </div>
@@ -1885,29 +1885,8 @@
           </div>
           <div id="discoverFilterPills" style="display:flex;gap:6px;flex-wrap:wrap;min-height:0"></div>
 
-          <!-- Two-column: field selector + results -->
-          <div class="disc-grid">
-
-            <!-- Field selector panel -->
-            <div class="card field-panel">
-              <div style="padding:6px 10px 4px">
-                <input id="discoverFieldSearch" class="fld" placeholder="Filter fields…" style="font-size:11px;padding:4px 8px;width:100%">
-              </div>
-              <div class="field-h">
-                <span>Selected fields</span>
-                <span class="count" id="discoverSelectedCount">7</span>
-              </div>
-              <div id="discoverSelectedFields"></div>
-              <div class="field-h" style="margin-top:6px">
-                <span>Popular fields</span>
-              </div>
-              <div id="discoverPopularFields"></div>
-              <div class="field-h" style="margin-top:6px">
-                <span>Available fields</span>
-                <span class="count" id="discoverAvailCount">10</span>
-              </div>
-              <div id="discoverAvailableFields"></div>
-            </div>
+          <!-- Full-width: histogram + results (field selector moved to Columns modal) -->
+          <div class="disc-grid" style="display:block">
 
             <!-- Main: histogram + results -->
             <div style="display:flex;flex-direction:column;gap:var(--gap)">
@@ -1934,7 +1913,8 @@
                     Results · <span id="discoverHits">0</span> hits
                   </h3>
                   <span id="discoverStatsSummary" class="disc-stats-summary"></span>
-                  <span class="card-h-action" id="discoverTableInfo">Showing 0 of 0</span>
+                  <button type="button" class="act-btn" id="discoverColumnsBtn" style="height:24px;padding:0 10px;font-size:11px;margin-left:auto" title="Add, remove, or reorder table columns">⊞ Columns</button>
+                  <span class="card-h-action" id="discoverTableInfo" style="margin-left:8px">Showing 0 of 0</span>
                 </div>
                 <div id="discoverResultsWrap" class="card-body flush">
                   <!-- populated by JS -->
@@ -1985,7 +1965,7 @@
             <div class="discover-detail-tabs">
               <button type="button" class="discover-detail-tab active" data-tab="table">Table</button>
               <button type="button" class="discover-detail-tab" data-tab="json">JSON</button>
-              <button type="button" class="discover-detail-tab" data-tab="ai">AI Summary</button>
+              <button type="button" class="discover-detail-tab" data-tab="ai" id="discoverDetailAiTab" style="display:none">AI Summary</button>
               <button type="button" class="discover-detail-tab" data-tab="timeline">Timeline ±15m</button>
             </div>
             <div id="discoverDetailContent" class="agent-detail-content discover-detail-table-wrap"></div>
@@ -2109,6 +2089,29 @@
 
           <!-- Field stats popover (positioned via JS) -->
           <div id="discoverFieldStatsPop" class="disc-field-stats-pop hidden"></div>
+
+          <!-- Columns / field manager modal -->
+          <div id="discoverColumnsModal" class="modal-overlay hidden">
+            <div class="modal" style="max-width:640px;width:92vw;max-height:82vh;display:flex;flex-direction:column">
+              <div class="modal-header">
+                <h3>Manage columns</h3>
+                <button type="button" id="discoverColumnsClose" class="modal-close">×</button>
+              </div>
+              <div class="modal-body" style="padding:14px 16px;overflow-y:auto">
+                <input id="discoverFieldSearch" class="fld" placeholder="Search fields by name…" style="width:100%;margin-bottom:12px">
+                <div class="field-h"><span>Selected &middot; drag to reorder</span><span class="count" id="discoverSelectedCount">7</span></div>
+                <div id="discoverSelectedFields" class="disc-col-list"></div>
+                <div class="field-h" style="margin-top:14px"><span>Popular fields</span></div>
+                <div id="discoverPopularFields" class="disc-col-list"></div>
+                <div class="field-h" style="margin-top:14px"><span>Available fields</span><span class="count" id="discoverAvailCount">10</span></div>
+                <div id="discoverAvailableFields" class="disc-col-list"></div>
+              </div>
+              <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+                <button class="act-btn" id="discoverColumnsReset" style="font-size:12px">Reset to defaults</button>
+                <button class="act-btn primary" id="discoverColumnsDone" style="font-size:12px">Done</button>
+              </div>
+            </div>
+          </div>
 
           <!-- Toast notification -->
           <div id="discoverToast" class="disc-toast"></div>
@@ -2610,7 +2613,7 @@
           <div class="panel">
             <h3>Phase 9: Branding, reporting &amp; alerting</h3>
             <ul class="phase-list">
-              <li><strong>Branding</strong> — Customize this Sentinel Core UI by editing <code>templates/</code> and <code>static/css/style.css</code> (and JS) to match your organization.</li>
+              <li><strong>Branding</strong> — Customize this CoreNest UI by editing <code>templates/</code> and <code>static/css/style.css</code> (and JS) to match your organization.</li>
               <li><strong>Reporting</strong> — For scheduled PDF reports and email, use your preferred reporting stack (for example, OpenSearch Dashboards reporting) alongside this app, which focuses on live dashboards.</li>
               <li><strong>Alerts from searches</strong> — For saved-search alerting (email, Slack, etc.), use your underlying search/dashboard platform or an external monitoring system; this app does not implement saved-search alerting.</li>
             </ul>

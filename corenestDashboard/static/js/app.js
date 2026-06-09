@@ -1914,15 +1914,28 @@ const GEO_CONTINENTS = [
 
     body.innerHTML = html;
 
-    // Wire pivots — pre-filter by agent_id where the target page supports it.
+    // Wire pivots — every pivot opens the destination pre-filtered to THIS agent.
+    // Pages with their own agent filter (vulnerabilities, FIM) get it via the
+    // _pivotAgent handoff; the rest open in Discover scoped to the agent.
     body.querySelectorAll('.nd-pivot').forEach(btn => {
       btn.addEventListener('click', () => {
         const page = btn.getAttribute('data-pivot');
-        if (page === 'discover' && typeof window.investigateIncident === 'function') {
-          window.investigateIncident(data.id, null);
-          return;
+        const agentId = data.id;
+        const agentName = data.name || data.hostname || '';
+        if (page === 'alerts') {
+          _pivotDiscover(agentId, { index: 'watchvault-alerts-*' });
+        } else if (page === 'discover') {
+          _pivotDiscover(agentId, { index: 'watchvault-events-*' });
+        } else if (page === 'sca') {
+          _pivotDiscover(agentId, { index: 'watchvault-events-*', query: 'event_type:sca*' });
+        } else if (page === 'compliance') {
+          _pivotDiscover(agentId, { index: 'watchvault-alerts-*', query: 'rule_groups:compliance' });
+        } else if (page === 'vulnerabilities' || page === 'fim') {
+          window._pivotAgent = { id: agentId, name: agentName };
+          goToPage(page);
+        } else {
+          goToPage(page);
         }
-        goToPage(page);
       });
     });
   }
@@ -2248,6 +2261,8 @@ const GEO_CONTINENTS = [
     { id:'TA0008', name:'Lateral Movement',  short:'Lateral'   },
     { id:'TA0009', name:'Collection',        short:'Collect'   },
     { id:'TA0011', name:'C2',                short:'C2'        },
+    { id:'TA0010', name:'Exfiltration',      short:'Exfil'     },
+    { id:'TA0040', name:'Impact',            short:'Impact'    },
   ];
 
   // ── Sparkline helper (reuse from overview) ────────────────────────
@@ -2653,18 +2668,50 @@ const GEO_CONTINENTS = [
       if (current && list.some((f) => f.name === current)) fieldSelect.value = current;
     }
   }
-  function _discFieldRow(name, isSelected) {
-    const type = DISC_FIELD_TYPES[name] || 'kw';
+  const DISC_TYPE_LABELS = { kw: 'keyword', num: 'number', txt: 'text', ip: 'ip', date: 'date', bool: 'boolean', geo: 'geo' };
+  function _discTypeLabel(name) {
+    const apiType = (discoverAvailableFieldsList.find(f => f.name === name) || {}).type;
+    const t = apiType || DISC_FIELD_TYPES[name] || 'kw';
+    return DISC_TYPE_LABELS[t] || t;
+  }
+  function _discFieldRow(name, isSelected, draggable) {
+    const typeLabel = _discTypeLabel(name);
     const act  = isSelected ? '−' : '+';
     const cls  = isSelected ? 'v2-field-row selected' : 'v2-field-row';
-    return `<div class="${cls}" data-field="${escapeHtml(name)}" data-selected="${isSelected}">
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
-      <span class="v2-field-type">${type}</span>
-      <button type="button" class="disc-fsp-trigger" title="Field statistics" style="background:none;border:none;color:var(--fg-4);cursor:pointer;font-size:10px;padding:0 2px;line-height:1" data-statsfield="${escapeHtml(name)}">≡</button>
-      <span class="v2-field-act">${act}</span>
+    const drag = draggable ? ' draggable="true"' : '';
+    const handle = draggable ? '<span class="v2-field-drag" title="Drag to reorder" style="cursor:grab;color:var(--fg-4);padding:0 2px;font-size:11px">⋮⋮</span>' : '';
+    return `<div class="${cls}" data-field="${escapeHtml(name)}" data-selected="${isSelected}"${drag}>
+      ${handle}
+      <span class="v2-field-name" style="flex:1;min-width:0;font-family:var(--font-mono);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+      <span class="v2-field-type" style="color:var(--fg-4);font-size:10px;margin:0 6px">${typeLabel}</span>
+      <span class="v2-field-act" style="cursor:pointer;padding:0 6px;font-weight:600" title="${isSelected ? 'Remove column' : 'Add column'}">${act}</span>
     </div>`;
   }
 
+  // Drag-to-reorder for the Selected list. Reorders by field name so it works
+  // regardless of which rows the search filter is currently showing.
+  function _wireSelectedDrag(container) {
+    let dragName = null;
+    container.querySelectorAll('.v2-field-row.selected').forEach(row => {
+      row.addEventListener('dragstart', () => { dragName = row.getAttribute('data-field'); row.style.opacity = '0.4'; });
+      row.addEventListener('dragend', () => { row.style.opacity = ''; });
+      row.addEventListener('dragover', (e) => { e.preventDefault(); });
+      row.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const targetName = row.getAttribute('data-field');
+        if (!dragName || dragName === targetName) return;
+        const from = discoverSelectedFields.indexOf(dragName);
+        const to = discoverSelectedFields.indexOf(targetName);
+        if (from < 0 || to < 0) return;
+        discoverSelectedFields.splice(from, 1);
+        discoverSelectedFields.splice(to, 0, dragName);
+        renderDiscoverFieldsSidebar(); renderDiscoverThead(); discoverOffset = 0; loadDiscover();
+      });
+    });
+  }
+
+  // Renders the column-manager modal contents. (Named "...Sidebar" for history;
+  // the old left sidebar was replaced by the "Columns" modal.)
   function renderDiscoverFieldsSidebar() {
     const fieldSearchVal = (document.getElementById('discoverFieldSearch')?.value || '').toLowerCase();
     const filterBySearch = (name) => !fieldSearchVal || name.toLowerCase().includes(fieldSearchVal);
@@ -2673,54 +2720,62 @@ const GEO_CONTINENTS = [
     const popularEl   = document.getElementById('discoverPopularFields');
     const availableEl = document.getElementById('discoverAvailableFields');
 
-    const wireStats = (container) => {
-      container.querySelectorAll('.disc-fsp-trigger').forEach(btn => {
-        btn.addEventListener('click', (e) => { e.stopPropagation(); showFieldStats(btn.getAttribute('data-statsfield'), btn); });
-      });
-    };
-
     if (selectedEl) {
       const selFiltered = discoverSelectedFields.filter(filterBySearch);
       selectedEl.innerHTML = selFiltered.length
-        ? selFiltered.map(n => _discFieldRow(n, true)).join('')
-        : (discoverSelectedFields.length ? '<div style="padding:6px 12px;font-size:11px;color:var(--fg-4)">No match</div>' : '<div style="padding:6px 12px;font-size:11px;color:var(--fg-4)">None selected</div>');
-      selectedEl.querySelectorAll('.v2-field-row.selected').forEach((row, i) => {
+        ? selFiltered.map(n => _discFieldRow(n, true, !fieldSearchVal)).join('')
+        : (discoverSelectedFields.length ? '<div class="disc-col-empty" style="padding:6px 4px;font-size:11px;color:var(--fg-4)">No match</div>' : '<div class="disc-col-empty" style="padding:6px 4px;font-size:11px;color:var(--fg-4)">None selected</div>');
+      selectedEl.querySelectorAll('.v2-field-row.selected').forEach((row) => {
         row.querySelector('.v2-field-act')?.addEventListener('click', () => {
-          const name = selFiltered[i];
+          const name = row.getAttribute('data-field');
           const idx = discoverSelectedFields.indexOf(name);
           if (idx >= 0) discoverSelectedFields.splice(idx, 1);
           renderDiscoverFieldsSidebar(); renderDiscoverThead(); discoverOffset = 0; loadDiscover();
         });
       });
-      wireStats(selectedEl);
+      if (!fieldSearchVal) _wireSelectedDrag(selectedEl);
       const selCntEl = document.getElementById('discoverSelectedCount');
       if (selCntEl) selCntEl.textContent = discoverSelectedFields.length;
     }
+
     const popFiltered = DISCOVER_POPULAR_FIELDS.filter(n => !discoverSelectedFields.includes(n) && filterBySearch(n));
     if (popularEl) {
-      popularEl.innerHTML = popFiltered.length ? popFiltered.map(n => _discFieldRow(n, false)).join('') : '<div style="padding:4px 12px;font-size:11px;color:var(--fg-4)">—</div>';
-      popularEl.querySelectorAll('.v2-field-row').forEach((row, i) => {
+      popularEl.innerHTML = popFiltered.length ? popFiltered.map(n => _discFieldRow(n, false)).join('') : '<div class="disc-col-empty" style="padding:6px 4px;font-size:11px;color:var(--fg-4)">—</div>';
+      popularEl.querySelectorAll('.v2-field-row').forEach((row) => {
         row.querySelector('.v2-field-act')?.addEventListener('click', () => {
-          const name = popFiltered[i];
+          const name = row.getAttribute('data-field');
           if (name && !discoverSelectedFields.includes(name)) { discoverSelectedFields.push(name); renderDiscoverFieldsSidebar(); renderDiscoverThead(); discoverOffset = 0; loadDiscover(); }
         });
       });
-      wireStats(popularEl);
     }
+
     if (availableEl) {
-      const avList = available.length ? available.slice(0, 80) : (!fieldSearchVal ? [
+      const avSource = available.length ? available.slice(0, 200) : (!fieldSearchVal ? [
         {name:'agent.name'},{name:'agent.ip'},{name:'host.os'},{name:'user.name'},{name:'rule.mitre.id'},{name:'rule.mitre.tactic'},{name:'data.win.event'},{name:'data.srcip'},{name:'data.dstport'},{name:'file.hash.sha256'},
       ].filter(f => filterBySearch(f.name)) : []);
-      availableEl.innerHTML = avList.map(f => _discFieldRow(f.name || f, false)).join('') || '<div style="padding:4px 12px;font-size:11px;color:var(--fg-4)">No matching fields</div>';
-      availableEl.querySelectorAll('.v2-field-row').forEach((row, i) => {
+      // Group by top-level prefix so the long event_data.* list collapses visually.
+      const groups = {};
+      avSource.forEach(f => {
+        const nm = f.name || f;
+        const prefix = nm.includes('.') ? nm.split('.')[0] : '_core';
+        (groups[prefix] = groups[prefix] || []).push(nm);
+      });
+      const groupNames = Object.keys(groups).sort((a, b) => a === '_core' ? -1 : b === '_core' ? 1 : a.localeCompare(b));
+      let html = '';
+      groupNames.forEach(g => {
+        const label = g === '_core' ? 'Core fields' : g + '.*';
+        html += `<div class="disc-col-group" style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--fg-4);padding:8px 4px 3px;border-bottom:1px solid var(--border);margin-top:4px">${escapeHtml(label)} <span style="opacity:.7">${groups[g].length}</span></div>`;
+        groups[g].forEach(nm => { html += _discFieldRow(nm, false); });
+      });
+      availableEl.innerHTML = html || '<div class="disc-col-empty" style="padding:6px 4px;font-size:11px;color:var(--fg-4)">No matching fields</div>';
+      availableEl.querySelectorAll('.v2-field-row').forEach((row) => {
         row.querySelector('.v2-field-act')?.addEventListener('click', () => {
-          const name = (avList[i] && (avList[i].name || avList[i]));
+          const name = row.getAttribute('data-field');
           if (name && !discoverSelectedFields.includes(name)) { discoverSelectedFields.push(name); renderDiscoverFieldsSidebar(); renderDiscoverThead(); discoverOffset = 0; loadDiscover(); }
         });
       });
-      wireStats(availableEl);
       const cntEl = document.getElementById('discoverAvailCount');
-      if (cntEl) cntEl.textContent = avList.length;
+      if (cntEl) cntEl.textContent = avSource.length;
     }
   }
 
@@ -2729,9 +2784,9 @@ const GEO_CONTINENTS = [
       if (c === 'timestamp') return '150px';
       if (c === 'rule_level') return '60px';
       if (c === 'rule_id') return '70px';
-      if (c === 'rule_description' || c === 'title') return '1fr';
+      if (c === 'rule_description' || c === 'title') return 'minmax(200px, 1fr)';
       if (c === 'rule_groups') return '140px';
-      return '120px';
+      return '140px';
     }).join(' ') + ' 44px';
   }
 
@@ -2747,8 +2802,12 @@ const GEO_CONTINENTS = [
       const isSorted = c === discoverSortField;
       const sortIcon = isSorted ? (discoverSortOrder === 'desc' ? ' ↓' : ' ↑') : '';
       const cls = sortable.includes(c) ? ' class="sortable-th"' : '';
-      return '<span' + cls + ' data-field="' + escapeHtml(c) + '">' + escapeHtml(label) + sortIcon + '</span>';
+      return '<span' + cls + ' data-field="' + escapeHtml(c) + '"><span class="th-label" title="' + escapeHtml(label) + '">' + escapeHtml(label) + sortIcon + '</span>' +
+        '<button type="button" class="th-stats" data-statsfield="' + escapeHtml(c) + '" title="Field statistics" style="background:none;border:none;color:var(--fg-4);cursor:pointer;font-size:10px;padding:0 2px;line-height:1">≡</button></span>';
     }).join('') + '<span></span>';
+    thead.querySelectorAll('.th-stats').forEach(btn => {
+      btn.addEventListener('click', (e) => { e.stopPropagation(); showFieldStats(btn.getAttribute('data-statsfield'), btn); });
+    });
     thead.querySelectorAll('.sortable-th').forEach(th => {
       th.addEventListener('click', () => {
         const f = th.getAttribute('data-field');
@@ -4426,6 +4485,20 @@ const GEO_CONTINENTS = [
   let vulnCurrentPage = 0;
 
   async function loadVulnerabilities() {
+    // Pivot from an agent detail page → pre-select this agent in the filter.
+    if (window._pivotAgent) {
+      const sel = document.getElementById('vulnAgent');
+      if (sel) {
+        const pa = window._pivotAgent;
+        if (![...sel.options].some(o => o.value === pa.id)) {
+          const o = document.createElement('option');
+          o.value = pa.id; o.textContent = pa.name || pa.id; sel.appendChild(o);
+        }
+        sel.value = pa.id;
+      }
+      vulnCurrentPage = 0;
+      window._pivotAgent = null;
+    }
     const { params, bounds } = getVulnParams();
     const _vulnNameMap = await getAgentNameMap();
     const pageSize = parseInt(document.getElementById('vulnPageSize')?.value || '25', 10);
@@ -5021,6 +5094,22 @@ const GEO_CONTINENTS = [
     goToPage('discover');
   };
 
+  // Open Discover scoped to a single agent (optionally with a query_string and
+  // a specific index). Used by the agent-detail "Investigate this node" pivots.
+  function _pivotDiscover(agentId, opts) {
+    opts = opts || {};
+    discoverDslFilters = [];
+    if (agentId) discoverDslFilters.push({ field: 'agent_id', op: 'is', value: agentId });
+    const idxEl = document.getElementById('discoverIndex');
+    if (idxEl && opts.index) idxEl.value = opts.index;
+    const qEl = document.getElementById('discoverSearch');
+    if (qEl) qEl.value = opts.query || '';
+    const tEl = document.getElementById('discoverTimeRange'); if (tEl) tEl.value = '24h';
+    discoverOffset = 0;
+    if (typeof renderDiscoverFilterPills === 'function') renderDiscoverFilterPills();
+    goToPage('discover');
+  }
+
   (async function initAuth() {
     try {
       const res = await fetch('/api/me');
@@ -5065,6 +5154,18 @@ const GEO_CONTINENTS = [
       goToPage(el.getAttribute('data-page'));
     });
   });
+
+  // Only surface the "AI Summary" event-detail tab when an AI backend is
+  // actually configured (ANTHROPIC_API_KEY set). Otherwise it would only ever
+  // show the rule-based fallback, which reads as a broken/unfinished feature.
+  (function revealAiTabIfConfigured() {
+    const aiTab = document.getElementById('discoverDetailAiTab');
+    if (!aiTab) return;
+    fetch('/api/ai/status')
+      .then(r => r.json())
+      .then(d => { if (d && d.configured) aiTab.style.display = ''; })
+      .catch(() => {});
+  })();
 
   document.querySelectorAll('.nav-tab').forEach(el => {
     el.addEventListener('click', (e) => {
@@ -5448,11 +5549,27 @@ const GEO_CONTINENTS = [
     if (e.key === 'Enter') document.getElementById('discoverFilterAdd')?.click();
   });
   document.getElementById('discoverPageSize')?.addEventListener('change', () => { discoverOffset = 0; loadDiscover(); });
-  // Field search
+  // Field search (inside the Columns modal)
   let discoverFieldSearchTimeout = null;
   document.getElementById('discoverFieldSearch')?.addEventListener('input', () => {
     clearTimeout(discoverFieldSearchTimeout);
     discoverFieldSearchTimeout = setTimeout(() => renderDiscoverFieldsSidebar(), 200);
+  });
+  // Columns manager modal
+  const _closeColsModal = () => document.getElementById('discoverColumnsModal')?.classList.add('hidden');
+  document.getElementById('discoverColumnsBtn')?.addEventListener('click', () => {
+    const m = document.getElementById('discoverColumnsModal');
+    if (!m) return;
+    m.classList.remove('hidden');
+    renderDiscoverFieldsSidebar();
+    setTimeout(() => document.getElementById('discoverFieldSearch')?.focus(), 50);
+  });
+  document.getElementById('discoverColumnsClose')?.addEventListener('click', _closeColsModal);
+  document.getElementById('discoverColumnsDone')?.addEventListener('click', _closeColsModal);
+  document.getElementById('discoverColumnsModal')?.addEventListener('click', (e) => { if (e.target.id === 'discoverColumnsModal') _closeColsModal(); });
+  document.getElementById('discoverColumnsReset')?.addEventListener('click', () => {
+    discoverSelectedFields = ['timestamp', 'rule_level', 'title', 'agent_name', 'src_ip', 'username', 'process_name'];
+    renderDiscoverFieldsSidebar(); renderDiscoverThead(); discoverOffset = 0; loadDiscover();
   });
   // Search history button
   document.getElementById('discoverSearchHistBtn')?.addEventListener('click', (e) => { e.stopPropagation(); discoverShowHistory(); });
@@ -5792,10 +5909,10 @@ const GEO_CONTINENTS = [
       const spEl= document.getElementById(spId);   if (spEl) spEl.innerHTML = _spark([], color);
     };
     setKpi('mitreTechniquesCount','mitreTechTag','mitreTechSpark',  techCount,  techCount>0?'+'+techCount:'IDLE', techCount>0?'up':'ok', 'unique T-IDs · 24h', 'mitreTechSub', 'var(--low)');
-    setKpi('mitreTacticsCount',  'mitreTacTag',  'mitreTacSpark',   `${tacsCovered}/12`, tacsCovered>0?'OK':'CLEAR', 'ok', 'of ATT&CK enterprise', null, 'var(--accent)');
+    setKpi('mitreTacticsCount',  'mitreTacTag',  'mitreTacSpark',   `${tacsCovered}/${MITRE_TACTICS.length}`, tacsCovered>0?'OK':'CLEAR', 'ok', 'of ATT&CK enterprise', null, 'var(--accent)');
     setKpi('mitreTotalAlerts',   'mitreTotalTag','mitreTotalSpark',  totalA, totalA>0?'+'+totalA:'CLEAR', totalA>0?'up':'ok', 'mapped to T-IDs · 24h', null, 'var(--high)');
     setKpi('mitreCriticalCount', 'mitreCritTag', 'mitreCritSpark',   critTechs, critTechs>0?'ATTN':'CLEAR', critTechs>0?'crit':'ok', 'count ≥ 5 detections', null, 'var(--crit)');
-    const metaEl = document.getElementById('mitreTacticsCoveredMeta'); if (metaEl) metaEl.textContent = `${tacsCovered}/12`;
+    const metaEl = document.getElementById('mitreTacticsCoveredMeta'); if (metaEl) metaEl.textContent = `${tacsCovered}/${MITRE_TACTICS.length}`;
 
     // ATT&CK Matrix heatmap
     const matrixWrap = document.getElementById('mitreMatrixWrap');
@@ -5811,7 +5928,7 @@ const GEO_CONTINENTS = [
 
     if (matrixDot) matrixDot.style.background = totalA > 0 ? 'var(--crit)' : 'var(--ok)';
     if (matrixMeta) matrixMeta.textContent = totalA > 0
-      ? `${techCount} techniques · ${tacsCovered}/12 tactics` + (unmappedTotal ? ` · ${unmappedTechs.length} unmapped` : '')
+      ? `${techCount} techniques · ${tacsCovered}/${MITRE_TACTICS.length} tactics` + (unmappedTotal ? ` · ${unmappedTechs.length} unmapped` : '')
       : 'Configure rules → MITRE mappings';
     if (matrixWrap) {
       if (totalA === 0) {
@@ -5819,22 +5936,24 @@ const GEO_CONTINENTS = [
       } else {
         // Banner shown when alerts exist but lack tactic data (explains 0/12)
         const banner = (tacsCovered === 0 && unmappedTotal > 0)
-          ? `<div class="mitre-note"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg><span><b>${unmappedTotal} detections</b> carry a technique but no ATT&CK <b>tactic</b> — that's why tactic coverage reads 0/12. Add a <code>tactic</code> to these rules' <code>mitre:</code> blocks to map them onto the matrix.</span></div>`
+          ? `<div class="mitre-note"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg><span><b>${unmappedTotal} detections</b> carry a technique but no ATT&CK <b>tactic</b> — that's why tactic coverage reads 0/${MITRE_TACTICS.length}. Add a <code>tactic</code> to these rules' <code>mitre:</code> blocks to map them onto the matrix.</span></div>`
           : '';
         const cols = MITRE_TACTICS.map(t => {
           const techs = apiTechs.filter(a => (a.tactic || '') === t.id).map(a => ({ id: a.technique_id, n: a.technique_name, c: a.count, lvl: a.count >= 8 ? 'hot3' : a.count >= 5 ? 'hot2' : a.count >= 3 ? 'hot1' : 'warm' }));
           const ttl = techs.reduce((a, c) => a + (c.c || 0), 0);
           const isHot = ttl >= 5;
           return `<div class="matrix-col"><div class="matrix-col-h${isHot ? ' hot' : ''}">${escapeHtml(t.short)}<span class="count">${ttl} · ${t.id}</span></div>` +
-            techs.map(tech => `<div class="matrix-cell ${tech.lvl || ''}" title="${escapeHtml(tech.id || '')} · ${escapeHtml(tech.n || '')} · ${tech.c} detections"><span class="matrix-cell-name">${escapeHtml(tech.n || tech.id || '')}</span><span class="n">${tech.c}</span></div>`).join('') +
+            techs.map(tech => `<div class="matrix-cell ${tech.lvl || ''}" title="${escapeHtml(tech.id || '')} · ${escapeHtml(tech.n || '')} · ${tech.c} detections"><span class="cell-name">${escapeHtml(tech.n || tech.id || '')}</span><span class="n">${tech.c}</span></div>`).join('') +
             `</div>`;
         }).join('');
         const unmappedCol = unmappedTechs.length
           ? `<div class="matrix-col unmapped"><div class="matrix-col-h hot">Unmapped<span class="count">${unmappedTotal} · no tactic</span></div>` +
-              unmappedTechs.map(tech => `<div class="matrix-cell ${tech.lvl || ''}" title="${escapeHtml(tech.id || '')} · ${escapeHtml(tech.n || '')} · ${tech.c} detections · no tactic mapping"><span class="matrix-cell-name">${escapeHtml(tech.n || tech.id || '')}</span><span class="n">${tech.c}</span></div>`).join('') +
+              unmappedTechs.map(tech => `<div class="matrix-cell ${tech.lvl || ''}" title="${escapeHtml(tech.id || '')} · ${escapeHtml(tech.n || '')} · ${tech.c} detections · no tactic mapping"><span class="cell-name">${escapeHtml(tech.n || tech.id || '')}</span><span class="n">${tech.c}</span></div>`).join('') +
             `</div>`
           : '';
-        matrixWrap.innerHTML = banner + `<div class="matrix-wrap"><div class="matrix">` + cols + unmappedCol + `</div></div>`;
+        // Unmapped column first so populated detections are visible immediately
+        // instead of being scrolled off the right behind empty tactic columns.
+        matrixWrap.innerHTML = banner + `<div class="matrix-wrap"><div class="matrix">` + unmappedCol + cols + `</div></div>`;
       }
     }
 
@@ -5874,8 +5993,8 @@ const GEO_CONTINENTS = [
     const dist = [
       { label:'Pre-compromise',   ids:['TA0043','TA0042','TA0001'], color:'var(--low)'  },
       { label:'Execution',        ids:['TA0002','TA0003','TA0004'], color:'var(--med)'  },
-      { label:'Action on target', ids:['TA0005','TA0006','TA0007','TA0008'], color:'var(--high)' },
-      { label:'Exfil & impact',   ids:['TA0009','TA0011'],          color:'var(--crit)' },
+      { label:'Action on target', ids:['TA0005','TA0006','TA0007','TA0008','TA0009'], color:'var(--high)' },
+      { label:'Exfil & impact',   ids:['TA0011','TA0010','TA0040'], color:'var(--crit)' },
     ].map(b => ({ ...b, c: b.ids.reduce((a,id) => a+tacticTotal(id), 0) }));
     const distTotal = dist.reduce((a,b) => a+b.c, 0) || 1;
     if (distWrap) {
@@ -5897,12 +6016,20 @@ const GEO_CONTINENTS = [
   // File Integrity Monitoring Page
   // ---------------------------------------------------------------------------
   async function loadFimPage() {
+    const el = id => document.getElementById(id);
+    // Pivot from an agent detail page → pre-fill the agent filter so the
+    // initial events load (and the summary cards) are scoped to this node.
+    if (window._pivotAgent) {
+      if (el('fimAgentFilter')) el('fimAgentFilter').value = window._pivotAgent.name || '';
+      window._pivotAgent = null;
+    }
+    const _fimAgentQ = ((el('fimAgentFilter') && el('fimAgentFilter').value) || '').trim();
+    const _fimEventsUrl = API.fimEvents + '?size=20&offset=0' +
+      (_fimAgentQ ? '&agent_name=' + encodeURIComponent(_fimAgentQ) : '');
     const [summary, events] = await Promise.all([
       fetchJson(API.fimSummary).catch(() => ({total: 0, added: 0, modified: 0, deleted: 0})),
-      fetchJson(API.fimEvents + '?size=20&offset=0').catch(() => ({hits: [], total: 0}))
+      fetchJson(_fimEventsUrl).catch(() => ({hits: [], total: 0}))
     ]);
-
-    const el = id => document.getElementById(id);
     if (el('fimTotal')) el('fimTotal').textContent = (summary.total || 0).toLocaleString();
     if (el('fimAdded')) el('fimAdded').textContent = (summary.added || 0).toLocaleString();
     if (el('fimModified')) el('fimModified').textContent = (summary.modified || 0).toLocaleString();
@@ -6129,13 +6256,36 @@ const GEO_CONTINENTS = [
     if (parts.length) return parts.join(' · ');
     if (hit.message) return String(hit.message).slice(0, 240);
     if (hit.rule_description) return String(hit.rule_description);
+    // Structured fallbacks for non-Windows events (network/process/fim/registry),
+    // which have no win_event_description but carry useful fields.
+    const et = String(hit.event_type || '');
+    if (et.startsWith('network')) {
+      const l = hit.laddr ? hit.laddr + (hit.lport ? ':' + hit.lport : '') : '';
+      const r = (hit.raddr && hit.raddr !== '0.0.0.0') ? ' → ' + hit.raddr + (hit.rport ? ':' + hit.rport : '') : '';
+      const st = hit.status ? ' [' + hit.status + ']' : '';
+      const pn = hit.process_name ? ' (' + hit.process_name + ')' : '';
+      if (l || r) return (et + ' ' + l + r + st + pn).trim();
+    }
+    if (et.startsWith('process')) {
+      const n = hit.process_name || hit.Image || hit.name || '';
+      const pid = (hit.pid != null && hit.pid !== 0) ? ' pid=' + hit.pid : '';
+      if (n) return (et + ' ' + n + pid).trim();
+    }
+    if (et.startsWith('fim') || et.startsWith('registry')) {
+      const f = hit.path || hit.file || hit.key || hit.target || '';
+      if (f) return (et + ' ' + f).trim();
+    }
     if (hit.raw) return String(hit.raw).slice(0, 240);
+    if (et) return et;  // at minimum, show the event type rather than "(no summary)"
     return '(no summary)';
   }
 
   function _logsSource(hit) {
-    if (hit.type) return String(hit.type);
+    // `event_type` is the real source discriminator (e.g. "network.connection",
+    // "log.eventlog"). The bare `type` is a numeric data field, not a source.
+    if (hit.event_type) return String(hit.event_type);
     if (hit.tags && hit.tags.source) return String(hit.tags.source);
+    if (hit.source) return String(hit.source);
     if (hit.collector) return String(hit.collector);
     return '—';
   }

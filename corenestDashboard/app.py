@@ -1,5 +1,5 @@
 """
-Sentinel Core SIEM Dashboard – WatchTower (Manager) + WatchVault (Indexer).
+CoreNest SIEM Dashboard – WatchTower (Manager) + WatchVault (Indexer).
 Professional SIEM dashboard: Overview, Stack Status, Agent Health, Threat Hunting, Alerts, Vulnerabilities, Compliance.
 """
 import os
@@ -1991,6 +1991,24 @@ def api_alerts_by_tactic():
             exclude_rule_ids=exclude_rule_ids,
         )
         buckets = _aggregation_buckets(res, "by_tactic")
+        # Alerts carry no native rule.mitre.tactic, so the agg above is usually
+        # empty. Fall back to the same rule_groups → ATT&CK synthesis the
+        # technique matrix uses, keyed by TA-id so the UI's coverage math works.
+        if not buckets:
+            from watchtower_client import get_mitre_techniques as _gmt
+            tech = _aggregation_buckets(_gmt(size=50), "by_technique")
+            tac = {}
+            for t in tech:
+                tid = t.get("tactic")
+                if not tid:
+                    continue
+                if tid not in tac:
+                    tac[tid] = {"key": tid, "tactic": tid,
+                                "tactic_name": t.get("tactic_name", tid),
+                                "count": 0, "doc_count": 0}
+                tac[tid]["count"] += t.get("doc_count", 0)
+                tac[tid]["doc_count"] += t.get("doc_count", 0)
+            buckets = sorted(tac.values(), key=lambda x: x["count"], reverse=True)
         return jsonify({"buckets": buckets})
     except Exception as e:
         return _api_error(e)
@@ -2112,9 +2130,23 @@ def api_vulnerabilities_list():
             severity=severity, agent_name=agent_name, package=package, cve=cve,
             cvss_min=cvss_min, cvss_max=cvss_max, time_from=time_from, time_to=time_to,
         )
-        hits = res.get("hits", {}).get("hits", [])
-        vulns = _normalize_vulns({"hits": {"hits": hits}})
-        return jsonify({"vulnerabilities": vulns, "total": res.get("total", 0)})
+        # get_vulnerabilities_list already returns flat, normalized rows
+        # ({"hits": [...], "total": N}). Map them to the keys the frontend table
+        # renders (vuln_id / score_base / detected_at).
+        rows = res.get("hits", []) if isinstance(res, dict) else (res or [])
+        vulns = [{
+            "agent_id":        r.get("agent_id"),
+            "agent_name":      r.get("agent_name"),
+            "vuln_id":         r.get("cve_id"),
+            "severity":        r.get("severity"),
+            "description":     (r.get("description") or "")[:200],
+            "score_base":      r.get("cvss_score"),
+            "detected_at":     r.get("timestamp"),
+            "package_name":    r.get("package_name"),
+            "package_version": r.get("package_version"),
+        } for r in rows]
+        total = res.get("total", 0) if isinstance(res, dict) else len(vulns)
+        return jsonify({"vulnerabilities": vulns, "total": total})
     except Exception as e:
         return _api_error(e)
 
@@ -2430,10 +2462,15 @@ def api_mitre_matrix():
         os_total = sum(b.get("doc_count", 0) for b in tech_buckets)
 
         if os_total > 0:
-            # OpenSearch has MITRE-tagged alerts
+            # get_mitre_techniques now returns enriched buckets with a proper
+            # technique_id, technique_name, tactic (TA id) and tactic_name.
             techniques_out = [
-                {"technique_id": b.get("key"), "key": b.get("key"),
-                 "technique_name": b.get("key"), "count": b.get("doc_count", 0)}
+                {"technique_id":   b.get("technique_id") or b.get("key"),
+                 "key":            b.get("key"),
+                 "technique_name": b.get("technique_name") or b.get("key"),
+                 "tactic":         b.get("tactic", ""),
+                 "tactic_name":    b.get("tactic_name", ""),
+                 "count":          b.get("doc_count", 0)}
                 for b in tech_buckets
             ]
         else:
@@ -2458,15 +2495,16 @@ def api_mitre_matrix():
                     tech_counts[tid]["count"] += 1
             techniques_out = sorted(tech_counts.values(), key=lambda x: -x["count"])
 
-        # Build tactics from techniques
+        # Build tactics from techniques (carry the real tactic_name, not the id)
         tactic_counts = {}
+        tactic_names = {}
         for t in techniques_out:
             tac = t.get("tactic") or t.get("tactic_id") or ""
-            tac_name = t.get("tactic_name", tac)
             if tac:
                 tactic_counts[tac] = tactic_counts.get(tac, 0) + t.get("count", 0)
-        tactics_out = [{"tactic": k, "tactic_name": v, "count": tactic_counts[k]}
-                       for k, v in [(k, k) for k in tactic_counts]]
+                tactic_names[tac] = t.get("tactic_name") or tac
+        tactics_out = [{"tactic": k, "key": k, "tactic_name": tactic_names.get(k, k), "count": v}
+                       for k, v in tactic_counts.items()]
 
         return jsonify({"tactics": tactics_out, "techniques": techniques_out,
                         "total_techniques": len(techniques_out)})
@@ -2818,17 +2856,21 @@ def api_audit_events():
 
 # Mapping of UI source filter values → OpenSearch query clauses.
 # Keep this stable: the frontend `logsSource` <select> uses these keys.
+# NOTE: events carry their source in `event_type` (e.g. "log.eventlog",
+# "network.connection", "process.new", "fim.modified"). The bare `type` field
+# is an unrelated numeric data field (e.g. socket type 1/2), so filtering on it
+# matched nothing. Match `event_type` (keyword) with prefix, plus tags.source.
 _LOGS_SOURCE_CLAUSES = {
-    "eventlog":   [{"term": {"type": "log.eventlog"}}, {"term": {"tags.source": "eventlog"}}],
-    "syslog":     [{"term": {"type": "log.syslog"}},   {"term": {"tags.source": "syslog"}}],
-    "journal":    [{"term": {"type": "log.journal"}},  {"term": {"tags.source": "journal"}}],
-    "file":       [{"term": {"type": "log.file"}},     {"term": {"tags.source": "file"}}],
-    "process":    [{"prefix": {"type": "process"}},    {"term": {"collector": "process"}}],
-    "network":    [{"prefix": {"type": "network"}},    {"term": {"collector": "network"}}],
-    "fim":        [{"prefix": {"type": "fim"}},        {"term": {"collector": "fim"}}],
-    "registry":   [{"prefix": {"type": "registry"}},   {"term": {"collector": "registry"}}],
-    "sca":        [{"term": {"collector": "sca"}},     {"term": {"type": "sca"}}],
-    "osquery":    [{"prefix": {"type": "osquery"}},    {"term": {"collector": "osquery"}}],
+    "eventlog":   [{"prefix": {"event_type": "log.eventlog"}}, {"term": {"tags.source": "eventlog"}}, {"term": {"source": "eventlog"}}],
+    "syslog":     [{"prefix": {"event_type": "log.syslog"}},   {"prefix": {"event_type": "logs.syslog"}}, {"term": {"tags.source": "syslog"}}],
+    "journal":    [{"prefix": {"event_type": "log.journal"}},  {"term": {"tags.source": "journal"}}],
+    "file":       [{"prefix": {"event_type": "log.file"}},     {"term": {"tags.source": "file"}}],
+    "process":    [{"prefix": {"event_type": "process"}}],
+    "network":    [{"prefix": {"event_type": "network"}}],
+    "fim":        [{"prefix": {"event_type": "fim"}}],
+    "registry":   [{"prefix": {"event_type": "registry"}}],
+    "sca":        [{"prefix": {"event_type": "sca"}}],
+    "osquery":    [{"prefix": {"event_type": "osquery"}}],
 }
 
 
@@ -2925,7 +2967,7 @@ def api_logs_summary():
                 {"range": {"timestamp": {"gte": start_ms, "lte": end_ms}}}
             ]}},
             "aggs": {
-                "by_type":   {"terms": {"field": "type",        "size": 20, "missing": "(unknown)"}},
+                "by_type":   {"terms": {"field": "event_type",  "size": 20, "missing": "(unknown)"}},
                 "by_agent":  {"terms": {"field": "agent_name",  "size": 20, "missing": "(unknown)"}},
                 "by_evid":   {"terms": {"field": "win_event_id","size": 20}},
                 "timeline":  {"date_histogram": {

@@ -38,6 +38,7 @@ html[data-theme="dark"] {
   /* legacy aliases kept for backward-compat with inline styles */
   --surface-1:  #0f1115;
   --surface-2:  #14161b;
+  --bg-1:       #0f1115;  /* slide-in detail drawers (logs, users, correlation, …) */
   --bg-2:       #14161b;
   --text-primary: #ECEDEE;
   --input-bg:   #08090b;
@@ -64,6 +65,7 @@ html[data-theme="light"] {
   --ok:      #059669;
   --surface-1:  #ffffff;
   --surface-2:  #f4f5f7;
+  --bg-1:       #ffffff;  /* slide-in detail drawers (logs, users, correlation, …) */
   --bg-2:       #f4f5f7;
   --text-primary: #111827;
   --input-bg:   #ffffff;
@@ -5181,6 +5183,13 @@ html:not([data-theme="light"]) .geo-map .v2-cont { fill:rgba(255,255,255,.06); s
 }
 .page-v2 .tbl-foot .right { display:flex; align-items:center; gap:6px; }
 
+/* ── Discover results: stop header labels bleeding into neighbours, and
+      scroll horizontally when many columns are selected ─────────────── */
+#discoverResultsWrap .tbl { overflow-x:auto; }
+#discoverThead > span { min-width:0; overflow:hidden; display:flex; align-items:center; gap:4px; }
+#discoverThead .th-label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#discoverThead .th-stats { flex:0 0 auto; }
+
 /* ── Toolbar + field controls ─────────────────────────────────────── */
 .page-v2 .toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .page-v2 .fld {
@@ -5338,6 +5347,15 @@ html:not([data-theme="light"]) .geo-map .v2-cont { fill:rgba(255,255,255,.06); s
 .page-v2 .matrix-cell.hot2 { background:rgba(242,85,85,.20); border-color:rgba(242,85,85,.40); color:#FCA5A5; }
 .page-v2 .matrix-cell.hot3 { background:rgba(242,85,85,.38); border-color:rgba(242,85,85,.55); color:#FECACA; font-weight:700; }
 .page-v2 .matrix-cell.hot1 .n,.page-v2 .matrix-cell.hot2 .n,.page-v2 .matrix-cell.hot3 .n { color:#FCA5A5; }
+/* Light theme: the pastel cell text above is unreadable on the pale tints —
+   use dark, high-contrast text and slightly stronger background fills. */
+[data-theme="light"] .page-v2 .matrix-cell.warm { background:rgba(245,158,11,.16); border-color:rgba(245,158,11,.45); color:#92400e; }
+[data-theme="light"] .page-v2 .matrix-cell.warm .n { color:#92400e; }
+[data-theme="light"] .page-v2 .matrix-cell.hot1 { background:rgba(242,85,85,.14); border-color:rgba(242,85,85,.40); color:#991b1b; }
+[data-theme="light"] .page-v2 .matrix-cell.hot2 { background:rgba(242,85,85,.24); border-color:rgba(242,85,85,.50); color:#991b1b; }
+[data-theme="light"] .page-v2 .matrix-cell.hot3 { background:rgba(242,85,85,.40); border-color:rgba(242,85,85,.65); color:#7f1d1d; }
+[data-theme="light"] .page-v2 .matrix-cell.hot1 .n,[data-theme="light"] .page-v2 .matrix-cell.hot2 .n,[data-theme="light"] .page-v2 .matrix-cell.hot3 .n { color:#991b1b; }
+[data-theme="light"] .page-v2 .matrix-cell:hover { color:#111827; }
 
 /* ── HBars (top tactics) ──────────────────────────────────────────── */
 .page-v2 .hbars { display:flex; flex-direction:column; padding:4px 14px 12px; }
