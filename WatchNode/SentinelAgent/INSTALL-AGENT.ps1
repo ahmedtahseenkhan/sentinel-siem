@@ -99,8 +99,8 @@ if (-not $tcpTest.TcpTestSucceeded) {
 # --- Step 6: Register the Windows Service using sc.exe (no nssm needed) ---
 Write-Host "[6/7] Installing as Windows service..." -ForegroundColor Yellow
 $svcCmd = "`"$BinaryPath`" --config `"$ConfigPath`""
-sc.exe create $ServiceName binPath= $svcCmd start= auto DisplayName= "Sentinel Core SIEM Agent" | Out-Null
-sc.exe description $ServiceName "Sentinel Core SIEM endpoint agent — telemetry collection and threat detection" | Out-Null
+sc.exe create $ServiceName binPath= $svcCmd start= auto DisplayName= "CoreNest SIEM Agent" | Out-Null
+sc.exe description $ServiceName "CoreNest SIEM endpoint agent — telemetry collection and threat detection" | Out-Null
 # Set service to auto-restart on failure
 sc.exe failure $ServiceName reset= 60 actions= restart/5000/restart/5000/restart/5000 | Out-Null
 Write-Host "  Service registered." -ForegroundColor Green

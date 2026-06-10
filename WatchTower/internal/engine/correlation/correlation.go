@@ -104,7 +104,7 @@ func (m *Manager) ShouldFire(rule *models.Rule, event *models.Event) bool {
 }
 
 // effectiveCorrelation resolves a rule's frequency settings from either the
-// `threshold:` block (count/period_secs/group_by string) or the Wazuh-style
+// `threshold:` block (count/period_secs/group_by string) or the legacy
 // `correlation:` block (threshold/window/group_by list). Returns count<=0 when
 // the rule is not a (valid) frequency rule, in which case ShouldFire passes
 // through. threshold: wins if both are present.

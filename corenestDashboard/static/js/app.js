@@ -4871,7 +4871,7 @@ const GEO_CONTINENTS = [
       }
       const total = list.total ?? 0;
       const hits = list.hits || [];
-      document.getElementById('hygieneSystemHits').textContent = total + ' hits';
+      document.getElementById('hygieneSystemHits').textContent = total + ' hits' + (list.source === 'agents' ? ' · from agent registry (enable syscollector os for kernel/arch)' : '');
       document.getElementById('hygieneSystemPageInfo').textContent = 'Page ' + (Math.floor(hygieneSystemOffset / HYGIENE_PAGE_SIZE) + 1) + ' of ' + (Math.ceil(total / HYGIENE_PAGE_SIZE) || 1);
       document.getElementById('hygieneSystemPrev').disabled = hygieneSystemOffset === 0;
       document.getElementById('hygieneSystemNext').disabled = hygieneSystemOffset + HYGIENE_PAGE_SIZE >= total;
@@ -5001,7 +5001,31 @@ const GEO_CONTINENTS = [
     else if (active === 'identity') loadHygieneIdentity();
   }
 
+  async function loadHygieneKpis() {
+    // Populate the top KPI strip + header meta independently of the active subtab,
+    // so Systems/Packages/Processes/Identities reflect real totals even when the
+    // user is looking at a different tab. (These nodes are otherwise stuck at 0.)
+    const params = getHygieneParams();
+    const cq = params.cluster_name ? '&cluster_name=' + encodeURIComponent(params.cluster_name) : '';
+    const sq = params.cluster_name ? '?cluster_name=' + encodeURIComponent(params.cluster_name) : '';
+    const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    const [sys, pkgSummary, proc, users] = await Promise.all([
+      fetchJson(API.inventorySystemList + '?size=0' + cq).catch(() => ({})),
+      fetchJson(API.inventoryPackagesSummary + sq).catch(() => ({})),
+      fetchJson(API.inventoryProcessesList + '?size=0' + cq).catch(() => ({})),
+      fetchJson(API.inventoryUsersList + '?size=0' + cq).catch(() => ({})),
+    ]);
+    const sysTotal = sys.total ?? 0;
+    setText('hygieneKpiSystems', sysTotal.toLocaleString());
+    setText('hygieneSystemsCount', sysTotal.toLocaleString() + ' systems indexed');
+    setText('hygieneTabSystemCount', sysTotal.toLocaleString());
+    setText('hygieneKpiPackages', (pkgSummary.unique_packages ?? 0).toLocaleString());
+    setText('hygieneKpiProcesses', (proc.total ?? 0).toLocaleString());
+    setText('hygieneKpiUsers', (users.total ?? 0).toLocaleString());
+  }
+
   function loadITHygiene() {
+    loadHygieneKpis();
     setHygieneSubtab('system');
   }
 
@@ -5250,6 +5274,13 @@ const GEO_CONTINENTS = [
   });
   document.getElementById('hygieneRefreshBtn')?.addEventListener('click', () => {
     const active = document.querySelector('.hygiene-subtab.active')?.getAttribute('data-hygiene') || 'system';
+    loadHygieneKpis();
+    setHygieneSubtab(active);
+  });
+  document.getElementById('hygieneClusterFilter')?.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const active = document.querySelector('.hygiene-subtab.active')?.getAttribute('data-hygiene') || 'system';
+    loadHygieneKpis();
     setHygieneSubtab(active);
   });
   document.getElementById('hygieneSystemPrev')?.addEventListener('click', () => { hygieneSystemOffset = Math.max(0, hygieneSystemOffset - HYGIENE_PAGE_SIZE); loadHygieneSystem(); });
@@ -6020,6 +6051,57 @@ const GEO_CONTINENTS = [
   // ---------------------------------------------------------------------------
   // File Integrity Monitoring Page
   // ---------------------------------------------------------------------------
+  // Simple per-hour bar chart for the FIM 24h timeline card.
+  function drawFimTimeline(canvas, timeline) {
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.parentElement?.clientWidth || canvas.offsetWidth || 700;
+    const H = 160;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    const data = Array.isArray(timeline) ? timeline : [];
+    if (!data.length || data.every(d => (d.count || 0) === 0)) {
+      ctx.fillStyle = '#8aaad0';
+      ctx.font = '13px Outfit, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('No FIM events in the last 24h', W / 2, H / 2);
+      return;
+    }
+    const pad = { l: 28, r: 8, t: 10, b: 18 };
+    const cw = W - pad.l - pad.r, ch = H - pad.t - pad.b;
+    const max = Math.max(...data.map(d => d.count || 0), 1);
+    const bw = cw / data.length;
+    // baseline + max gridline
+    ctx.strokeStyle = 'rgba(140,150,170,0.18)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.l, pad.t + ch); ctx.lineTo(pad.l + cw, pad.t + ch); ctx.stroke();
+    ctx.fillStyle = '#8a93a6';
+    ctx.font = '10px var(--font-mono, monospace)';
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(max), pad.l - 5, pad.t + 4);
+    ctx.fillText('0', pad.l - 5, pad.t + ch);
+    data.forEach((d, i) => {
+      const h = Math.max(((d.count || 0) / max) * ch, (d.count ? 2 : 0));
+      const x = pad.l + i * bw, y = pad.t + ch - h;
+      ctx.fillStyle = 'rgba(99,179,237,0.75)';
+      ctx.fillRect(x + bw * 0.12, y, bw * 0.76, h);
+      // hour label every 4 bars
+      if (i % 4 === 0 && d.t) {
+        const hr = new Date(d.t).getHours();
+        ctx.fillStyle = '#8a93a6';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillText(String(hr).padStart(2, '0') + ':00', x + bw / 2, pad.t + ch + 4);
+        ctx.textBaseline = 'middle';
+      }
+    });
+  }
+
   async function loadFimPage() {
     const el = id => document.getElementById(id);
     // Pivot from an agent detail page → pre-fill the agent filter so the
@@ -6041,6 +6123,9 @@ const GEO_CONTINENTS = [
     if (el('fimDeleted')) el('fimDeleted').textContent = (summary.deleted || 0).toLocaleString();
     if (el('fimEventsHits')) el('fimEventsHits').textContent = (events.total || 0) + ' hits';
     if (el('fimEventsInfo')) el('fimEventsInfo').textContent = `Showing ${Math.min((events.hits || []).length, 20)} of ${events.total || 0}`;
+
+    // 24h volume timeline
+    drawFimTimeline(el('fimTimelineCanvas'), summary.timeline || []);
 
     // Action donut
     const donut = el('fimActionDonut');
@@ -6071,8 +6156,8 @@ const GEO_CONTINENTS = [
       tbody.innerHTML = rows.length ? rows.map(r => {
         const ts = r.timestamp ? new Date(r.timestamp).toLocaleString() : '—';
         const agent = escapeHtml(r.agent_name || r.agent || '—');
-        const action = escapeHtml(r.fim_action || r.action || (r.event_data && r.event_data.type) || '—');
-        const path = escapeHtml(r.fim_path || r.file_path || (r.event_data && r.event_data.path) || '—');
+        const action = escapeHtml(r.fim_action || r.action || ((r.event_type || '').split('.')[1]) || (r.event_data && r.event_data.type) || '—');
+        const path = escapeHtml(r.fim_path || r.file_path || r.path || (r.event_data && r.event_data.path) || '—');
         const fullHash = r.fim_sha256 || r.sha256 || (r.event_data && r.event_data.sha256) || '';
         const hash = escapeHtml(fullHash.substring(0, 12) + (fullHash.length > 12 ? '…' : (fullHash ? '' : '—')));
         const size = escapeHtml(String(r.fim_size || r.file_size || (r.event_data && r.event_data.size) || '—'));
@@ -6098,8 +6183,8 @@ const GEO_CONTINENTS = [
         tbody2.innerHTML = rows2.length ? rows2.map(r => {
           const ts = r.timestamp ? new Date(r.timestamp).toLocaleString() : '—';
           const a2 = escapeHtml(r.agent_name || r.agent || '—');
-          const act2 = escapeHtml(r.fim_action || r.action || (r.event_data && r.event_data.type) || '—');
-          const p2 = escapeHtml(r.fim_path || r.file_path || (r.event_data && r.event_data.path) || '—');
+          const act2 = escapeHtml(r.fim_action || r.action || ((r.event_type || '').split('.')[1]) || (r.event_data && r.event_data.type) || '—');
+          const p2 = escapeHtml(r.fim_path || r.file_path || r.path || (r.event_data && r.event_data.path) || '—');
           const h2 = escapeHtml((r.fim_sha256 || r.sha256 || '').substring(0, 12));
           const s2 = String(r.fim_size || r.file_size || (r.event_data && r.event_data.size) || '—');
           const ac2 = act2 === 'added' ? 'var(--ok)' : act2 === 'deleted' ? 'var(--crit)' : 'var(--high)';
@@ -6345,13 +6430,158 @@ const GEO_CONTINENTS = [
     });
   }
 
+  // Curated SOC field order: [label, [candidate source keys, first present wins]].
+  // Keeps the analyst's eye on who/what/where before the ECS plumbing.
+  const _LOGS_CURATED = [
+    ['Time',         ['timestamp', '@timestamp']],
+    ['Event type',   ['event_type', 'tags.source', 'source', 'collector']],
+    ['Event ID',     ['win_event_id', 'event_id', 'EventID']],
+    ['Description',  ['win_event_description']],
+    ['Agent',        ['agent_name', 'agent.name', 'computer', 'Computer', 'hostname']],
+    ['Agent IP',     ['agent_ip', 'agent.ip']],
+    ['User',         ['TargetUserName', 'SubjectUserName', 'dstuser', 'srcuser', 'user', 'data.dstuser', 'user_name']],
+    ['Domain',       ['TargetDomainName', 'SubjectDomainName']],
+    ['Source IP',    ['IpAddress', 'srcip', 'src_ip', 'data.srcip', 'laddr']],
+    ['Source port',  ['IpPort', 'src_port', 'lport']],
+    ['Dest IP',      ['raddr', 'dst_ip', 'dstip']],
+    ['Dest port',    ['rport', 'dst_port']],
+    ['Process',      ['process_name', 'Image', 'ProcessName', 'NewProcessName']],
+    ['Command',      ['CommandLine', 'command_line', 'cmdline']],
+    ['PID',          ['pid', 'ProcessId', 'NewProcessId']],
+    ['Parent',       ['ParentImage', 'ParentProcessName']],
+    ['File / path',  ['path', 'file', 'TargetFilename', 'object_name']],
+    ['Registry key', ['key', 'registry_key', 'ObjectName']],
+    ['Action',       ['action', 'Operation', 'status', 'LogonType']],
+    ['Decoder',      ['decoder']],
+    ['Rule',         ['rule_description', 'rule_id']],
+  ];
+  // Flattened keys we never want to surface as "context" — pure plumbing.
+  const _LOGS_NOISE = /^(@version|@timestamp|ecs\.|_id|_index|_score|_type|fields\.|host\.architecture)/;
+
+  function _logsRawLine(hit) {
+    const c = hit.full_log || hit.raw || hit.message || hit.Message ||
+              hit.win_event_description || _logsSummarize(hit);
+    return (c == null || c === '') ? '(no raw text on this event)' : String(c);
+  }
+
+  function _logsGuessApp(hit) {
+    let a = hit.program || hit.app_name || hit.ProgramName || hit.SyslogTag || hit.process_name || hit.Image;
+    if (a) { a = String(a).split(/[\\/]/).pop().replace(/\.exe$/i, ''); }
+    if (!a && hit.event_type) a = String(hit.event_type).split('.')[0];
+    if (!a) a = _logsSource(hit);
+    return (a && a !== '—') ? a : '';
+  }
+
   function _logsShowDetail(hit) {
     const el = id => document.getElementById(id);
     const drawer = el('logsDetailDrawer');
     const body = el('logsDetailBody');
     if (!drawer || !body) return;
+
+    const rawLine = _logsRawLine(hit);
+    if (el('logsDetailRaw')) el('logsDetailRaw').textContent = rawLine;
+    if (el('logsDetailMeta')) {
+      el('logsDetailMeta').textContent = [
+        hit.timestamp ? new Date(hit.timestamp).toLocaleString() : null,
+        _logsAgent(hit) !== '—' ? 'agent=' + _logsAgent(hit) : null,
+        _logsSource(hit) !== '—' ? 'source=' + _logsSource(hit) : null,
+      ].filter(Boolean).join('  ·  ');
+    }
+
+    // Curated fields, then the rest collapsed.
+    const flat = flattenSource(hit);
+    const used = new Set();
+    const fmt = v => (v == null || v === '') ? '—'
+      : (typeof v === 'string' && (v.toLowerCase() === 'wazuh.manager' || v.toLowerCase() === 'watchtower')) ? 'Sentinel Manager'
+      : String(v);
+    let curatedRows = '';
+    _LOGS_CURATED.forEach(([label, keys]) => {
+      for (const k of keys) {
+        if (flat[k] != null && flat[k] !== '' && !used.has(k)) {
+          used.add(k);
+          curatedRows += `<tr><td class="k">${escapeHtml(label)}</td><td class="v">${escapeHtml(fmt(flat[k]))}</td></tr>`;
+          return;
+        }
+      }
+    });
+    const restKeys = Object.keys(flat).filter(k => !used.has(k) && !_LOGS_NOISE.test(k)).sort();
+    const restRows = restKeys.map(k =>
+      `<tr><td class="k">${escapeHtml(k)}</td><td class="v">${escapeHtml(fmt(flat[k]))}</td></tr>`).join('');
+    let fieldsHtml = curatedRows
+      ? `<table class="logs-det-fields"><tbody>${curatedRows}</tbody></table>`
+      : '<div style="font-size:11px;color:var(--fg-3)">No curated fields on this event.</div>';
+    if (restRows) {
+      fieldsHtml += `<details class="logs-det-more"><summary>▸ All fields (${restKeys.length})</summary>`
+        + `<table class="logs-det-fields"><tbody>${restRows}</tbody></table></details>`;
+    }
+    if (el('logsDetailFields')) el('logsDetailFields').innerHTML = fieldsHtml;
+
+    // Decode bar — pre-fill best-guess app/program; reset result.
+    if (el('logsDetailAppName')) el('logsDetailAppName').value = _logsGuessApp(hit);
+    if (el('logsDetailDecodeResult')) el('logsDetailDecodeResult').innerHTML = '';
+
+    // Raw JSON (collapsed by default).
     body.textContent = JSON.stringify(hit, null, 2);
+    body.classList.add('hidden');
+    if (el('logsDetailJsonCaret')) el('logsDetailJsonCaret').textContent = '▸';
+
+    // Idempotent wiring (drawer is reused across opens).
+    if (el('logsDetailCopyRaw')) el('logsDetailCopyRaw').onclick = () => {
+      const t = el('logsDetailRaw') ? el('logsDetailRaw').textContent : rawLine;
+      if (navigator.clipboard) navigator.clipboard.writeText(t).catch(() => {});
+      const b = el('logsDetailCopyRaw'); if (b) { const o = b.textContent; b.textContent = 'Copied'; setTimeout(() => b.textContent = o, 1200); }
+    };
+    if (el('logsDetailJsonToggle')) el('logsDetailJsonToggle').onclick = () => {
+      const hidden = body.classList.toggle('hidden');
+      if (el('logsDetailJsonCaret')) el('logsDetailJsonCaret').textContent = hidden ? '▸' : '▾';
+    };
+    if (el('logsDetailDecodeBtn')) el('logsDetailDecodeBtn').onclick = () => _logsDecode(rawLine);
+
     drawer.classList.remove('hidden');
+  }
+
+  // Run the raw line through the live syslog-decoder engine. If a decoder
+  // matches, show the extracted fields. If not, offer to build one against
+  // this exact line — closing the read-raw-log → write-decoder loop.
+  async function _logsDecode(rawLine) {
+    const el = id => document.getElementById(id);
+    const appName = (el('logsDetailAppName') && el('logsDetailAppName').value || '').trim();
+    const out = el('logsDetailDecodeResult');
+    if (!out) return;
+    if (!appName) { out.innerHTML = '<span style="color:var(--crit);font-size:11px">Enter an app / program name first.</span>'; return; }
+    out.innerHTML = '<span style="color:var(--fg-3);font-size:11px">Decoding…</span>';
+    try {
+      const res = await fetch('/api/decoders/syslog/test', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app_name: appName, message: rawLine }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { out.innerHTML = `<span style="color:var(--crit);font-size:11px">Error: ${escapeHtml(data.error || res.statusText)}</span>`; return; }
+      const result = data.data || data;
+      if (result.matched === true) {
+        const fields = result.fields || {};
+        const fkeys = Object.keys(fields).filter(k => k !== 'decoder');
+        let h = `<div style="font-size:11px;margin-bottom:6px"><span style="color:var(--ok);font-weight:600">✓ Matched</span>`;
+        if (result.decoder_name) h += ` — <span style="font-weight:600">${escapeHtml(result.decoder_name)}</span>`;
+        h += '</div>';
+        h += fkeys.length
+          ? `<table class="logs-det-fields"><tbody>${fkeys.map(k => `<tr><td class="k">${escapeHtml(k)}</td><td class="v">${escapeHtml(String(fields[k]))}</td></tr>`).join('')}</tbody></table>`
+          : '<span style="font-size:11px;color:var(--fg-3)">Matched, but no named fields extracted.</span>';
+        out.innerHTML = h;
+      } else {
+        out.innerHTML = '<div style="font-size:11px;margin-bottom:6px"><span style="color:var(--med);font-weight:600">No decoder matched this line.</span></div>'
+          + '<button type="button" id="logsDetailBuildBtn" class="act-btn primary" style="height:28px;padding:0 12px;font-size:11px">+ Build a decoder for this</button>';
+        const bb = el('logsDetailBuildBtn');
+        if (bb) bb.onclick = () => {
+          if (typeof window.prefillDecoderFromLog === 'function') {
+            window.prefillDecoderFromLog(appName, rawLine);
+            const d = el('logsDetailDrawer'); if (d) d.classList.add('hidden');
+          }
+        };
+      }
+    } catch (e) {
+      out.innerHTML = `<span style="color:var(--crit);font-size:11px">Error: ${escapeHtml(e.message || 'Request failed')}</span>`;
+    }
   }
 
   async function _logsRefreshSummary() {
@@ -8892,7 +9122,7 @@ async function _ensureEntityAgentMap() {
   if (Object.keys(_entityAgentMap).length > 0) return;
   try {
     const res = await fetch('/api/agents?limit=500').then(r => r.json()).catch(() => ({}));
-    // /api/agents returns the Wazuh-style envelope {data:{affected_items:[...]}}.
+    // /api/agents returns the {data:{affected_items:[...]}} envelope.
     // The old code grabbed res.data (the OBJECT) and called .forEach on it, which
     // threw and left the map empty — so every entity fell back to raw hex. Dig
     // into affected_items, and stay tolerant of the bare-array / {data:[]} shapes.
@@ -10474,7 +10704,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setEl('sdStatCustom',  _sdAll.filter(d => !d.built_in).length);
     setEl('sdStatGroups',  new Set(_sdAll.map(d => d.group || d.parent || '').filter(Boolean)).size);
 
-    const col = 'grid-template-columns:1fr 110px 120px 160px 90px 100px';
+    const col = 'grid-template-columns:1fr 110px 120px 160px 90px 170px';
     const body = document.getElementById('sdTableBody');
     if (!body) return;
 
@@ -10507,6 +10737,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <span>${typeBadge}</span>
         <span style="display:flex;gap:5px;align-items:center">
           <button type="button" class="sd-view-btn btn-disc-detail btn-agent-view" data-index="${i}" title="View details">&#8943;</button>
+          <button type="button" class="sd-clone-btn" data-index="${i}" title="Clone as a new custom decoder" style="background:rgba(99,179,237,0.1);border:1px solid rgba(99,179,237,0.3);color:#63b3ed;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer">Clone</button>
           ${deleteBtnHtml}
         </span>
       </div>`;
@@ -10531,16 +10762,95 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── add decoder modal ─────────────────────────────────────────────────────
   function _openAddModal() {
-    ['sdFormName','sdFormDesc','sdFormParent','sdFormProgram','sdFormPrematch','sdFormRegex','sdFormStaticFields'].forEach(id => {
+    ['sdFormName','sdFormDesc','sdFormParent','sdFormProgram','sdFormPrematch','sdFormRegex','sdFormStaticFields','sdFormSample'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
+    const tr = document.getElementById('sdFormTestResult');
+    if (tr) tr.innerHTML = '';
     const m = document.getElementById('sdAddModal');
     if (m) { m.style.display = 'flex'; }
   }
   function _closeAddModal() {
     const m = document.getElementById('sdAddModal');
     if (m) m.style.display = 'none';
+  }
+
+  // Clone a (built-in or custom) decoder into the Add form as a starting
+  // template. Gives analysts a working example to adapt instead of a blank form.
+  function _cloneDecoder(index) {
+    const d = (_sdFiltered && _sdFiltered[index]) || (_sdAll && _sdAll[index]);
+    if (!d) return;
+    _openAddModal();
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v == null ? '' : v; };
+    // New unique name so the save doesn't collide with the source decoder.
+    set('sdFormName', (d.name || 'decoder') + '-copy');
+    set('sdFormDesc', d.description ? 'Cloned from ' + d.name + (d.description ? ' — ' + d.description : '') : 'Cloned from ' + (d.name || ''));
+    set('sdFormParent', d.parent || '');
+    set('sdFormProgram', d.program || '');
+    set('sdFormPrematch', d.prematch || '');
+    set('sdFormRegex', d.regex || '');
+    const sf = d.static_fields || {};
+    set('sdFormStaticFields', Object.keys(sf).map(k => k + '=' + sf[k]).join('\n'));
+    const nameEl = document.getElementById('sdFormName');
+    if (nameEl) { nameEl.focus(); nameEl.select(); }
+  }
+
+  // Open the builder pre-seeded from a raw log line the analyst was viewing
+  // (called from the Logs raw-event drawer's "Build a decoder for this").
+  function _prefillDecoderFromLog(appName, message) {
+    if (typeof goToPage === 'function') goToPage('decoders');
+    setTimeout(() => {
+      _openAddModal();
+      const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+      const app = (appName || '').trim();
+      if (app) {
+        // Anchor the program match to the guessed app name; analyst can relax it.
+        set('sdFormProgram', '^' + app.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$');
+        set('sdFormName', app + '-custom');
+      }
+      set('sdFormSample', message || '');
+      // Also seed the standalone Test Decoder panel so a "Reload + Test" works post-save.
+      set('sdTestAppName', app);
+      set('sdTestMessage', message || '');
+    }, 60);
+  }
+  window.prefillDecoderFromLog = _prefillDecoderFromLog;
+
+  // Client-side live preview: convert Go-style (?P<name>...) to JS (?<name>...)
+  // and run the in-progress regex against the sample line so the analyst gets
+  // instant feedback while writing the decoder (the saved-decoder engine test
+  // lives in the separate Test Decoder card).
+  function _sdPreviewRegex() {
+    const out = document.getElementById('sdFormTestResult');
+    if (!out) return;
+    const pattern = (document.getElementById('sdFormRegex')?.value || '').trim();
+    const sample  = (document.getElementById('sdFormSample')?.value || '');
+    if (!pattern) { out.innerHTML = '<span style="color:var(--crit);font-size:11px">Enter a regex above first.</span>'; return; }
+    if (!sample)  { out.innerHTML = '<span style="color:var(--crit);font-size:11px">Paste a sample log line first.</span>'; return; }
+    let re;
+    try {
+      re = new RegExp(pattern.replace(/\(\?P<([A-Za-z_][A-Za-z0-9_]*)>/g, '(?<$1>'));
+    } catch (e) {
+      out.innerHTML = `<span style="color:var(--crit);font-size:11px">Invalid regex: ${_esc(e.message)}</span>`;
+      return;
+    }
+    const m = re.exec(sample);
+    if (!m) {
+      out.innerHTML = '<span style="color:var(--med);font-size:11px;font-weight:600">✗ No match against the sample.</span>';
+      return;
+    }
+    const groups = m.groups || {};
+    const gkeys = Object.keys(groups);
+    // Highlight the matched span in the sample.
+    const start = m.index, end = m.index + m[0].length;
+    const hl = _esc(sample.slice(0, start)) + '<span class="logs-det-cap">' + _esc(sample.slice(start, end)) + '</span>' + _esc(sample.slice(end));
+    let h = '<div style="font-size:11px;margin-bottom:6px"><span style="color:var(--ok);font-weight:600">✓ Match</span></div>';
+    h += `<pre style="margin:0 0 8px;padding:8px 10px;background:var(--bg-2,#11151c);border:1px solid var(--border);border-radius:6px;font-family:var(--font-mono);font-size:11px;white-space:pre-wrap;word-break:break-word">${hl}</pre>`;
+    h += gkeys.length
+      ? `<table class="logs-det-fields"><tbody>${gkeys.map(k => `<tr><td class="k">${_esc(k)}</td><td class="v">${_esc(groups[k] == null ? '—' : groups[k])}</td></tr>`).join('')}</tbody></table>`
+      : '<span style="font-size:11px;color:var(--fg-3)">Matched, but no named capture groups — add <code>(?P&lt;name&gt;…)</code> to extract fields.</span>';
+    out.innerHTML = h;
   }
 
   async function _submitAddDecoder() {
@@ -10709,6 +11019,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('sdViewModalClose')?.addEventListener('click', _closeViewModal);
     document.getElementById('sdReloadBtn')?.addEventListener('click', _reloadDecoders);
     document.getElementById('sdTestBtn')?.addEventListener('click', _testDecoder);
+    document.getElementById('sdFormTestBtn')?.addEventListener('click', _sdPreviewRegex);
 
     let _sdSearchTimer = null;
     document.getElementById('sdSearch')?.addEventListener('input', () => {
@@ -10722,6 +11033,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (viewBtn) {
         const idx = parseInt(viewBtn.getAttribute('data-index'), 10);
         _openViewModal(idx);
+        return;
+      }
+      const cloneBtn = e.target.closest('.sd-clone-btn');
+      if (cloneBtn) {
+        const idx = parseInt(cloneBtn.getAttribute('data-index'), 10);
+        _cloneDecoder(idx);
         return;
       }
       const delBtn = e.target.closest('.sd-delete-btn');

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Sentinel Core SIEM — Enterprise Security, Zero Compromise",
+  title: "CoreNest SIEM — Enterprise Security, Zero Compromise",
   description:
     "Unified endpoint telemetry, real-time threat detection with Sigma rules, and compliance monitoring across your entire fleet. Open-source SIEM built for modern security teams.",
   keywords: [
@@ -16,9 +16,9 @@ export const metadata: Metadata = {
     "compliance",
     "HIPAA",
   ],
-  authors: [{ name: "Sentinel Core" }],
+  authors: [{ name: "CoreNest" }],
   openGraph: {
-    title: "Sentinel Core SIEM",
+    title: "CoreNest SIEM",
     description:
       "Enterprise-grade security monitoring. Endpoint telemetry, Sigma rule detection, and compliance in one unified platform.",
     type: "website",
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Sentinel Core SIEM",
+    title: "CoreNest SIEM",
     description: "Enterprise-grade security monitoring for modern teams.",
   },
 };

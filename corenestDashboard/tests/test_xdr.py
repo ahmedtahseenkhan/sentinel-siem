@@ -3,7 +3,7 @@ Unit tests for the XDR correlation layer — entity normalization, the four
 cross-domain detectors, and the response orchestrator.
 
 Stdlib unittest (the project has no pytest); run with:
-    cd sentinelCoreDashboard && python3 tests/test_xdr.py
+    cd corenestDashboard && python3 tests/test_xdr.py
 """
 import os
 import sys

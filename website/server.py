@@ -14,5 +14,5 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 if __name__ == '__main__':
     with http.server.HTTPServer(('', PORT), Handler) as httpd:
-        print(f"Sentinel Core website running at http://localhost:{PORT}")
+        print(f"CoreNest website running at http://localhost:{PORT}")
         httpd.serve_forever()

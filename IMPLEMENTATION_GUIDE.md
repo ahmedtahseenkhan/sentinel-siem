@@ -43,7 +43,7 @@ WatchNode Agent ─────────→ WatchTower Manager (50051)
 |-------------|---------|------|
 | `WatchTower/` | Manager service - receives and processes agent data | ~200MB |
 | `WatchVault/` | Indexer service - stores events in OpenSearch | ~150MB |
-| `sentinelCoreDashboard/` | Web dashboard - visualizes alerts | ~50MB |
+| `corenestDashboard/` | Web dashboard - visualizes alerts | ~50MB |
 | `docker-compose.full.yaml` | Orchestration - starts all services | ~5KB |
 | `DEPLOYMENT_GUIDE.md` | Detailed deployment instructions | ~20KB |
 

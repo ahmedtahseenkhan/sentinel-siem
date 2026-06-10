@@ -1,4 +1,4 @@
-"""Configuration for Sentinel Core Dashboard (WatchTower + WatchVault)."""
+"""Configuration for CoreNest Dashboard (WatchTower + WatchVault)."""
 import os
 import sys
 import warnings

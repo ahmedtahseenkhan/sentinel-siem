@@ -60,7 +60,7 @@ helper serves Azure / O365 / Graph callers.
 
 ### `cd5e4502` — Day 4: MISP feed source
 7th threat-intel source type. Splits mixed attribute types per event
-into `<prefix>_ips`, `_domains`, `_hashes`, `_urls` CDB lists (Wazuh's
+into `<prefix>_ips`, `_domains`, `_hashes`, `_urls` CDB lists (the standard CDB's
 pattern). Atomic install only when non-empty so a failed fetch never
 blows away the prior good list.
 
@@ -78,7 +78,7 @@ context flows downstream. New `EnricherHook` on the engine.
   hidden-process check raced between `/proc` walk and `ps`. All four
   fixed; baseline now persisted at `/var/lib/watchnode/rootcheck-suid-baseline`.
 - **Compliance dashboard**: had ONLY HIPAA wired and that endpoint
-  queried `rule.hipaa` (Wazuh schema) which our native rules don't emit.
+  queried `rule.hipaa` (a non-native nested schema) which our native rules don't emit.
   Added 4 generic functions filtering by `rule.groups: <framework>` so
   all 6 frameworks (PCI/HIPAA/GDPR/NIST/SOC2/CIS) are surfaced. New
   endpoint `GET /api/compliance/<framework>/dashboard`.

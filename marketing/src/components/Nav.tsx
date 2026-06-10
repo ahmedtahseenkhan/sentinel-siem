@@ -7,7 +7,7 @@ const LionLogo = () => (
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 128 128"
     role="img"
-    aria-label="Sentinel Core"
+    aria-label="CoreNest"
     className="size-8 shrink-0"
   >
     <defs>
@@ -130,7 +130,7 @@ export default function Nav() {
           href="#"
           className="flex items-center gap-3 font-bold text-lg tracking-tight"
           style={{ color: "var(--text)" }}
-          aria-label="Sentinel Core — go to top"
+          aria-label="CoreNest — go to top"
         >
           <LionLogo />
           <span aria-hidden="true">

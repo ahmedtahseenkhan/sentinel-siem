@@ -153,7 +153,7 @@ export default function HowItWorks() {
                       className="ml-3 text-xs"
                       style={{ color: "var(--muted)" }}
                     >
-                      sentinel-core
+                      corenest
                     </span>
                   </div>
                   <pre

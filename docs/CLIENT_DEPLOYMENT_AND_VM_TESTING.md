@@ -41,7 +41,7 @@ sudo usermod -aG docker $USER && newgrp docker
 ```
 
 ### A2. Copy the project to the server
-Copy the repo (or at minimum `WatchTower/`, `WatchVault/`, `sentinelCoreDashboard/`, and
+Copy the repo (or at minimum `WatchTower/`, `WatchVault/`, `corenestDashboard/`, and
 the compose file) to the Ubuntu VM, e.g. via `scp`/`rsync`/git.
 
 ### A3. Choose the right compose file

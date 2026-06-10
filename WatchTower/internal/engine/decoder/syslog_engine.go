@@ -16,7 +16,7 @@ import (
 )
 
 // SyslogRule is the YAML schema for one syslog decoder rule.
-// It mirrors Wazuh's decoder concepts: parent/child chaining, program matching,
+// Decoder concepts: parent/child chaining, program matching,
 // prematch for fast filtering, regex with named captures, and static_fields.
 type SyslogRule struct {
 	Name         string            `yaml:"name" json:"name"`
@@ -54,7 +54,7 @@ type compiledSyslogRule struct {
 	children []*compiledSyslogRule
 }
 
-// SyslogEngine is the Wazuh-like decoder for syslog message bodies.
+// SyslogEngine is the decoder for syslog message bodies.
 // Rules are loaded from YAML files; custom rules hot-reload automatically.
 type SyslogEngine struct {
 	mu      sync.RWMutex

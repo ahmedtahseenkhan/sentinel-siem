@@ -154,7 +154,7 @@ func (g *Generator) createCase(groupKey string, alert *models.Alert) {
 		zap.String("priority", string(priority)))
 }
 
-// PriorityForLevel maps a Wazuh-style alert level (0-15) onto a case priority.
+// PriorityForLevel maps an alert level (0-15) onto a case priority.
 func PriorityForLevel(level int) models.CasePriority {
 	switch {
 	case level >= 12:

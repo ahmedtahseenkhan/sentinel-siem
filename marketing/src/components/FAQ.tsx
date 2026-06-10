@@ -5,8 +5,8 @@ import { useScrollReveal } from "@/hooks/useScrollReveal";
 
 const faqs = [
   {
-    q: "How is Sentinel Core different from Wazuh or Elastic Security?",
-    a: "Sentinel Core natively parses and executes Sigma YAML rules in Go — no external conversion tools, no SIEM DSL to learn. The entire stack (agent, manager, indexer, dashboard) is a single cohesive system built from scratch, making it easier to deploy and maintain than Wazuh's sprawling module ecosystem.",
+    q: "How is CoreNest different from Elastic Security or traditional SIEMs?",
+    a: "CoreNest natively parses and executes Sigma YAML rules in Go — no external conversion tools, no SIEM DSL to learn. The entire stack (agent, manager, indexer, dashboard) is a single cohesive system built from scratch, making it easier to deploy and maintain than a sprawling multi-module SIEM stack.",
   },
   {
     q: "Can I run this on Windows endpoints only?",

@@ -228,7 +228,7 @@ func main() {
 	defer eng.Stop()
 
 	// Wire engine into registry so agent lifecycle events (connect/disconnect/
-	// reconnect) are ingested and can match rules 501-509, just like Wazuh.
+	// reconnect) are ingested and can match rules 501-509.
 	reg.SetEngine(eng)
 
 	// Wire registry as agent resolver so every event and alert gets agent_name
@@ -244,7 +244,7 @@ func main() {
 		)
 	}
 
-	// Syslog decoder engine — Wazuh-like YAML-driven decoder pipeline.
+	// Syslog decoder engine — YAML-driven decoder pipeline.
 	syslogDecoderEngine := decoder.NewSyslogEngine(logger)
 	syslogDecoderDir := cfg.Engine.DecodersDir + "/syslog"
 	if err := syslogDecoderEngine.LoadFromDir(syslogDecoderDir); err != nil {

@@ -24,7 +24,7 @@ func SHA256File(path string) (string, error) {
 }
 
 // FileHashes returns md5, sha1, sha256 of the file at path in a single pass.
-// Returned values are hex-encoded and lower case. Wazuh emits all three so
+// Returned values are hex-encoded and lower case. All three are emitted so
 // upstream rules and IoC feeds (VirusTotal, MISP) can match on any of them.
 func FileHashes(path string) (md5sum, sha1sum, sha256sum string, err error) {
 	f, err := os.Open(path)

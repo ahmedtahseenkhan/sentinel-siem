@@ -114,7 +114,7 @@ entries are unambiguous.
       `sentinel-<host>-<ts>.tar.gz`. Open it locally:
       - [ ] `MANIFEST.txt` present with timestamp.
       - [ ] `WatchTower/rules/`, `WatchTower/decoders/` present.
-      - [ ] `sentinelCoreDashboard/audit_log.db`, `log_filters.db`,
+      - [ ] `corenestDashboard/audit_log.db`, `log_filters.db`,
             `users.db`, `silent_sources.db`, `correlations.db`,
             `custom_dashboards.db` present.
 - [ ] On the host: `scripts/sentinel-restore.sh <archive> --dry-run` →
@@ -206,7 +206,7 @@ entries are unambiguous.
 | 4.3 | Session idle timeout | Log in, leave for `SESSION_TIMEOUT_HOURS`, return → forced re-login |
 | 4.4 | Login lockout | Try 6 wrong passwords → page says "Too many failed attempts" |
 | 4.5 | CSRF origin guard | `curl -X POST -H 'Origin: https://evil.example' --cookie '<copy your session>' http://localhost:5050/api/admin/filters` → 403 |
-| 4.6 | Bcrypt hashes stored, not plaintext | `sqlite3 sentinelCoreDashboard/users.db 'select password_hash from dashboard_users limit 1'` → starts with `$2b$` |
+| 4.6 | Bcrypt hashes stored, not plaintext | `sqlite3 corenestDashboard/users.db 'select password_hash from dashboard_users limit 1'` → starts with `$2b$` |
 | 4.7 | Audit log redacts secrets | Create a user with password `topsecret123` → audit row's `payload` shows `"password": "***"` |
 | 4.8 | super_admin paths refuse non-super_admin | As `analyst1`, `curl --cookie ... http://localhost:5050/api/admin/audit-log` → 403 |
 | 4.9 | No default passwords | Confirm `DASHBOARD_USERS` env var (or new DB users) — never leave `admin:admin` in prod |

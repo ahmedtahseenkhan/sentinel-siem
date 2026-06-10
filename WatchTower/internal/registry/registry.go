@@ -12,7 +12,7 @@ import (
 )
 
 // EventSink receives agent lifecycle events so the rules engine can fire
-// alert rules 501-509 (connect/disconnect/reconnect) just like Wazuh does.
+// alert rules 501-509 (connect/disconnect/reconnect).
 type EventSink interface {
 	Ingest(event *models.Event)
 }
@@ -255,7 +255,7 @@ func (r *Registry) UpdateAgentGroup(agentID, groupID string) error {
 
 // ingestLifecycleEvent sends an agent lifecycle event into the rules engine
 // so rules 501-509 (agent.enrolled, agent.connected, agent.disconnected, etc.)
-// can fire alerts — identical to how Wazuh rules 502/504/508 work.
+// can fire alerts via rules 502/504/508.
 func (r *Registry) ingestLifecycleEvent(eventType string, a *models.Agent) {
 	r.mu.RLock()
 	eng := r.engine

@@ -1696,6 +1696,21 @@ button.header-icon-btn { background: none; border: none; color: inherit; font: i
 .filter-pill-remove:hover { opacity: 1; }
 .discover-row { cursor: pointer; }
 .discover-row:hover { background: var(--bg-hover); }
+/* Logs raw-event detail drawer */
+.logs-det-h {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em;
+  color: var(--text-muted, #8a93a6); text-transform: uppercase;
+}
+.logs-det-fields { width: 100%; border-collapse: collapse; font-size: 12px; }
+.logs-det-fields td { padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.logs-det-fields td.k { color: var(--text-muted, #8a93a6); white-space: nowrap; width: 38%; font-family: var(--font-mono); font-size: 11px; }
+.logs-det-fields td.v { color: var(--fg-1, #e6e9ef); font-family: var(--font-mono); font-size: 11px; word-break: break-word; }
+.logs-det-more { margin-top: 8px; }
+.logs-det-more > summary { cursor: pointer; font-size: 11px; color: var(--text-muted, #8a93a6); list-style: none; padding: 4px 0; }
+.logs-det-more > summary::-webkit-details-marker { display: none; }
+.logs-det-cap { background: rgba(120, 170, 255, 0.18); border-radius: 3px; padding: 0 2px; }
+
 .discover-detail-table-wrap { overflow-x: auto; }
 .discover-detail-table { width: 100%; font-size: 0.9rem; border-collapse: collapse; }
 .discover-detail-table .key { color: var(--text-muted); padding: 0.35rem 0.75rem 0.35rem 0; vertical-align: middle; width: 140px; }

@@ -23,7 +23,7 @@ const cpuSampleWindow = 30 * time.Second
 
 // Limiter enforces CPU and memory limits for the agent process.
 //
-// Design notes (Wazuh-parity behavior):
+// Design notes:
 //   - A 2-minute startup grace period suppresses CPU enforcement while
 //     collectors run their initial baseline scans.
 //   - CPU usage is measured as a moving average over a 30-second window

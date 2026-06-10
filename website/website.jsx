@@ -1,5 +1,5 @@
 /* eslint-disable */
-// website.jsx — Sentinel Core marketing site
+// website.jsx — CoreNest marketing site
 // One-file React app. Composes hero, trust strip, stats, features,
 // product showcase, MITRE demo, threat ticker, comparison, quotes,
 // pricing, final CTA, and footer.
@@ -90,7 +90,7 @@ function Nav() {
               <path d="M9 12l2 2 4-4"/>
             </svg>
           </span>
-          Sentinel Core
+          CoreNest
         </a>
         <div className="nav-links">
           <a className="nav-link has-chevron" href="#features">Product</a>
@@ -145,7 +145,7 @@ function HeroScope() {
       <div className="hero-scope-card">
         <div className="hero-scope-bar">
           <span className="dots"><i/><i/><i/></span>
-          <span className="title">sentinel-core / overview</span>
+          <span className="title">corenest / overview</span>
           <span className="live">LIVE</span>
         </div>
         <div className="hero-scope-body">
@@ -213,7 +213,7 @@ function Hero() {
       </div>
       <div className="container hero-inner">
         <div>
-          <div className="eyebrow reveal">Sentinel Core v4.2 · now with AI triage</div>
+          <div className="eyebrow reveal">CoreNest v4.2 · now with AI triage</div>
           <h1 className="hero-title reveal" data-delay="1">
             Catch what<br/>
             <span className="strike">legacy SIEMs</span> <span className="accent">miss.</span>
@@ -328,7 +328,7 @@ function Features() {
           <div className="eyebrow muted">What you get</div>
           <h2>One platform. Every<br/>capability your SOC needs.</h2>
           <p className="lede center" style={{ marginTop: 16 }}>
-            From ingestion to investigation to response — Sentinel Core unifies the workflows you've stitched together for years.
+            From ingestion to investigation to response — CoreNest unifies the workflows you've stitched together for years.
           </p>
         </div>
         <div className="features-grid reveal" data-delay="1">
@@ -415,7 +415,7 @@ function DemoFrame({ title, live, children }) {
     <div style={{ height: '100%' }}>
       <div className="hero-scope-bar">
         <span className="dots"><i/><i/><i/></span>
-        <span className="title">sentinel-core / {title}</span>
+        <span className="title">corenest / {title}</span>
         {live && <span className="live">LIVE</span>}
       </div>
       <div style={{ padding: 20 }}>{children}</div>
@@ -674,7 +674,7 @@ function DemoRisk() {
         fontSize: 11.5, color: 'var(--fg-2)', lineHeight: 1.5,
       }}>
         Only 2 notable alerts fired today — instead of the 187 raw alerts these entities generated.
-        That's how Sentinel Core cuts noise by 90%.
+        That's how CoreNest cuts noise by 90%.
       </div>
     </DemoFrame>
   );
@@ -767,7 +767,7 @@ function Compare() {
         <div className="compare reveal" data-delay="1">
           <div className="compare-row head">
             <span>Capability</span>
-            <span className="us">Sentinel Core</span>
+            <span className="us">CoreNest</span>
             <span>Legacy SIEM</span>
             <span>DIY ELK</span>
           </div>
@@ -924,7 +924,7 @@ function FinalCTA() {
             <div className="eyebrow">Ready when you are</div>
             <h2>Stop triaging noise.<br/>Start hunting threats.</h2>
             <p className="lede" style={{ marginTop: 18 }}>
-              See Sentinel Core running against your data in a 30-minute walkthrough. Or start a free trial and have your first alerts in under an hour.
+              See CoreNest running against your data in a 30-minute walkthrough. Or start a free trial and have your first alerts in under an hour.
             </p>
             <div className="ctas" style={{ marginTop: 32 }}>
               <a className="btn btn-primary" href="#">Book a demo {IC.arrow}</a>
@@ -951,7 +951,7 @@ function Footer() {
                   <path d="M9 12l2 2 4-4"/>
                 </svg>
               </span>
-              Sentinel Core
+              CoreNest
             </a>
             <p>Modern SIEM for modern SOCs. Cut alert noise by 90%, map every detection to MITRE, and respond in minutes — not hours.</p>
           </div>
@@ -991,7 +991,7 @@ function Footer() {
           </div>
         </div>
         <div className="foot-bottom">
-          <span>© 2026 Sentinel Core, Inc. SOC 2 Type II · ISO 27001 · GDPR</span>
+          <span>© 2026 CoreNest, Inc. SOC 2 Type II · ISO 27001 · GDPR</span>
           <div className="foot-socials">
             <a href="#" title="Twitter">{IC.twitter}</a>
             <a href="#" title="GitHub">{IC.github}</a>

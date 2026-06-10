@@ -99,7 +99,7 @@ type RuleThreshold struct {
 	GroupBy    string `yaml:"group_by,omitempty" json:"group_by,omitempty"`
 }
 
-// RuleCorrelation is the Wazuh-style spelling of a frequency rule used across
+// RuleCorrelation is the legacy spelling of a frequency rule used across
 // the rule corpus: an alert fires only when the rule matches at least
 // Threshold times within Window (a Go duration string like "5m"/"1h"),
 // optionally grouped by one or more fields.

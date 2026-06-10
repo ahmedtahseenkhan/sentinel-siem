@@ -92,6 +92,28 @@ jobs:
           GOARCH: amd64
         run: go build -o /tmp/watchnode.exe ./cmd/agent
 
+  watchvault:
+    name: WatchVault (Go ${{ matrix.go }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: ['1.21']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache-dependency-path: WatchVault/go.sum
+
+      - name: go vet
+        working-directory: WatchVault
+        run: go vet ./...
+
+      - name: go test -race
+        working-directory: WatchVault
+        run: go test -race -count=1 ./...
+
   dashboard:
     name: Dashboard syntax check (Python)
     runs-on: ubuntu-latest
@@ -103,7 +125,7 @@ jobs:
           python-version: '3.12'
 
       - name: AST-parse Flask app + dashboard helpers
-        working-directory: sentinelCoreDashboard
+        working-directory: corenestDashboard
         run: |
           python <<'EOF'
           import ast, glob, sys
@@ -117,6 +139,14 @@ jobs:
                   errors += 1
           sys.exit(1 if errors else 0)
           EOF
+
+      - name: install dashboard deps
+        working-directory: corenestDashboard
+        run: pip install -r requirements.txt
+
+      - name: unit tests (seam + XDR)
+        working-directory: corenestDashboard
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
 
   e2e:
     name: End-to-end pipeline smoke (full stack)

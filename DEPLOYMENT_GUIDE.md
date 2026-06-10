@@ -17,7 +17,7 @@ Copy these folders to Ubuntu server:
 /WatchTower/       (Manager service)
 /WatchVault/       (Indexer service)
 /OpenSearch/       (Data storage - handled by Docker)
-/sentinelCoreDashboard/  (Web dashboard)
+/corenestDashboard/  (Web dashboard)
 docker-compose.full.yaml  (Orchestration file)
 ```
 
@@ -67,7 +67,7 @@ services:
       - WATCHVAULT_OPENSEARCH_URL=http://opensearch:9200
 
   dashboard:
-    build: ./sentinelCoreDashboard
+    build: ./corenestDashboard
     ports:
       - "5050:5050"
     depends_on:
@@ -391,7 +391,7 @@ tasklist | findstr watchnode
 ✓ docker-compose.full.yaml
 ✓ WatchTower/ (full folder)
 ✓ WatchVault/ (full folder)
-✓ sentinelCoreDashboard/ (full folder)
+✓ corenestDashboard/ (full folder)
 ✓ Certificates (if using mTLS)
 ```
 
