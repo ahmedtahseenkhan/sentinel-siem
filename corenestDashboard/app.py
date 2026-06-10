@@ -3947,44 +3947,57 @@ def api_geo_map_data():
         since_ms = int((_to_epoch_ms(f"now-{hours}h") if hours < 8760
                         else _to_epoch_ms("now-30d")))
 
-        # Aggregate top source IPs from OpenSearch alerts index.
+        # Aggregate top source IPs from the alerts index. The original event is
+        # nested under `event_data.fields.*` (WatchVault does not flatten the
+        # alert envelope), and the source-IP field name varies by event type:
+        #   network → raddr ;  sshd/auth → src_ip/srcip ;
+        #   Windows logon (4625/4624) → IpAddress/win_IpAddress ;  Sysmon → SourceIp
+        # So we run one terms agg per candidate field and merge. (Querying
+        # `event_data.src_ip` — as before — matched nothing, hence an empty map.)
+        ip_fields = [
+            "event_data.fields.src_ip",
+            "event_data.fields.srcip",
+            "event_data.fields.raddr",
+            "event_data.fields.IpAddress",
+            "event_data.fields.win_IpAddress",
+            "event_data.fields.SourceIp",
+        ]
+        sub_aggs = {
+            f"ip_{i}": {
+                "terms": {"field": fld, "size": limit, "min_doc_count": 1},
+                "aggs": {
+                    "max_level": {"max": {"field": "rule_level"}},
+                    "last_seen": {"max": {"field": "timestamp"}},
+                },
+            }
+            for i, fld in enumerate(ip_fields)
+        }
         body = {
             "size": 0,
-            "query": {
-                "range": {
-                    "timestamp": {"gte": since_ms}
-                }
-            },
-            "aggs": {
-                "by_src_ip": {
-                    "terms": {
-                        "field": "event_data.src_ip",
-                        "size": limit,
-                        "min_doc_count": 1
-                    },
-                    "aggs": {
-                        "max_level": {"max": {"field": "rule_level"}},
-                        "last_seen":  {"max": {"field": "timestamp"}}
-                    }
-                }
-            }
+            "query": {"range": {"timestamp": {"gte": since_ms}}},
+            "aggs": sub_aggs,
         }
 
         res = _os_search(f"{INDEX_PREFIX}-alerts-*", body)
-        buckets = ((res.get("aggregations") or {})
-                   .get("by_src_ip", {})
-                   .get("buckets", []))
+        aggs = res.get("aggregations") or {}
 
-        # Collect unique IPs from alert data.
+        # Merge buckets across all candidate fields: sum counts, keep the highest
+        # rule level and most-recent last_seen per IP.
         ip_counts = {}
-        for b in buckets:
-            ip = b.get("key", "")
-            if ip:
-                ip_counts[ip] = {
-                    "count":     b.get("doc_count", 0),
-                    "max_level": int((b.get("max_level") or {}).get("value") or 0),
-                    "last_seen": int((b.get("last_seen") or {}).get("value") or 0),
-                }
+        for i in range(len(ip_fields)):
+            for b in (aggs.get(f"ip_{i}") or {}).get("buckets", []):
+                ip = b.get("key", "")
+                if not ip:
+                    continue
+                lvl = int((b.get("max_level") or {}).get("value") or 0)
+                seen = int((b.get("last_seen") or {}).get("value") or 0)
+                cur = ip_counts.get(ip)
+                if cur is None:
+                    ip_counts[ip] = {"count": b.get("doc_count", 0), "max_level": lvl, "last_seen": seen}
+                else:
+                    cur["count"] += b.get("doc_count", 0)
+                    cur["max_level"] = max(cur["max_level"], lvl)
+                    cur["last_seen"] = max(cur["last_seen"], seen)
 
         # Geo-enrich all IPs (respects cache + rate limit).
         geo_data = bulk_lookup(list(ip_counts.keys()), max_ips=50)
