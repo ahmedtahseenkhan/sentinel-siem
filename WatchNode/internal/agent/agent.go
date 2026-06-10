@@ -187,9 +187,19 @@ func (a *Agent) Start(ctx context.Context) error {
 		return err
 	}
 
-	if err := a.comm.Register(a.runCtx, a.Info); err != nil {
-		a.Logger.Warn("agent registration failed", zap.Error(err))
-	}
+	// Register with the manager, retrying with backoff in the background.
+	// A single attempt is not enough: the manager's gRPC listener may not be
+	// ready yet (it seeds rules and connects Postgres before it starts
+	// accepting agents), and orchestrators like docker-compose `depends_on`
+	// only guarantee the container started, not that :50051 is accepting.
+	// The old one-shot Register left the agent permanently unregistered on a
+	// startup race — it would stream data but never appear in the manager's
+	// registry (/api/v1/agents total = 0). Retry until accepted or shutdown.
+	a.wg.Add(1)
+	go func() {
+		defer a.wg.Done()
+		a.registerWithRetry()
+	}()
 
 	a.comm.SetCommandHandler(a.handleManagerCommand)
 
@@ -328,6 +338,35 @@ func (a *Agent) fanIn() {
 func (a *Agent) runHeartbeat(interval time.Duration) {
 	defer a.wg.Done()
 	a.comm.RunHeartbeat(a.runCtx, a.Info.ID, interval)
+}
+
+// registerWithRetry registers the agent with the manager, retrying with
+// exponential backoff until the manager accepts it or the agent shuts down.
+// The gRPC connection is lazy and reconnects under the hood, so retrying
+// Register on the same client is enough once the manager's :50051 is up.
+func (a *Agent) registerWithRetry() {
+	backoff := ParseDuration(a.Config.Manager.Reconnect.InitialBackoff, 2*time.Second)
+	maxBackoff := ParseDuration(a.Config.Manager.Reconnect.MaxBackoff, 60*time.Second)
+	for {
+		if err := a.comm.Register(a.runCtx, a.Info); err == nil {
+			a.Logger.Info("agent registered with manager", zap.String("agent_id", a.Info.ID))
+			return
+		} else {
+			a.Logger.Warn("agent registration failed; will retry",
+				zap.Error(err), zap.Duration("backoff", backoff))
+		}
+		select {
+		case <-a.runCtx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		if backoff < maxBackoff {
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
+	}
 }
 
 // runHealthMonitor periodically samples the resource limiter and logs a
