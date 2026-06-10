@@ -35,6 +35,28 @@ func TestEnvOverride_DisablesAutoCreate(t *testing.T) {
 	}
 }
 
+func TestEnvOverride_PagerDutyTurnkey(t *testing.T) {
+	t.Setenv("WATCHTOWER_PAGERDUTY_ROUTING_KEY", "R0UT1NGKEY")
+	c := DefaultConfig()
+	ApplyEnvOverrides(c)
+
+	if !c.Notifier.Enabled {
+		t.Fatal("a routing key should enable the notifier")
+	}
+	var pd *NotifierDestination
+	for i := range c.Notifier.Destinations {
+		if c.Notifier.Destinations[i].Type == "pagerduty" {
+			pd = &c.Notifier.Destinations[i]
+		}
+	}
+	if pd == nil {
+		t.Fatal("expected a pagerduty destination to be registered")
+	}
+	if pd.URL != "R0UT1NGKEY" || !pd.Enabled {
+		t.Fatalf("pagerduty dest wrong: %+v", pd)
+	}
+}
+
 func TestSLAFor_DisableAndDefault(t *testing.T) {
 	c := CasesConfig{}
 	if got := c.SLAFor("high"); got != 4*time.Hour {
