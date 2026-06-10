@@ -331,6 +331,14 @@ func applyEnvOverrides(cfg *Config) {
 			cfg.Notifier.Destinations = dests
 		}
 	}
+	// PagerDuty turnkey: a single routing key enables the notifier and registers
+	// a pagerduty destination (cases page on breach/critical). No JSON to craft.
+	if v := os.Getenv("WATCHTOWER_PAGERDUTY_ROUTING_KEY"); v != "" {
+		cfg.Notifier.Enabled = true
+		cfg.Notifier.Destinations = append(cfg.Notifier.Destinations, NotifierDestination{
+			Type: "pagerduty", URL: v, Enabled: true,
+		})
+	}
 	// Native ticketing (cases). Auto-create defaults ON; set =false to disable.
 	if v := os.Getenv("WATCHTOWER_CASES_AUTO_CREATE"); v != "" {
 		cfg.Cases.AutoCreate.Enabled = v == "true" || v == "1"
