@@ -116,6 +116,8 @@ func (n *Notifier) dispatchDisconnect(agent *models.Agent) {
 			err = n.postJSON(ctx, dest.URL, payload)
 		case "email":
 			err = n.sendEmailText(dest, title, body)
+		case "pagerduty":
+			// Reserved for case breach/critical; not used for agent-disconnect.
 		default:
 			err = fmt.Errorf("unknown destination type: %s", dest.Type)
 		}
@@ -340,6 +342,9 @@ func (n *Notifier) dispatch(alert *models.Alert) {
 			err = n.sendGenericWebhook(ctx, dest, alert)
 		case "email":
 			err = n.sendEmail(dest, alert)
+		case "pagerduty":
+			// PagerDuty is reserved for case breach/critical (see dispatchCase),
+			// not raw alerts — skip here to avoid paging storms.
 		default:
 			err = fmt.Errorf("unknown destination type: %s", dest.Type)
 		}
