@@ -9036,7 +9036,17 @@ async function loadGeoMap() {
     contGroup.innerHTML = GEO_CONTINENTS.map(d => `<path d="${d}" class="v2-cont"/>`).join('');
   }
   if (attackGroup) {
-    const origins = points.map(p => ({ x: p.x||0, y: p.y||0, s: p.sev||'low' }));
+    // Project geo lat/lng → SVG viewBox coords (equirectangular, 1000×500).
+    // The backend returns lat/lng + max_level; the SVG needs x/y + severity.
+    const projX = lng => ((Number(lng) + 180) / 360) * 1000;
+    const projY = lat => ((90 - Number(lat)) / 180) * 500;
+    const sevOf = lvl => lvl >= 10 ? 'crit' : lvl >= 6 ? 'high' : lvl >= 3 ? 'med' : 'low';
+    const origins = points
+      .map(p => {
+        const lng = (p.lng != null ? p.lng : p.lon);
+        return { x: projX(lng), y: projY(p.lat), s: sevOf(p.max_level || 0) };
+      })
+      .filter(o => Number.isFinite(o.x) && Number.isFinite(o.y));
     const target  = [180, 220];
     let html = '';
     if (origins.length) {
