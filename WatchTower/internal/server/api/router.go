@@ -78,7 +78,7 @@ func (s *Server) routes() *chi.Mux {
 			r.Get("/", dh.List)
 			r.Post("/", dh.Create)
 
-			// Wazuh-like syslog decoder pipeline — program/prematch/regex/parent chaining.
+			// Syslog decoder pipeline — program/prematch/regex/parent chaining.
 			sdh := handlers.NewSyslogDecoderHandler(s)
 			r.Route("/syslog", func(r chi.Router) {
 				r.Get("/", sdh.List)

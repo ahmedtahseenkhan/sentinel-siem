@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    Sentinel Core SIEM Agent Installer for Windows
+    CoreNest SIEM Agent Installer for Windows
 .DESCRIPTION
     Installs the Sentinel WatchNode agent as a Windows service.
     Auto-elevates to Administrator if needed.
@@ -73,7 +73,7 @@ trap {
 # Must match the name the agent binary registers with the SCM (svc.Run in the
 # Go code uses "SentinelWatchNode"); a different name fails to start.
 $ServiceName   = "SentinelWatchNode"
-$DisplayName   = "Sentinel Core SIEM Agent"
+$DisplayName   = "CoreNest SIEM Agent"
 $InstallDir    = "C:\Program Files\SentinelAgent"
 $ConfigPath    = "$InstallDir\config.yaml"
 $BinaryPath    = "$InstallDir\watchnode.exe"
@@ -92,7 +92,7 @@ function Write-Banner {
     Write-Host "  ███████║███████╗██║ ╚████║   ██║   ██║██║ ╚████║███████╗███████╗" -ForegroundColor Cyan
     Write-Host "  ╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "  Sentinel Core SIEM — Agent Installer v1.0" -ForegroundColor White
+    Write-Host "  CoreNest SIEM — Agent Installer v1.0" -ForegroundColor White
     Write-Host "  ─────────────────────────────────────────" -ForegroundColor DarkGray
     Write-Host ""
 }
@@ -470,7 +470,7 @@ Set-InstallDirACL
 # service mode returns Windows error 1053 ("did not respond to the start request
 # in a timely fashion") on this OS build. A scheduled task runs the binary in
 # its normal console mode as a persistent background process under LocalSystem,
-# which is reliable and equally persistent. (Wazuh-style: the goal is a
+# which is reliable and equally persistent. (The goal is a
 # background agent that survives reboots and restarts on crash — a task delivers
 # that without the SCM-protocol fragility.)
 Write-Step "Registering Sentinel agent (scheduled task, runs as SYSTEM)..."
@@ -497,7 +497,7 @@ $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGo
     -StartWhenAvailable -RestartCount 9999 -RestartInterval (New-TimeSpan -Minutes 1) `
     -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName $ServiceName -Action $action -Trigger $trigger `
-    -Principal $principal -Settings $settings -Description "Sentinel Core SIEM endpoint agent" -Force | Out-Null
+    -Principal $principal -Settings $settings -Description "CoreNest SIEM endpoint agent" -Force | Out-Null
 Write-OK "Scheduled task '$ServiceName' registered (auto-start at boot)."
 
 # Start it now.

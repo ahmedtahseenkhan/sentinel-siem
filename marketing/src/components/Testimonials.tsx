@@ -21,7 +21,7 @@ const testimonials = [
   },
   {
     quote:
-      "We evaluated Wazuh and Elastic Security. Sentinel Core was the only one that let us run community Sigma rules natively — no conversion pipeline, no maintenance overhead.",
+      "We evaluated Elastic Security and several open-source SIEMs. CoreNest was the only one that let us run community Sigma rules natively — no conversion pipeline, no maintenance overhead.",
     author: "Daniel K.",
     role: "Infrastructure Security, Healthcare SaaS",
     initials: "DK",

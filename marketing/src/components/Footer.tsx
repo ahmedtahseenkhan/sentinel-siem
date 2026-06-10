@@ -5,7 +5,7 @@ const LionLogo = () => (
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 128 128"
     role="img"
-    aria-label="Sentinel Core"
+    aria-label="CoreNest"
     className="w-7 h-7 flex-shrink-0"
   >
     <defs>
@@ -81,7 +81,7 @@ export default function Footer() {
               href="#"
               className="flex items-center gap-3 font-bold text-base mb-4"
               style={{ color: "var(--text)" }}
-              aria-label="Sentinel Core home"
+              aria-label="CoreNest home"
             >
               <LionLogo />
               <span>
@@ -138,7 +138,7 @@ export default function Footer() {
           style={{ borderColor: "var(--border)", color: "var(--muted)" }}
         >
           <p>
-            © {new Date().getFullYear()} Sentinel Core. Open source under MIT
+            © {new Date().getFullYear()} CoreNest. Open source under MIT
             License.
           </p>
           <div className="flex items-center gap-1 font-mono">

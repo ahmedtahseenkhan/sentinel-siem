@@ -171,7 +171,7 @@ func (c *Collector) checkRootkitFiles(ts time.Time) {
 // checkSUIDFiles scans configured dirs and alerts only on SUID/SGID files
 // that did NOT exist in the previous baseline. The first scan after agent
 // install establishes the baseline silently; subsequent scans alert on
-// additions only — matching Wazuh's behavior and making the signal usable.
+// additions only — keeping the signal usable.
 func (c *Collector) checkSUIDFiles(ts time.Time) {
 	current := map[string]struct{}{}
 	for _, dir := range c.cfg.ScanDirs {

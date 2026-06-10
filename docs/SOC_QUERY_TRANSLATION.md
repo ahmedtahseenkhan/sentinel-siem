@@ -1,15 +1,15 @@
-# SOC Query Translation — Wazuh KQL → Sentinel (OpenSearch query_string)
+# SOC Query Translation — Legacy KQL → Sentinel (OpenSearch query_string)
 
-This converts the Wazuh-style use-case queries (the "SIEM/XDR/EDR Use Cases" sheet)
+This converts the legacy-style use-case queries (the "SIEM/XDR/EDR Use Cases" sheet)
 into queries that actually run on **this** Sentinel stack.
 
 > **Read this first — three hard rules of our stack:**
 > 1. **Query language = Lucene `query_string`** (what the dashboard Discover/logs search
->    sends to OpenSearch — see [app.py](../sentinelCoreDashboard/app.py) `q: Lucene query_string`).
+>    sends to OpenSearch — see [app.py](../corenestDashboard/app.py) `q: Lucene query_string`).
 >    There is **no `| stats`, `| where`, `PER`, `IN ()`, `LIKE`, `length()`, `dc()`** — those
->    are Splunk/Wazuh-isms. Threshold/aggregation use-cases need an OpenSearch `aggs` body
+>    are Splunk/legacy-SIEM-isms. Threshold/aggregation use-cases need an OpenSearch `aggs` body
 >    (templates in §4), not a Discover query.
-> 2. **Field names differ from Wazuh.** Use the map in §2. Detection queries filter
+> 2. **Field names differ from the legacy schema.** Use the map in §2. Detection queries filter
 >    `rule_level`, so they run on **`watchvault-alerts*`** where OS fields live under
 >    **`event_data.*`** (raw telemetry in `watchvault-events*` uses `data.*`).
 > 3. **A query only "verifies" against real data.** Enrol an agent and generate the
@@ -41,9 +41,9 @@ curl -s 'http://localhost:9200/watchvault-alerts*/_mapping' | python3 -m json.to
 
 ---
 
-## 2. Field map (Wazuh → Sentinel)
+## 2. Field map (legacy schema → Sentinel)
 
-| Wazuh (PDF) | Sentinel (alerts index) | Notes |
+| Legacy (PDF) | Sentinel (alerts index) | Notes |
 |---|---|---|
 | `agent_name` | `agent_name` | ✅ identical; use `agent_name.keyword` for aggregations |
 | `rule_level` | `rule_level` | ✅ int; ranges `[8 TO 15]` work |
@@ -71,7 +71,7 @@ curl -s 'http://localhost:9200/watchvault-alerts*/_mapping' | python3 -m json.to
 
 **Operator translation:**
 
-| Wazuh/Splunk | Lucene `query_string` |
+| Legacy/Splunk | Lucene `query_string` |
 |---|---|
 | `data.user IN (a, b)` | `event_data.user:(a OR b)` |
 | `data.url LIKE "*x*"` | `event_data.http_path: *x*` |

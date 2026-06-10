@@ -1,5 +1,5 @@
 ---
-# Agent lifecycle rules — mirrors Wazuh rules 500-510.
+# Agent lifecycle rules — standard 500-510 agent lifecycle rule IDs.
 # These fire on agent connect, disconnect, and reconnect events so the SOC
 # always knows the health of the monitored fleet without checking dashboards.
 

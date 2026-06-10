@@ -640,7 +640,7 @@ def _audit_record(response):
 def _normalize_alerts(res, include_hipaa=False):
     """Map indexer hit format to a simple list of alerts.
     Handles both WatchVault flat schema (rule_level, agent_name) and
-    legacy nested Wazuh schema (rule.level, agent.name)."""
+    legacy nested schema (rule.level, agent.name)."""
     hits = (res.get("hits") or {}).get("hits") or []
     out = []
     for h in hits:
@@ -687,7 +687,7 @@ def _normalize_alerts(res, include_hipaa=False):
 def _normalize_vulns(res):
     """Map indexer hits to vulnerability list.
     Handles WatchVault flat schema (severity, cve_id, package_name) and
-    legacy nested Wazuh schema (vulnerability.severity, vulnerability.id, package.name)."""
+    legacy nested schema (vulnerability.severity, vulnerability.id, package.name)."""
     hits = (res.get("hits") or {}).get("hits") or []
     out = []
     for h in hits:
@@ -1290,7 +1290,7 @@ def api_dashboard_overview():
         out["recent_alerts_total"] = total_count
 
         # Agents summary (for donut: Active / Disconnected / etc.)
-        # Wazuh 4.x typically returns {"data": {"connection": {...}}}; our fallback in
+        # The manager API typically returns {"data": {"connection": {...}}}; our fallback in
         # get_agents_summary() already normalizes to that shape when the summary
         # endpoint is unavailable. Support both raw and wrapped formats here.
         conn = (
@@ -1781,7 +1781,7 @@ def api_compliance_dashboard(framework):
     rule.groups tagging on the native compliance rules in batches 7100-7600.
 
     Replaces the gap where only HIPAA had a wired endpoint and that HIPAA
-    endpoint queried a Wazuh-specific rule.hipaa field that our native
+    endpoint queried a non-native rule.hipaa field that our native
     rules don't emit."""
     try:
         if framework not in COMPLIANCE_FRAMEWORKS:
@@ -2533,6 +2533,11 @@ def api_fim_summary():
         start_ms = int((now - timedelta(hours=24)).timestamp() * 1000)
         end_ms = int(now.timestamp() * 1000)
 
+        # The WatchNode FIM collector emits the action in the *event_type suffix*
+        # (e.g. "fim.modified", "fim.added", "fim.deleted", "fim.permission_changed")
+        # and does NOT set a separate `action`/`fim_action` field. So we match on
+        # the event_type prefix (same discriminator the Logs explorer uses) and
+        # derive the action breakdown from the event_type term aggregation.
         body = {
             "size": 0,
             "query": {
@@ -2540,20 +2545,28 @@ def api_fim_summary():
                     "must": [
                         {"range": {"timestamp": {"gte": start_ms, "lte": end_ms}}},
                         {"bool": {"should": [
+                            {"prefix": {"event_type": "fim"}},
                             {"match": {"collector": "fim"}},
-                            {"match": {"event_type": "fim"}},
                             {"match": {"type": "fim"}},
                         ], "minimum_should_match": 1}}
                     ]
                 }
             },
             "aggs": {
-                "by_action": {
-                    "terms": {"field": "fim_action.keyword", "size": 20}
+                # event_type is a keyword (values like "fim.modified") — primary source.
+                "by_type": {"terms": {"field": "event_type", "size": 50}},
+                # Legacy/alternative pipelines that DO set an action field.
+                "by_action": {"terms": {"field": "fim_action.keyword", "size": 20}},
+                "by_action_alt": {"terms": {"field": "action.keyword", "size": 20}},
+                # Per-hour volume for the 24h timeline card.
+                "by_hour": {
+                    "date_histogram": {
+                        "field": "timestamp",
+                        "fixed_interval": "1h",
+                        "min_doc_count": 0,
+                        "extended_bounds": {"min": start_ms, "max": end_ms},
+                    }
                 },
-                "by_action_alt": {
-                    "terms": {"field": "action.keyword", "size": 20}
-                }
             }
         }
         res = _os_search(f"{INDEX_PREFIX}-events-*", body)
@@ -2563,33 +2576,45 @@ def api_fim_summary():
         if total_count == 0:
             # Also try the FIM-specific index
             res2 = _os_search(f"{INDEX_PREFIX}-fim-*", {"size": 0, "query": {"match_all": {}},
-                "aggs": {"by_action": {"terms": {"field": "action.keyword", "size": 20}}}})
+                "aggs": {"by_type": {"terms": {"field": "event_type", "size": 50}},
+                         "by_action": {"terms": {"field": "action.keyword", "size": 20}}}})
             total2 = (res2.get("hits") or {}).get("total") or {}
             total_count = total2.get("value", 0) if isinstance(total2, dict) else (total2 or 0)
             if total_count > 0:
                 res = res2
 
-        buckets = _aggregation_buckets(res, "by_action")
-        if not buckets:
-            buckets = _aggregation_buckets(res, "by_action_alt")
-
         action_counts = {}
-        for b in buckets:
-            key = (b.get("key") or "").lower()
-            action_counts[key] = b.get("doc_count", 0)
+        # Primary: split the action out of the "fim.<action>" event_type.
+        for b in _aggregation_buckets(res, "by_type"):
+            et = (b.get("key") or "").lower()
+            action = et.split(".", 1)[1] if "." in et else et  # "fim.modified" -> "modified"
+            action_counts[action] = action_counts.get(action, 0) + b.get("doc_count", 0)
+        # Fallback: pipelines that set a real action field instead of the suffix.
+        if not action_counts:
+            for aggname in ("by_action", "by_action_alt"):
+                for b in _aggregation_buckets(res, aggname):
+                    key = (b.get("key") or "").lower()
+                    action_counts[key] = action_counts.get(key, 0) + b.get("doc_count", 0)
 
         added = action_counts.get("added", 0) + action_counts.get("add", 0) + action_counts.get("created", 0)
-        modified = action_counts.get("modified", 0) + action_counts.get("modify", 0) + action_counts.get("changed", 0)
+        modified = (action_counts.get("modified", 0) + action_counts.get("modify", 0)
+                    + action_counts.get("changed", 0) + action_counts.get("permission_changed", 0))
         deleted = action_counts.get("deleted", 0) + action_counts.get("delete", 0) + action_counts.get("removed", 0)
+
+        timeline = [
+            {"t": b.get("key"), "count": b.get("doc_count", 0)}
+            for b in _aggregation_buckets(res, "by_hour")
+        ]
 
         return jsonify({
             "total": total_count,
             "added": added,
             "modified": modified,
             "deleted": deleted,
+            "timeline": timeline,
         })
     except Exception as e:
-        return jsonify({"total": 0, "added": 0, "modified": 0, "deleted": 0})
+        return jsonify({"total": 0, "added": 0, "modified": 0, "deleted": 0, "timeline": []})
 
 
 @app.route("/api/fim/events")
@@ -2601,17 +2626,19 @@ def api_fim_events():
         agent_name = request.args.get("agent_name", type=str) or None
         path_filter = request.args.get("path", type=str) or None
 
+        # Match on the event_type prefix ("fim.*") — the agent encodes the action
+        # in the type suffix and sets no `action`/`fim_action` field.
         must_clauses = [
             {"bool": {"should": [
+                {"prefix": {"event_type": "fim"}},
                 {"match": {"collector": "fim"}},
-                {"match": {"event_type": "fim"}},
                 {"match": {"type": "fim"}},
             ], "minimum_should_match": 1}}
         ]
         if agent_name:
             must_clauses.append({"match": {"agent_name": agent_name}})
         if path_filter:
-            must_clauses.append({"query_string": {"query": f"*{path_filter}*", "fields": ["fim_path", "file_path", "event_data.path"]}})
+            must_clauses.append({"query_string": {"query": f"*{path_filter}*", "fields": ["path", "fim_path", "file_path", "event_data.path"]}})
 
         body = {
             "size": size,
@@ -2629,7 +2656,18 @@ def api_fim_events():
             total = (res.get("hits") or {}).get("total") or {}
 
         total_count = total.get("value", 0) if isinstance(total, dict) else (total or 0)
-        hits = [h.get("_source", {}) for h in raw_hits]
+        # Normalise each hit so the frontend's expected fields are populated:
+        # derive `action` from the "fim.<action>" event_type, and surface the
+        # agent's `path` as `file_path` (the table reads fim_path/file_path).
+        hits = []
+        for h in raw_hits:
+            src = h.get("_source", {}) or {}
+            if not src.get("action") and not src.get("fim_action"):
+                et = (src.get("event_type") or "").lower()
+                src["action"] = et.split(".", 1)[1] if et.startswith("fim.") else "modified"
+            if not src.get("file_path") and not src.get("fim_path") and src.get("path"):
+                src["file_path"] = src.get("path")
+            hits.append(src)
         return jsonify({"hits": hits, "total": total_count})
     except Exception as e:
         return jsonify({"hits": [], "total": 0})
@@ -2660,13 +2698,13 @@ WINDOWS_SUCCESS_EVENT_IDS = [4624, 4648, 4768, 4769, 4778]
 
 def _audit_should_clauses():
     """Build OpenSearch `should` clauses that match auth/audit events across
-    both raw eventlog docs (Windows) and Wazuh-style alert rule_groups (Linux)."""
+    both raw eventlog docs (Windows) and rule_groups-tagged alerts (Linux)."""
     return [
         # Windows: raw eventlog records carry win_event_id (int)
         {"terms": {"win_event_id": WINDOWS_AUTH_EVENT_IDS}},
         # Windows: when win_event_id is mapped as keyword, use term-as-string
         {"terms": {"event_id": [str(i) for i in WINDOWS_AUTH_EVENT_IDS]}},
-        # Linux/Wazuh: rule_groups markers
+        # Linux: rule_groups markers
         {"match": {"rule_groups": "authentication"}},
         {"match": {"rule_groups": "sshd"}},
         {"match": {"rule_groups": "pam"}},
@@ -2775,7 +2813,7 @@ def api_audit_events():
 
     Supports size, offset, agent_name, time_from, time_to. Returns Windows
     logon/logoff/shutdown events from the eventlog collector as well as
-    Wazuh-style Linux auth alerts so SOC analysts see every authentication
+    rule_groups-tagged Linux auth alerts so SOC analysts see every authentication
     record, not just rule-matched alerts.
     """
     try:
@@ -2859,7 +2897,7 @@ def api_audit_events():
 # Powers the "Logs" page — a SOC analyst's primary investigation surface.
 # Returns every event WatchVault has indexed (not just rule-matched alerts),
 # so analysts can search/pivot/hunt across raw telemetry the same way they
-# would in Wazuh Discover or Kibana.
+# would in OpenSearch Dashboards or Kibana.
 # ---------------------------------------------------------------------------
 
 # Mapping of UI source filter values → OpenSearch query clauses.

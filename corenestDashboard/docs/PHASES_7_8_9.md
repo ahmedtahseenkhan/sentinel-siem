@@ -1,24 +1,23 @@
 # Phases 7, 8, and 9: Data Sources, Maintenance, and Advanced Customization
 
-This document summarizes guidance for expanding data sources, maintaining the Wazuh stack, and advanced customization. The **Sentinel Core** dashboard supports many of these concepts; some items refer to the official Wazuh Dashboard.
+This document summarizes guidance for expanding data sources, maintaining the stack, and advanced customization for the **CoreNest** dashboard and the WatchTower / WatchVault backend.
 
 ---
 
 ## Phase 7: Expanding Data Sources and Integrations
 
-### 7.1 Leverage Pre-built Dashboards
+### 7.1 Leverage Pre-built Views
 
-- **IT Hygiene Dashboard** (official Wazuh Dashboard): On recent Wazuh versions, the out-of-the-box IT Hygiene dashboard provides a consolidated view of system data (OS, software, processes, network) across endpoints without extra configuration. Use it as inspiration or incorporate its data into custom views.
-- **New data tabs**: Newer IT Hygiene modules include **Browser Extensions** and **Services** tabs for deeper endpoint visibility.
-- **In this app**: The **Data Sources** page lists index patterns. Inventory and state indices (e.g. `wazuh-states-inventory-*`, `wazuh-states-vulnerabilities-*`) are used by the official dashboard for IT Hygiene. You can query the same indices via the indexer for custom panels.
+- **Asset Management (IT Hygiene)**: The built-in Asset Management page gives a consolidated view of system data (OS, software, processes, identity) across endpoints. See [IT_HYGIENE_IMPLEMENTATION.md](IT_HYGIENE_IMPLEMENTATION.md) for how it is built and how to add Services / Hardware / Ports tabs.
+- **In this app**: The **Data Sources** page lists index patterns with doc counts. Inventory lives in the events index keyed by `event_type` (e.g. `syscollector.os`, `syscollector.packages`, `process.new`); you can query the same index for custom panels.
 
 ### 7.2 Ingest and Visualize Custom Data
 
-1. **Identify new data sources**: Consider custom application logs, threat intelligence feeds, or other data valuable for visualization.
-2. **Custom scripts (Wodles)**: Use Wazuh’s **command wodle** to run scripts on the manager or agents (e.g. daily software inventory, listening ports). Add a `<wodle name="command">` block in `ossec.conf`.
-3. **Custom rules**: Write rules in `/var/ossec/etc/rules/local_rules.xml` to format script output into alerts so they are sent to the indexer.
-4. **Index patterns**: Once custom data is indexed, create or use the corresponding index pattern. The **Data Sources** page in this app shows existing `wazuh-*` patterns; new indices will appear there after they receive data.
-5. **Visualizations**: Build visualizations from the new index (e.g. add API routes and panels in this dashboard that query the new index pattern).
+1. **Identify new data sources**: Consider custom application logs, threat-intelligence feeds, or other data valuable for visualization.
+2. **Collect it on the endpoint**: Use an existing WatchNode collector (file tail, osquery, syscollector) or add a new one so the data is shipped to WatchTower.
+3. **Detect / shape it**: Add native YAML detection rules in `WatchTower/rules/` to turn raw events into alerts; WatchVault indexes both events and alerts into OpenSearch.
+4. **Index patterns**: Once custom data is indexed, it appears on the **Data Sources** page after it receives data.
+5. **Visualizations**: Build visualizations from the new data (add API routes in `app.py` / `watchtower_client.py` and panels in `static/js/app.js` that query the new index or `event_type`).
 
 ---
 
@@ -26,22 +25,21 @@ This document summarizes guidance for expanding data sources, maintaining the Wa
 
 ### 8.1 Establish a Maintenance Routine
 
-- **Version compatibility**: Before upgrading any Wazuh component, check official release notes and upgrade guides. Manager, indexer, and dashboard versions should be compatible; cluster nodes should generally run the same version.
+- **Version compatibility**: Keep WatchTower, WatchVault, and the dashboard on compatible versions; review release notes before upgrading.
 - **Regular upgrades**: Schedule upgrades to get new features, performance improvements, and bug fixes.
 
-### 8.2 Proactive Monitoring of the Wazuh Stack
+### 8.2 Proactive Monitoring of the Stack
 
-- **Service status**: Regularly verify that **wazuh-dashboard**, **wazuh-indexer**, and **wazuh-manager** are active (e.g. `systemctl status wazuh-manager`, `systemctl status wazuh-indexer`).
-- **Logs**: Check component logs for errors:
-  - Dashboard: `journalctl -u wazuh-dashboard | grep -i -E "error|warn"`
-  - Manager: `/var/ossec/logs/ossec.log`
-- **Connectivity**: Ensure the dashboard can reach the indexer and manager API. Use **Stack Status** and **Data Sources** in this app to test Manager and Indexer connections.
+- **Service status**: Verify that WatchTower, WatchVault, and OpenSearch are healthy (e.g. `docker compose -f docker-compose.local.yaml ps`, or the container/service manager you deploy with).
+- **Logs**: Check component logs for errors (WatchTower / WatchVault container logs; OpenSearch logs).
+- **Connectivity**: Ensure the dashboard can reach WatchTower (9400), WatchVault (9500), and OpenSearch (9200). Use **Stack Status** and **Data Sources** in this app to test connections.
 
 ### 8.3 Troubleshoot Common Data Issues
 
-- **Data delays**: Inventory data (e.g. installed software) is collected by the agent’s syscollector on an interval (e.g. every 1 hour). Changes may take up to that interval to appear.
-- **Missing data**: To force an inventory update, restart the agent (`sudo systemctl restart wazuh-agent`) if `scan_on_start` is enabled.
-- **Direct index inspection**: For deep troubleshooting, query indices directly (e.g. Wazuh Dashboard Dev Tools or indexer API). Example: `GET /wazuh-states-inventory-packages-*/_search?pretty` for raw package data.
+- **Data delays**: Inventory data (e.g. installed software) is collected by the agent's syscollector on an interval. Changes may take up to that interval to appear.
+- **Missing data**: To force an inventory update, restart the agent if scan-on-start is enabled.
+- **A view is empty but others have data**: Each Asset Management view is pinned to one `event_type`. If Software/Processes show data but System does not, the agent isn't emitting `syscollector.os` — a collector gap, not a UI bug.
+- **Direct index inspection**: For deep troubleshooting, query the indexer directly, e.g. `GET /{INDEX_PREFIX}-events-*/_search?pretty` with a `term` on `event_type` for raw inventory data.
 
 ---
 
@@ -49,15 +47,12 @@ This document summarizes guidance for expanding data sources, maintaining the Wa
 
 ### 9.1 Customize Look and Feel (Branding)
 
-- **Official Wazuh Dashboard** (from 4.12.0): Customize loading logo, main logo, and PDF report logo via `/etc/wazuh-dashboard/opensearch_dashboards.yml` and `opensearchDashboards.branding` settings.
-- **This dashboard (Sentinel Core)**: Branding is done by editing the app’s templates and static assets (`templates/`, `static/css/style.css`, `static/js/app.js`). No separate branding config file.
+- **This dashboard (CoreNest)**: Branding is done by editing the app's templates and static assets (`templates/`, `static/css/style.css`, `static/js/app.js`). No separate branding config file.
 
 ### 9.2 Automate Reporting
 
-- **Official Wazuh Dashboard**: Use the built-in reporting feature to schedule PDF reports from dashboards and email them (e.g. daily or weekly).
-- **This dashboard**: Focus is on live dashboards. For automated PDF reports, use the official Wazuh Dashboard reporting feature; reports can include your branded logo and key metrics.
+- **This dashboard**: Scheduled PDF reports are built in — weasyprint + APScheduler render and email reports on a schedule, configured via the **Reports** page and the SMTP settings in `.env`. Reports can include your branded logo and key metrics.
 
-### 9.3 Alerts from Dashboard Searches
+### 9.3 Alerts from Searches
 
-- **Official Wazuh Dashboard**: Create a saved search in Discover (e.g. `rule.level > 15 AND agent.os.platform: "windows"`), then create an alert based on that search. Notifications (email, Slack, etc.) can fire when new documents match the criteria.
-- **This dashboard**: Does not currently provide saved-search alerting. Use the official Wazuh Dashboard or external monitoring (e.g. alerting on indexer or manager) for proactive notifications based on search criteria.
+- **This dashboard**: Threshold/notification alerting is delivered over SMTP (email) and `SLACK_WEBHOOK_URL` (Slack), throttled via `ALERT_THROTTLE_MINUTES`. Configure recipients and channels in `.env`.

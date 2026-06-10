@@ -93,7 +93,7 @@
 **Give Server Admin:**
 - [ ] WatchTower folder
 - [ ] WatchVault folder  
-- [ ] sentinelCoreDashboard folder
+- [ ] corenestDashboard folder
 - [ ] docker-compose.full.yaml
 - [ ] DEPLOYMENT_GUIDE.md (this guide)
 

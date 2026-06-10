@@ -38,9 +38,9 @@ add_if_exists "${ROOT}/WatchNode/configs"
 add_if_exists "${ROOT}/docker-compose.full.yaml"
 
 # Dashboard state — custom viz, custom dashboards, audit log, log filters
-add_if_exists "${ROOT}/sentinelCoreDashboard/custom_dashboards.db"
-add_if_exists "${ROOT}/sentinelCoreDashboard/audit_log.db"
-add_if_exists "${ROOT}/sentinelCoreDashboard/log_filters.db"
+add_if_exists "${ROOT}/corenestDashboard/custom_dashboards.db"
+add_if_exists "${ROOT}/corenestDashboard/audit_log.db"
+add_if_exists "${ROOT}/corenestDashboard/log_filters.db"
 
 # Optional: TLS material so a restore comes up immediately on the same fleet.
 # Comment out if you'd rather re-issue certs on the new host.

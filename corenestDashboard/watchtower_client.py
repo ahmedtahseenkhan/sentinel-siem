@@ -1,9 +1,8 @@
 """WatchTower (Manager) and WatchVault (Indexer) API clients.
 
-Replaces the legacy wazuh_client.py. All Wazuh-specific API calls, index
-patterns and field paths are translated to the WatchTower / WatchVault
-equivalents while preserving the same function signatures so that app.py
-requires minimal changes.
+All API calls, index patterns and field paths target the WatchTower /
+WatchVault stack. This is the single active indexer/manager client for the
+dashboard.
 """
 import requests
 from requests.auth import HTTPBasicAuth
@@ -323,7 +322,7 @@ def get_agents_summary():
 
 
 def get_agents_list(limit=50, offset=0):
-    """Paginated agent list — wraps WatchTower response in Wazuh-compatible envelope."""
+    """Paginated agent list — wraps WatchTower response in the {data:{affected_items}} envelope."""
     res = watchtower_request("/api/v1/agents")
     agents = res.get("data") or []
     total = res.get("total", len(agents))
@@ -1773,6 +1772,46 @@ def _get_nested(source, path):
     return obj
 
 
+def _system_rows_from_agents(platform=None, name=None, architecture=None):
+    """Fallback System inventory derived from the WatchTower agent registry.
+
+    Used when no `syscollector.os` events exist in the index (e.g. the agent's
+    syscollector `os` toggle is off, or events haven't flowed yet). The registry
+    authoritatively knows each connected host's OS/platform/version, so the
+    System tab stays populated. Kernel/arch are unavailable here and left blank.
+    """
+    rows = []
+    for a in get_watchtower_agents(limit=500):
+        a_os = a.get("os") or ""           # e.g. "windows" / "linux"
+        a_platform = a.get("platform") or ""  # e.g. "Windows 10" / "Ubuntu 22.04"
+        # Apply the same filters the indexed query would, best-effort.
+        if platform and a_os != platform:
+            continue
+        if name and name.lower() not in a_platform.lower():
+            continue
+        if architecture:  # no arch in the registry → can't satisfy an arch filter
+            continue
+        rows.append({
+            "agent_name":            a.get("hostname") or a.get("name") or a.get("id", ""),
+            "agent_id":              a.get("id"),
+            "host_os_platform":      a_os,
+            "host_os_name":          a_platform,
+            "host_os_version":       a.get("version") or "",
+            "host_os_kernel_release": "",
+            "host_architecture":     "",
+            "host_hostname":         a.get("hostname") or a.get("id", ""),
+        })
+    return rows
+
+
+def _top_counts(values, size=5):
+    counts = {}
+    for v in values:
+        if v:
+            counts[v] = counts.get(v, 0) + 1
+    return [{"key": k, "count": c} for k, c in sorted(counts.items(), key=lambda x: -x[1])[:size]]
+
+
 def get_inventory_system_summary(platform=None, name=None, architecture=None, cluster_name=None):
     # Real field mapping: event_type=syscollector.os, flat fields (text type → .keyword for aggs)
     must = [{"term": {"event_type": "syscollector.os"}}]
@@ -1794,11 +1833,20 @@ def get_inventory_system_summary(platform=None, name=None, architecture=None, cl
     try:
         res = indexer_search(EVENTS_INDEX, body)
         aggs = res.get("aggregations") or {}
-        return {
+        out = {
             "top_platforms":    [{"key": b["key"], "count": b["doc_count"]} for b in aggs.get("top_platforms",    {}).get("buckets", [])],
             "top_os":           [{"key": b["key"], "count": b["doc_count"]} for b in aggs.get("top_os",           {}).get("buckets", [])],
             "top_architecture": [{"key": b["key"], "count": b["doc_count"]} for b in aggs.get("top_architecture", {}).get("buckets", [])],
         }
+        # No syscollector.os events → fall back to the agent registry.
+        if not out["top_platforms"] and not out["top_os"]:
+            agents = _system_rows_from_agents(platform=platform, name=name, architecture=architecture)
+            if agents:
+                out["top_platforms"]    = _top_counts([r["host_os_platform"] for r in agents])
+                out["top_os"]           = _top_counts([r["host_os_name"] for r in agents])
+                out["top_architecture"] = []
+                out["source"] = "agents"
+        return out
     except Exception as e:
         return {"top_platforms": [], "top_os": [], "top_architecture": [], "error": str(e)}
 
@@ -1836,6 +1884,12 @@ def get_inventory_system_list(size=15, offset=0, platform=None, name=None, archi
                 "host_architecture":    s.get("arch"),
                 "host_hostname":        s.get("hostname") or s.get("agent_id"),
             })
+        # No syscollector.os events → fall back to the agent registry.
+        if total_val == 0 and not rows:
+            agent_rows = _system_rows_from_agents(platform=platform, name=name, architecture=architecture)
+            if agent_rows:
+                page = agent_rows[offset:offset + size]
+                return {"hits": page, "total": len(agent_rows), "source": "agents"}
         return {"hits": rows, "total": total_val}
     except Exception as e:
         return {"hits": [], "total": 0, "error": str(e)}

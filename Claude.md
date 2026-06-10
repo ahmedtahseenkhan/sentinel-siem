@@ -25,7 +25,7 @@
 - `/WatchNode` → Go-based endpoint agent (collectors for FIM, osquery, registry, SCA, etc.)
 - `/WatchTower` → Go-based manager (Sigma rules engine, PostgreSQL state management via pgx, active response, gRPC API)
 - `/WatchVault` → Go-based indexer (OpenSearch routing, data pipeline)
-- `/sentinelCoreDashboard` → Python/Flask web dashboard application
+- `/corenestDashboard` → Python/Flask web dashboard application
 - `/WatchTower/rules` → Sigma YAML detection rules directory
 - `docker-compose.local.yaml` → **The running local/single-host stack** (single-node OpenSearch, single WatchTower, Kafka, Postgres, WatchVault, 2 WatchNodes, dashboard). Use this one locally.
 - `docker-compose.full.yaml` → Multi-node production topology (3-node OpenSearch + OpenSearch Dashboards + HAProxy + dual WatchTower). Not for local use.
@@ -33,7 +33,7 @@
 ## 4. Key Patterns
 - **Communication:** Strict use of gRPC between the Agent (WatchNode) → Manager (WatchTower) → Indexer (WatchVault).
 - **Data Storage:** PostgreSQL (via `pgx`/`pgxpool`, DSN from `WATCHTOWER_DATABASE_URL`) is the WatchTower state store for agent state, cases, and quick alert lookups — schema in [WatchTower/internal/store/migrations/](WatchTower/internal/store/migrations/). The Flask dashboard keeps its own small local stores in SQLite (`*.db` files). OpenSearch is used via WatchVault for heavy event indexing and historical aggregation.
-- **Rule Engine:** Native Wazuh-style YAML schema (NOT Sigma — Sigma support exists in `sigma/` as a secondary engine). Rules use `field: {equals: X}` or the legacy `{value: X}` (both honoured by the compiler since the Week-3 loader fix). 3,000+ rules across 90 files in [WatchTower/rules/](WatchTower/rules/). Both `rules:`-wrapped and bare-list YAML files load.
+- **Rule Engine:** Native YAML schema (NOT Sigma — Sigma support exists in `sigma/` as a secondary engine). Rules use `field: {equals: X}` or the legacy `{value: X}` (both honoured by the compiler since the Week-3 loader fix). 3,000+ rules across 90 files in [WatchTower/rules/](WatchTower/rules/). Both `rules:`-wrapped and bare-list YAML files load.
 - **Web Dashboard:** Connects to both WatchTower APIs (for agent/alert summaries) and OpenSearch (for deep discovery, aggregations, and metrics like MITRE ATT&CK or compliance).
 - **Alert enrichment:** `EnricherHook` interface on the engine, called between dedup and store so attached context (VirusTotal reputation, etc.) lands in the persisted alert. See [WatchTower/internal/enrich/](WatchTower/internal/enrich/).
 - **Whodata:** FIM events are tagged with the user that touched the file. Linux via the audit collector tailing `/var/log/audit/audit.log`; Windows via 4663/4656 from the Security event log. Lookup cache in [WatchNode/internal/whodata/](WatchNode/internal/whodata/).
@@ -64,7 +64,7 @@ When the comparison table says "❌", verify by reading the code, not by trustin
 **Recent Decisions (chronological — see [CHANGELOG.md](CHANGELOG.md) for the full diff):**
 - Adopted a microservices architecture separating the Manager (WatchTower) and Indexer (WatchVault) to allow independent scaling.
 - Integrated OpenSearch as the primary backend for log, alert, and event storage instead of a traditional relational DB.
-- Standardized on a Wazuh-style native YAML rule schema for threat detection. Sigma kept as a secondary engine. Native rules total ~3,000 across 90 files.
+- Standardized on a native YAML rule schema for threat detection. Sigma kept as a secondary engine. Native rules total ~3,000 across 90 files.
 - Automated client deployment via PowerShell and `nssm` for Windows services to quickly onboard large fleets (e.g., 60 machines).
 - **3-week hardening sprint** closed every actionable item from an 8-week capability plan: per-role rule-pipeline test harness, VirusTotal enrichment, MISP feed, O365/Workspace/Defender ingestion, FIM whodata, OS-aware vuln matching, real AWS SigV4. 14 bugs in pre-existing scaffolding fixed, including 2 critical (rule compiler ignoring `value:` syntax, rule loader rejecting bare-array files — ~800 rules silently absent). Engine verified at 850k EPS sustained on Apple M5.
 - **EDR build-out sprint** added the detection+response core of an EDR: enabled active-response on agents (PR #29, was `enabled:false` → all commands denied), real **host isolation** (#30), **ransomware canary** (#31), and **in-memory YARA** (#32). Constraints to remember: agent is `CGO_ENABLED=0` static + runs in `distroless:nonroot` in dev → active-response/memory features can't be exercised in the dev container and must be validated on a real endpoint (Windows SYSTEM / Linux root). Kernel-inline prevention, PPL tamper protection, and ransomware rollback are deliberately out of scope (need a signed kernel driver / MS vendor program).
@@ -77,7 +77,7 @@ When the comparison table says "❌", verify by reading the code, not by trustin
 ## 8. Detailed Project Summary
 Sentinel SIEM (Security Information and Event Management) is a comprehensive, end-to-end security monitoring and threat detection platform. It is designed to collect, analyze, and store security events from endpoint machines (with a strong focus on Windows environments), evaluate them against security rules, and present actionable insights through a centralized web dashboard.
 
-The project mirrors enterprise-grade security solutions (like Wazuh or Elastic Security) by providing agent-based telemetry collection, a centralized rule engine, an indexing layer, and a custom visualization interface.
+The project mirrors enterprise-grade security solutions (like Elastic Security) by providing agent-based telemetry collection, a centralized rule engine, an indexing layer, and a custom visualization interface.
 
 ### Core Architecture & Components
 The platform is built using a modern, microservices-oriented architecture divided into four main pillars:
@@ -108,7 +108,7 @@ The platform is built using a modern, microservices-oriented architecture divide
     *   Buffers, transforms, and routes data into **OpenSearch**.
     *   Manages OpenSearch indices (e.g., rotating indices based on time/size like `watchvault-alerts-*`).
 
-#### D. Sentinel Core Dashboard (The UI)
+#### D. CoreNest Dashboard (The UI)
 *   **Language:** Python (Flask)
 *   **Purpose:** The central user interface for Security Operations Center (SOC) analysts and IT admins.
 *   **Key Features:**
@@ -123,7 +123,7 @@ The platform is built using a modern, microservices-oriented architecture divide
 *   **Client Deployment:** Includes automated PowerShell scripts (`deploy-to-all-machines.ps1`) and batch files designed to deploy WatchNode across fleets of machines (e.g., a target of 60 Windows machines).
 *   **Documentation:** Extensive implementation and deployment guides (`START_HERE.md`, `IMPLEMENTATION_GUIDE.md`, etc.) outlining team roles, capacity planning, and firewall configurations.
 
-## 9. Capability matrix (vs. Wazuh)
+## 9. Capability matrix
 
 | Capability | Status | Notes |
 |---|---|---|
@@ -149,5 +149,5 @@ The platform is built using a modern, microservices-oriented architecture divide
 | Per-role test harness | ✅ | `TestRolePipeline_*` for AD/IIS/MSSQL/Apache/Postfix/sshd/Compliance |
 | Per-role setup docs | ✅ | [docs/per-role/](docs/per-role/) |
 | Performance | ✅ | 850,000 EPS sustained on M5 with full 3k rule set loaded |
-| Pre-built decoders for app logs (Apache, IIS, MSSQL, sshd, sudo, ...) | ⚠️ | Generic file tail works; per-app field extraction added on demand per customer (we did NOT import Wazuh's XML decoders — dropped to avoid GPL maintenance) |
+| Pre-built decoders for app logs (Apache, IIS, MSSQL, sshd, sudo, ...) | ⚠️ | Generic file tail works; per-app field extraction added on demand per customer (we did NOT import third-party XML decoders — dropped to avoid GPL maintenance) |
 | End-to-end agent↔manager smoke test against real OpenSearch | ❌ | Rule pipeline is covered by `TestRolePipeline_*`; the wire format + persistence layer is not. Listed as future work in [docs/per-role/README.md](docs/per-role/README.md). |

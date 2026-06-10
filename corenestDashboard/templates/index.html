@@ -1940,20 +1940,6 @@
             <!-- Main: histogram + results -->
             <div style="display:flex;flex-direction:column;gap:var(--gap)">
 
-              <!-- Event volume histogram -->
-              <div class="card">
-                <div class="card-h">
-                  <h3 class="card-h-title">
-                    <span class="dot" id="discoverVolDot" style="background:var(--ok)"></span>
-                    Event Volume
-                  </h3>
-                  <span class="card-h-action" id="discoverHitsLabel">No hits</span>
-                </div>
-                <div class="card-body" style="padding:6px 14px 12px">
-                  <canvas id="discoverHistogram" style="display:block;width:100%;height:110px"></canvas>
-                </div>
-              </div>
-
               <!-- Results table -->
               <div class="card">
                 <div class="card-h">
@@ -2298,7 +2284,7 @@
               </div>
             </div>
             <div class="tbl">
-              <div class="tbl-h" style="grid-template-columns:1fr 110px 120px 160px 90px 100px">
+              <div class="tbl-h" style="grid-template-columns:1fr 110px 120px 160px 90px 170px">
                 <span>Name</span><span>Group</span><span>Parent</span><span>Program</span><span>Type</span><span>Actions</span>
               </div>
               <div id="sdTableBody"></div>
@@ -2364,6 +2350,15 @@
               <div>
                 <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Regex (named capture groups)</label>
                 <textarea id="sdFormRegex" class="fld" rows="3" placeholder="extract (?P&lt;user&gt;\S+) from (?P&lt;src_ip&gt;\S+)" style="width:100%;box-sizing:border-box;resize:vertical"></textarea>
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Sample log line <span style="color:var(--text-muted);font-weight:400">— test your regex live</span></label>
+                <textarea id="sdFormSample" class="fld" rows="2" placeholder="Paste a real raw log line here to test the regex above" style="width:100%;box-sizing:border-box;resize:vertical;font-family:var(--font-mono);font-size:11px"></textarea>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+                  <button type="button" id="sdFormTestBtn" class="act-btn" style="height:26px;padding:0 12px;font-size:11px">Test regex against sample</button>
+                  <span style="font-size:10px;color:var(--text-muted)">client-side preview · supports <code>(?P&lt;name&gt;…)</code></span>
+                </div>
+                <div id="sdFormTestResult" style="margin-top:8px"></div>
               </div>
               <div>
                 <label style="font-size:11px;color:var(--text-muted);display:block;margin-bottom:4px">Static Fields (key=value, one per line)</label>
@@ -2636,7 +2631,7 @@
           <div class="panel">
             <h3>Configuration reference</h3>
             <div class="status-content">
-              <div class="line"><span class="key">Manager / Indexer URLs, users, passwords</span><span>.env (SENTINEL_MANAGER_*, SENTINEL_INDEXER_*)</span></div>
+              <div class="line"><span class="key">Manager / Indexer / OpenSearch endpoints &amp; keys</span><span>.env (WATCHTOWER_*, WATCHVAULT_*, OPENSEARCH_*)</span></div>
               <div class="line"><span class="key">SSL verification</span><span>.env (VERIFY_SSL)</span></div>
               <div class="line"><span class="key">API timeouts</span><span>.env (REQUEST_TIMEOUT, default 15s)</span></div>
             </div>
@@ -3305,12 +3300,48 @@
           </div>
 
           <!-- Event detail drawer -->
-          <div id="logsDetailDrawer" class="hidden" style="position:fixed;top:0;right:0;width:520px;height:100vh;background:var(--bg-1);border-left:1px solid var(--border);z-index:50;overflow:auto;box-shadow:-4px 0 24px rgba(0,0,0,.4)">
+          <div id="logsDetailDrawer" class="hidden" style="position:fixed;top:0;right:0;width:560px;height:100vh;background:var(--bg-1);border-left:1px solid var(--border);z-index:50;overflow:auto;box-shadow:-4px 0 24px rgba(0,0,0,.4)">
             <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg-1);z-index:1">
               <h3 style="margin:0;font-size:14px">Event Details</h3>
               <button type="button" id="logsDetailClose" class="act-btn" style="height:24px;padding:0 8px;font-size:11px">✕ Close</button>
             </div>
-            <pre id="logsDetailBody" style="margin:0;padding:14px 16px;font-family:var(--font-mono);font-size:11px;color:var(--fg-2);white-space:pre-wrap;word-break:break-word"></pre>
+            <div style="padding:14px 16px;display:flex;flex-direction:column;gap:16px">
+
+              <!-- Raw log line -->
+              <div>
+                <div class="logs-det-h">
+                  <span>RAW LOG</span>
+                  <button type="button" id="logsDetailCopyRaw" class="act-btn" style="height:22px;padding:0 8px;font-size:10px">Copy</button>
+                </div>
+                <pre id="logsDetailRaw" style="margin:6px 0 0;padding:10px 12px;background:var(--bg-2);border:1px solid var(--border);border-radius:6px;font-family:var(--font-mono);font-size:11.5px;color:var(--fg-1);white-space:pre-wrap;word-break:break-word;max-height:200px;overflow:auto"></pre>
+                <div id="logsDetailMeta" style="margin-top:6px;font-size:11px;color:var(--fg-3)"></div>
+              </div>
+
+              <!-- Decode -->
+              <div>
+                <div class="logs-det-h"><span>DECODE</span></div>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+                  <input type="text" id="logsDetailAppName" class="fld" placeholder="app / program (e.g. sshd)" style="flex:1;height:30px;font-size:11px;font-family:var(--font-mono)">
+                  <button type="button" id="logsDetailDecodeBtn" class="act-btn primary" style="height:30px;padding:0 12px;font-size:11px">Decode this log</button>
+                </div>
+                <div id="logsDetailDecodeResult" style="margin-top:8px"></div>
+              </div>
+
+              <!-- Decoded / curated fields -->
+              <div>
+                <div class="logs-det-h"><span>FIELDS</span></div>
+                <div id="logsDetailFields" style="margin-top:6px"></div>
+              </div>
+
+              <!-- Raw JSON (collapsible) -->
+              <div>
+                <button type="button" id="logsDetailJsonToggle" class="logs-det-h" style="cursor:pointer;width:100%;border:none;background:none;padding:0;color:inherit;font:inherit;text-align:left">
+                  <span><span id="logsDetailJsonCaret">▸</span> RAW JSON</span>
+                </button>
+                <pre id="logsDetailBody" class="hidden" style="margin:6px 0 0;padding:10px 12px;background:var(--bg-2);border:1px solid var(--border);border-radius:6px;font-family:var(--font-mono);font-size:11px;color:var(--fg-2);white-space:pre-wrap;word-break:break-word"></pre>
+              </div>
+
+            </div>
           </div>
         </section>
 

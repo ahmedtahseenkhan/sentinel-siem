@@ -24,7 +24,7 @@ const DashboardMockup = () => (
         className="ml-4 flex-1 max-w-48 rounded px-3 py-1 text-xs font-mono"
         style={{ background: "var(--bg, #0d1117)", color: "var(--muted)", border: "1px solid var(--border)" }}
       >
-        sentinel-core.local:5050
+        corenest.local:5050
       </div>
     </div>
 
@@ -195,7 +195,7 @@ export default function Hero() {
           animate="visible"
           variants={variants ?? fadeUp(0.24)}
         >
-          Sentinel Core SIEM unifies endpoint telemetry, Sigma-rule threat
+          CoreNest SIEM unifies endpoint telemetry, Sigma-rule threat
           detection, and compliance monitoring — across every machine in your
           fleet. Built for teams who can&apos;t afford to miss anything.
         </motion.p>

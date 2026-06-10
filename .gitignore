@@ -60,7 +60,7 @@ Thumbs.db
 /logs/
 /tmp/
 
-# ── Python (sentinelCoreDashboard) ───────────────────────────────────────────
+# ── Python (corenestDashboard) ───────────────────────────────────────────
 __pycache__/
 *.pyc
 *.pyo

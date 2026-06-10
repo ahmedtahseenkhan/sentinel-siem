@@ -37,8 +37,8 @@ type mispAttr struct {
 
 // ingestMISP fetches a MISP REST search and routes each attribute into the
 // appropriate CDB list by type. Splitting per type lets rules disambiguate
-// "is this IP in MISP" from "is this hash in MISP" — Wazuh splits the same
-// way. List names default to "misp_ips" / "misp_domains" / "misp_hashes"
+// "is this IP in MISP" from "is this hash in MISP" by keeping each type in
+// its own list. List names default to "misp_ips" / "misp_domains" / "misp_hashes"
 // when src.ListName is empty; otherwise that string is used as the prefix.
 //
 // Auth: MISP servers want the API key in the Authorization header

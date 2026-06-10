@@ -13,7 +13,7 @@ type SyslogDecoderProvider interface {
 	SyslogDecoder() *decoder.SyslogEngine
 }
 
-// SyslogDecoderHandler manages the Wazuh-like syslog decoder pipeline via REST.
+// SyslogDecoderHandler manages the syslog decoder pipeline via REST.
 type SyslogDecoderHandler struct {
 	provider SyslogDecoderProvider
 }

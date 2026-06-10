@@ -25,7 +25,7 @@ func fireOnNth(m *Manager, rule *models.Rule, e *models.Event, n int) int {
 	return 0
 }
 
-// The bug this guards: rules authored with the Wazuh-style `correlation:` block
+// The bug this guards: rules authored with the legacy `correlation:` block
 // were silently ignored (struct only had `threshold:`), so they fired on the
 // FIRST matching event instead of the Nth. This proves correlation: now counts.
 func TestCorrelationBlockFiresOnThreshold(t *testing.T) {

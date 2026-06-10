@@ -102,7 +102,7 @@ def _html_report(data: dict, report_type: str, time_range_label: str) -> str:
   <div style="background:linear-gradient(135deg,#0d1b2a,#1565c0);color:#fff;padding:28px 32px;border-radius:0 0 8px 8px">
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div>
-        <h1 style="margin:0;font-size:22px;letter-spacing:1px">SENTINEL CORE SIEM</h1>
+        <h1 style="margin:0;font-size:22px;letter-spacing:1px">CORENEST SIEM</h1>
         <p style="margin:4px 0 0;font-size:13px;opacity:0.8">Security Report &mdash; {report_type}</p>
       </div>
       <div style="text-align:right;font-size:11px;opacity:0.8">

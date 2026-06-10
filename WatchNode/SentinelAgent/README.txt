@@ -1,5 +1,5 @@
 ════════════════════════════════════════════════════════════════
-  SENTINEL CORE SIEM — Windows Agent Installation Guide
+  CORENEST SIEM — Windows Agent Installation Guide
 ════════════════════════════════════════════════════════════════
 
 REQUIREMENTS
@@ -60,7 +60,7 @@ CONTENTS
   Restart        : Restart-Service SentinelAgent
 
   View in Services app: Press Win+R, type services.msc
-  Look for "Sentinel Core SIEM Agent"
+  Look for "CoreNest SIEM Agent"
 
 ────────────────────────────────────────────────────────────────
   UNINSTALL
