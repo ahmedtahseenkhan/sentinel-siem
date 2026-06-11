@@ -10,7 +10,7 @@ type PlaybookTrigger struct {
 
 // PlaybookAction is one step in a playbook.
 type PlaybookAction struct {
-	Type              string            `json:"type"`               // block_ip, kill_process, create_case, notify_slack, notify_email, add_to_watchlist
+	Type              string            `json:"type"`               // block_ip, kill_process, isolate_host, disable_account, restart_service, create_case, create_ticket, notify_slack, notify_email, webhook, add_to_watchlist, quarantine_file, force_logoff
 	Params            map[string]string `json:"params"`             // action-specific; supports {{template}} vars
 	TimeoutSeconds    int               `json:"timeout_seconds"`    // 0 = 30s default
 	ContinueOnFailure bool              `json:"continue_on_failure"`

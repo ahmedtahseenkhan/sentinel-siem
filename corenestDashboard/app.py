@@ -13,12 +13,18 @@ import log_filters as _log_filters
 import silent_sources as _silent
 import users_store as _users
 import correlations as _corr
+import threatintel_feeds as _ti_feeds
+import reference_sets as _refsets
+import api_keys as _apikeys
 
 _audit_log.init_db()
 _log_filters.init_db()
 _silent.init_db()
 _users.init_db()
 _corr.init_db()
+_ti_feeds.init_db()
+_refsets.init_db()
+_apikeys.init_db()
 
 _logger = _logging.getLogger(__name__)
 
@@ -39,6 +45,10 @@ from config import (
     ROLE_SECURITY_ANALYST,
     ROLES_CAN_SAVE_DASHBOARD,
     INDEX_PREFIX,
+    PAGE_MIN_ROLE,
+    READ_PROTECTED_PREFIXES,
+    restricted_pages_for,
+    role_has_level,
 )
 from watchtower_client import (
     _os_search,
@@ -235,9 +245,12 @@ WRITE_PROTECTED_PREFIXES = (
     "/api/cdb-lists/",      # CDB list management
     "/api/reports/schedules", # Report schedule management
     "/api/admin/filters",   # Whitelist / log-drop rules
+    "/api/reference-sets",  # Reference sets (whitelist users/devices/fields)
     "/api/silent-sources/", # Silent-source thresholds
     "/api/users",           # Dashboard user management
+    "/api/api-keys",        # Inbound REST API keys
     "/api/correlations/",   # Stateful correlation incidents
+    "/api/threatintel/feeds", # Threat-intel feed source registry (API keys)
 )
 
 # HTTP methods that are considered "write" operations
@@ -283,11 +296,21 @@ def _rate_limit_check(client_ip):
 
 
 def _check_login():
-    """Return (username, role) if logged in, else None."""
+    """Return (username, role) if authenticated, else None.
+
+    Browser sessions take priority; non-interactive callers may instead present
+    an ``Authorization: Bearer <api-key>`` header. A resolved API key becomes a
+    principal with a role, so all downstream RBAC applies unchanged.
+    """
     user = session.get("user")
     role = session.get("role")
     if user and role:
         return user, role
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        resolved = _apikeys.authenticate(auth[7:].strip())
+        if resolved is not None:
+            return resolved
     return None
 
 
@@ -511,6 +534,9 @@ def api_me():
         "username": user,
         "role": role,
         "can_save_dashboard": role in ROLES_CAN_SAVE_DASHBOARD,
+        # Pages this role may NOT view — the client hides their nav entries and
+        # blocks navigation. Server-side READ_PROTECTED_PREFIXES is the real gate.
+        "restricted_pages": restricted_pages_for(role),
     })
 
 
@@ -545,6 +571,17 @@ def _api_auth():
     _, role = login
     if path in SUPER_ADMIN_ONLY_PATHS and role != ROLE_SUPER_ADMIN:
         return jsonify({"error": "Forbidden", "required_role": ROLE_SUPER_ADMIN}), 403
+
+    # Section read-gating: deny access (any method) to data behind a section the
+    # role may not view. Mirrors PAGE_MIN_ROLE so hidden nav and locked data
+    # stay in sync. Write-method gating below still applies on top of this.
+    for prefix, min_role in READ_PROTECTED_PREFIXES.items():
+        if path.startswith(prefix) and not role_has_level(role, min_role):
+            return jsonify({
+                "error": "Forbidden",
+                "message": f"Role '{role}' may not access this section",
+                "required_min_role": min_role,
+            }), 403
 
     # CSRF defense-in-depth on write methods. SameSite=Lax already blocks most
     # cross-site cookie sends, but we additionally require that the request's
@@ -2442,6 +2479,60 @@ def api_threatintel_hits():
         ioc_type   = request.args.get("ioc_type", type=str) or None
         agent_name = request.args.get("agent_name", type=str) or None
         return jsonify(get_threatintel_hits(size=size, offset=offset, ioc_type=ioc_type, agent_name=agent_name))
+    except Exception as e:
+        return _api_error(e)
+
+
+# ── Threat-intel feed source registry ────────────────────────────────────────
+# Dashboard-side registry of which IOC feeds are enabled + their API keys.
+# GET is readable by any logged-in user (keys are masked); writes are super_admin
+# only (handled by WRITE_PROTECTED_PREFIXES + _require_super_admin below) and the
+# env-block reveal endpoint is also super_admin-only since it returns plaintext keys.
+
+@app.route("/api/threatintel/feeds", methods=["GET"])
+def api_threatintel_feeds_list():
+    try:
+        return jsonify({"feeds": _ti_feeds.list_feeds(reveal=False)})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/threatintel/feeds", methods=["POST"])
+def api_threatintel_feeds_upsert():
+    err = _require_super_admin()
+    if err is not None:
+        return err
+    try:
+        body = request.get_json(force=True, silent=True) or {}
+        ftype = (body.get("type") or "").strip()
+        if not ftype:
+            return jsonify({"error": "type is required"}), 400
+        enabled = bool(body.get("enabled"))
+        # api_key/url omitted (None) => keep existing; empty string => clear.
+        api_key = body.get("api_key", None)
+        url = body.get("url", None)
+        feed = _ti_feeds.upsert_feed(ftype, enabled, api_key, url, user=session.get("user", ""))
+        _audit_log.record(
+            user=session.get("user", ""), role=session.get("role", ""),
+            method="POST", path="/api/threatintel/feeds", status=200,
+            client_ip=request.remote_addr or "",
+            payload={"type": ftype, "enabled": enabled},
+        )
+        return jsonify({"feed": feed})
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/threatintel/feeds/env", methods=["GET"])
+def api_threatintel_feeds_env():
+    # Returns plaintext API keys in the generated env block — super_admin only.
+    err = _require_super_admin()
+    if err is not None:
+        return err
+    try:
+        return jsonify(_ti_feeds.env_block())
     except Exception as e:
         return _api_error(e)
 
@@ -5451,6 +5542,260 @@ def api_filters_toggle(rule_id):
         if r is None:
             return jsonify({"error": "Not found"}), 404
         return jsonify(r)
+    except Exception as e:
+        return _api_error(e)
+
+
+# ---------------------------------------------------------------------------
+# Reference sets (named whitelists of users / devices / IPs / custom fields).
+# Reusable lists analysts curate to mark known-good entities. Writes are
+# admin-gated via WRITE_PROTECTED_PREFIXES ("/api/reference-sets").
+# ---------------------------------------------------------------------------
+
+@app.route("/api/reference-sets", methods=["GET"])
+def api_refsets_list():
+    try:
+        return jsonify({"sets": _refsets.list_sets(), "types": sorted(_refsets.VALID_TYPES)})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/reference-sets", methods=["POST"])
+def api_refsets_create():
+    try:
+        body = request.get_json(silent=True) or {}
+        user = (session.get("user") or "").strip()
+        s = _refsets.create_set(
+            name=body.get("name", ""),
+            set_type=body.get("set_type", "custom"),
+            field=body.get("field", ""),
+            description=body.get("description", ""),
+            created_by=user,
+        )
+        # Optionally seed entries supplied at creation time.
+        if body.get("entries"):
+            _refsets.add_entries(s["id"], body.get("entries"), created_by=user)
+            s = _refsets.get_set(s["id"])
+        return jsonify(s), 201
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/reference-sets/<int:set_id>", methods=["GET"])
+def api_refsets_get(set_id):
+    try:
+        s = _refsets.get_set(set_id)
+        if s is None:
+            return jsonify({"error": "Not found"}), 404
+        return jsonify(s)
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/reference-sets/<int:set_id>", methods=["PUT", "PATCH"])
+def api_refsets_update(set_id):
+    try:
+        body = request.get_json(silent=True) or {}
+        s = _refsets.update_set(
+            set_id,
+            name=body.get("name"),
+            set_type=body.get("set_type"),
+            field=body.get("field"),
+            description=body.get("description"),
+        )
+        if s is None:
+            return jsonify({"error": "Not found"}), 404
+        return jsonify(s)
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/reference-sets/<int:set_id>", methods=["DELETE"])
+def api_refsets_delete(set_id):
+    try:
+        if not _refsets.delete_set(set_id):
+            return jsonify({"error": "Not found"}), 404
+        return jsonify({"deleted": set_id})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/reference-sets/<int:set_id>/entries", methods=["POST"])
+def api_refsets_add_entries(set_id):
+    try:
+        body = request.get_json(silent=True) or {}
+        user = (session.get("user") or "").strip()
+        result = _refsets.add_entries(
+            set_id,
+            body.get("values", body.get("value", "")),
+            note=body.get("note", ""),
+            created_by=user,
+        )
+        return jsonify({**result, "set": _refsets.get_set(set_id)}), 201
+    except KeyError:
+        return jsonify({"error": "Not found"}), 404
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/reference-sets/<int:set_id>/entries/<int:entry_id>", methods=["DELETE"])
+def api_refsets_remove_entry(set_id, entry_id):
+    try:
+        if not _refsets.remove_entry(set_id, entry_id):
+            return jsonify({"error": "Not found"}), 404
+        return jsonify({"deleted": entry_id, "set": _refsets.get_set(set_id)})
+    except Exception as e:
+        return _api_error(e)
+
+
+# ---------------------------------------------------------------------------
+# Integrations hub — one place to see every outbound/inbound API connector's
+# configured state, with deep-links to the page that configures each and a
+# test hook where one exists. Read-only aggregation; the deep config lives on
+# the individual pages.
+# ---------------------------------------------------------------------------
+
+@app.route("/api/integrations/status", methods=["GET"])
+def api_integrations_status():
+    def _safe(fn, default=None):
+        try:
+            return fn()
+        except Exception:
+            return default
+
+    items = []
+
+    # Email (SMTP)
+    def _email():
+        from notifier import SMTP_HOST, ALERT_TO
+        ok = bool(SMTP_HOST and ALERT_TO)
+        return {"configured": ok, "detail": (f"{SMTP_HOST} → {ALERT_TO}" if ok else "SMTP_HOST / ALERT_TO not set")}
+    e = _safe(_email, {"configured": None, "detail": "unavailable"})
+    items.append({"key": "email", "name": "Email (SMTP)", "category": "Notifications",
+                  "configure_page": "notifications", "test_path": "/api/notifications/test", **e})
+
+    # Slack
+    def _slack():
+        from notifier import SLACK_WEBHOOK
+        return {"configured": bool(SLACK_WEBHOOK), "detail": "Incoming webhook set" if SLACK_WEBHOOK else "SLACK_WEBHOOK not set"}
+    s = _safe(_slack, {"configured": None, "detail": "unavailable"})
+    items.append({"key": "slack", "name": "Slack", "category": "Notifications",
+                  "configure_page": "notifications", "test_path": "/api/notifications/test", **s})
+
+    # Ticketing
+    def _tickets():
+        from ticketing import get_config_status
+        st = get_config_status() or {}
+        prov = st.get("provider") or "native"
+        return {"configured": True, "detail": f"provider: {prov}"}
+    t = _safe(_tickets, {"configured": None, "detail": "unavailable"})
+    items.append({"key": "ticketing", "name": "Ticketing / Cases", "category": "Workflow",
+                  "configure_page": "ticketing", "test_path": "/api/tickets/test", **t})
+
+    # Threat-intel feeds
+    def _feeds():
+        feeds = _ti_feeds.list_feeds() or []
+        enabled = [f for f in feeds if f.get("enabled")]
+        return {"configured": bool(enabled), "detail": f"{len(enabled)} of {len(feeds)} feed(s) enabled" if feeds else "no feeds configured"}
+    f = _safe(_feeds, {"configured": None, "detail": "unavailable"})
+    items.append({"key": "threat_feeds", "name": "Threat-Intel Feeds (VirusTotal, MISP, …)", "category": "Threat Intel",
+                  "configure_page": "threat-intel", "test_path": None, **f})
+
+    # Cloud connectors
+    def _cloud():
+        from cloud_connectors.manager import get_status as _cloud_status
+        st = _cloud_status() or {}
+        provs = st.get("providers") or st
+        on = [k for k, v in (provs.items() if isinstance(provs, dict) else []) if (isinstance(v, dict) and v.get("configured"))]
+        return {"configured": bool(on), "detail": (", ".join(on) if on else "no providers configured")}
+    c = _safe(_cloud, {"configured": None, "detail": "unavailable"})
+    items.append({"key": "cloud", "name": "Cloud (AWS / Azure / GCP)", "category": "Ingestion",
+                  "configure_page": "cloud-monitoring", "test_path": None, **c})
+
+    # AI triage
+    def _ai():
+        from ai_summarizer import is_configured
+        ok = bool(is_configured())
+        return {"configured": ok, "detail": "LLM provider configured" if ok else "no AI provider key set"}
+    a = _safe(_ai, {"configured": None, "detail": "unavailable"})
+    items.append({"key": "ai_triage", "name": "AI Triage (Claude / Ollama)", "category": "Automation",
+                  "configure_page": None, "test_path": None, **a})
+
+    # SOAR outbound webhook — always available as a playbook action type.
+    items.append({"key": "soar_webhook", "name": "SOAR Outbound Webhook / REST", "category": "Automation",
+                  "configure_page": "playbooks", "test_path": None, "configured": True,
+                  "detail": "Available as a playbook action — add 'Call Webhook / REST API'"})
+
+    # Inbound REST API — keys are managed on the API Keys page (super_admin).
+    try:
+        keys = [k for k in _apikeys.list_keys() if k.get("enabled")]
+        items.append({"key": "inbound_api", "name": "Inbound REST API", "category": "Inbound",
+                      "configure_page": "api-keys", "test_path": None,
+                      "configured": bool(keys),
+                      "detail": (f"{len(keys)} active key(s)" if keys else "no active API keys — create one to let external tools call the API")})
+    except Exception:
+        pass
+
+    return jsonify({"integrations": items})
+
+
+# ---------------------------------------------------------------------------
+# Inbound API key management (super_admin only — gated via READ_PROTECTED).
+# Keys authenticate external callers against /api/* with an RBAC role.
+# ---------------------------------------------------------------------------
+
+@app.route("/api/api-keys", methods=["GET"])
+def api_apikeys_list():
+    try:
+        return jsonify({"keys": _apikeys.list_keys(), "roles": sorted(_apikeys.VALID_KEY_ROLES)})
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/api-keys", methods=["POST"])
+def api_apikeys_create():
+    try:
+        body = request.get_json(silent=True) or {}
+        user = (session.get("user") or "").strip()
+        expires_at = body.get("expires_at")
+        rec = _apikeys.create_key(
+            name=body.get("name", ""),
+            role=body.get("role", "viewer"),
+            created_by=user,
+            expires_at=int(expires_at) if expires_at else None,
+        )
+        # rec includes the one-time plaintext token — surfaced to the caller now.
+        return jsonify(rec), 201
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/api-keys/<int:key_id>/toggle", methods=["POST"])
+def api_apikeys_toggle(key_id):
+    try:
+        body = request.get_json(silent=True) or {}
+        rec = _apikeys.set_enabled(key_id, bool(body.get("enabled", True)))
+        if rec is None:
+            return jsonify({"error": "Not found"}), 404
+        return jsonify(rec)
+    except Exception as e:
+        return _api_error(e)
+
+
+@app.route("/api/api-keys/<int:key_id>", methods=["DELETE"])
+def api_apikeys_delete(key_id):
+    try:
+        if not _apikeys.delete_key(key_id):
+            return jsonify({"error": "Not found"}), 404
+        return jsonify({"deleted": key_id})
     except Exception as e:
         return _api_error(e)
 

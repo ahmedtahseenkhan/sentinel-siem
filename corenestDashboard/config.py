@@ -98,6 +98,80 @@ def role_has_level(role, required_role):
     except ValueError:
         return False
 
+
+# ── Granular section access (Phase 7 — least privilege) ──────────────────────
+# Minimum role required to *view* a dashboard section. Pages not listed are
+# visible to every authenticated user (viewer+). This lets operators run a
+# least-privilege model — e.g. an IT/helpdesk account as `viewer` sees only
+# logs, alerts and dashboards, while detection content, threat-intel and admin
+# tooling stay with analysts (engineers) and admins (leads).
+#
+# Keys are dashboard page ids (the nav `data-page` value). The client mirrors
+# this via /api/me to hide nav + block navigation; the server independently
+# enforces the matching API prefixes (READ_PROTECTED_PREFIXES) so a hidden
+# page's data can never be fetched directly — hiding the nav is never the only
+# control.
+PAGE_MIN_ROLE = {
+    # Detection engineering / content — analysts (engineers) and up
+    "rules":          ROLE_SECURITY_ANALYST,
+    "decoders":       ROLE_SECURITY_ANALYST,
+    "rule-versions":  ROLE_SECURITY_ANALYST,
+    "reference-sets": ROLE_SECURITY_ANALYST,
+    "playbooks":      ROLE_SECURITY_ANALYST,
+    # Threat intel & advanced detection — analysts and up
+    "threat-intel":   ROLE_SECURITY_ANALYST,
+    "threat-hunting": ROLE_SECURITY_ANALYST,
+    "ueba":           ROLE_SECURITY_ANALYST,
+    "rba":            ROLE_SECURITY_ANALYST,
+    "correlations":   ROLE_SECURITY_ANALYST,
+    # Platform / integrations — admins (leads) and up
+    "cloud-monitoring": ROLE_ADMIN,
+    "identity":         ROLE_ADMIN,
+    "ticketing":        ROLE_ADMIN,
+    "notifications":    ROLE_ADMIN,
+    "integrations":     ROLE_ADMIN,
+    # Super-admin-only platform pages
+    "users":         ROLE_SUPER_ADMIN,
+    "api-keys":      ROLE_SUPER_ADMIN,
+    "log-filters":   ROLE_SUPER_ADMIN,
+    "silent-sources": ROLE_SUPER_ADMIN,
+    "retention":     ROLE_SUPER_ADMIN,
+    "system-logs":   ROLE_SUPER_ADMIN,
+    "config-audit":  ROLE_SUPER_ADMIN,
+    "stack":         ROLE_SUPER_ADMIN,
+    "data-sources":  ROLE_SUPER_ADMIN,
+    "advanced":      ROLE_SUPER_ADMIN,
+}
+
+# API GET/read prefixes gated by minimum role, mirroring PAGE_MIN_ROLE at the
+# data layer. Longest-prefix wins is not needed — the prefixes are disjoint.
+# Endpoints used by the shared Overview (/api/dashboard/*, /api/alerts/*,
+# /api/agents/*, /api/logs/*, /api/me) are deliberately NOT listed so every
+# authenticated role keeps a working landing page.
+READ_PROTECTED_PREFIXES = {
+    "/api/rules":          ROLE_SECURITY_ANALYST,
+    "/api/decoders":       ROLE_SECURITY_ANALYST,
+    "/api/rule-versions":  ROLE_SECURITY_ANALYST,
+    "/api/reference-sets": ROLE_SECURITY_ANALYST,
+    "/api/playbooks":      ROLE_SECURITY_ANALYST,
+    "/api/threatintel":    ROLE_SECURITY_ANALYST,
+    "/api/ueba":           ROLE_SECURITY_ANALYST,
+    "/api/rba":            ROLE_SECURITY_ANALYST,
+    "/api/correlations":   ROLE_SECURITY_ANALYST,
+    "/api/cloud":          ROLE_ADMIN,
+    "/api/identity":       ROLE_ADMIN,
+    "/api/tickets":        ROLE_ADMIN,
+    "/api/notifications":  ROLE_ADMIN,
+    "/api/integrations":   ROLE_ADMIN,
+    "/api/api-keys":       ROLE_SUPER_ADMIN,
+}
+
+
+def restricted_pages_for(role):
+    """List of page ids the given role may NOT view. The client uses this to
+    hide nav items and block navigation."""
+    return [page for page, req in PAGE_MIN_ROLE.items() if not role_has_level(role, req)]
+
 # Ticketing integration
 # TICKETING_PROVIDER = jira | servicenow | none
 TICKETING_PROVIDER = os.getenv("TICKETING_PROVIDER", "none")

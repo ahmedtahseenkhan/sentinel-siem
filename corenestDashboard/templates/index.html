@@ -40,8 +40,9 @@
         <!-- Search -->
         <div class="sb2-search">
           <svg class="sb2-search-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="text" class="sb2-search-input" placeholder="Search alerts, hosts, cases…" id="globalSearch" autocomplete="off"/>
+          <input type="text" class="sb2-search-input" placeholder="Search pages, alerts, hosts…" id="globalSearch" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="globalSearchResults" aria-autocomplete="list"/>
           <kbd class="sb2-kbd">⌘K</kbd>
+          <div id="globalSearchResults" class="gsearch-results hidden" role="listbox"></div>
         </div>
 
         <nav class="sb2-nav" id="sb2Nav">
@@ -86,6 +87,10 @@
           <a href="#" class="sb2-item nav-item" data-page="threat-hunting">
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M22 12h-4M6 12H2M12 6V2M12 22v-4"/></svg>
             Threat Hunting
+          </a>
+          <a href="#" class="sb2-item nav-item" data-page="threat-intel">
+            <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5l-8-3z"/><path d="M9 12l2 2 4-4"/></svg>
+            Threat Intel
           </a>
           <a href="#" class="sb2-item nav-item" data-page="mitre">
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="m16 8-6 2-2 6 6-2 2-6z"/></svg>
@@ -188,6 +193,10 @@
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
             Notifications
           </a>
+          <a href="#" class="sb2-item nav-item" data-page="integrations">
+            <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+            Integrations
+          </a>
           <a href="#" class="sb2-item nav-item" data-page="rules">
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 4h16v4M4 12h16M4 20h10"/></svg>
             Rules
@@ -203,6 +212,10 @@
           <a href="#" class="sb2-item nav-item" data-page="users" data-requires-role="super_admin">
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             Users &amp; Roles
+          </a>
+          <a href="#" class="sb2-item nav-item" data-page="api-keys" data-requires-role="super_admin">
+            <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 2l-2 2m-7.6 7.6a5 5 0 1 1-7.1 7.1 5 5 0 0 1 7.1-7.1zm0 0L15 8m0 0l3 3 3-3-3-3"/></svg>
+            API Keys
           </a>
           <a href="#" class="sb2-item nav-item" data-page="correlations">
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
@@ -221,6 +234,10 @@
           <a href="#" class="sb2-item nav-item" data-page="log-filters" data-requires-role="super_admin">
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
             Log Filters
+          </a>
+          <a href="#" class="sb2-item nav-item" data-page="reference-sets">
+            <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            Reference Sets
           </a>
           <a href="#" class="sb2-item nav-item" data-page="retention" data-requires-role="super_admin">
             <svg class="sb2-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
@@ -1087,6 +1104,181 @@
           </div>
         </section>
 
+        <!-- ===================== REFERENCE SETS (whitelists) ===================== -->
+        <section id="page-reference-sets" class="page page-v2">
+          <div class="ag2-header" style="margin-bottom:16px">
+            <div class="ag2-header-left">
+              <h2 class="ag2-title">Reference Sets <span class="ag2-fleet-badge">Whitelists</span></h2>
+              <p class="ag2-subtitle">Named lists of known-good users, devices, IPs, domains, hashes or custom-field values. Reuse them across filters and safelists instead of hard-coding values in rules.</p>
+            </div>
+            <div class="ag2-header-right">
+              <button type="button" id="rsAddBtn" class="act-btn primary" style="height:30px;padding:0 14px;font-size:12px">+ New set</button>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-body" style="padding:10px 12px;color:var(--fg-3);font-size:12px;line-height:1.6">
+              <b>What these are for:</b> mark service accounts, jump hosts, scanner IPs or any known-good entity once, in one place. A set that declares a <b>field</b> (e.g. <code>TargetUserName</code>, <code>agent_name</code>, <code>src_ip</code>) can be consumed as a whitelist by suppression and active-response safelists.
+              <b>Types:</b> <code>users</code> · <code>devices</code> · <code>hosts</code> · <code>ips</code> · <code>domains</code> · <code>hashes</code> · <code>custom</code> (custom requires a field).
+            </div>
+          </div>
+
+          <div class="grid" style="display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:12px;align-items:start">
+            <!-- Sets list -->
+            <div class="card">
+              <div class="card-h">
+                <h3 class="card-h-title"><span class="dot" style="background:var(--accent)"></span>SETS <span id="rsCount" style="font-size:11px;color:var(--fg-4);margin-left:6px">0</span></h3>
+              </div>
+              <div id="rsList" style="padding:6px"></div>
+            </div>
+
+            <!-- Detail / entries -->
+            <div class="card">
+              <div class="card-h">
+                <h3 class="card-h-title"><span class="dot" style="background:var(--low)"></span><span id="rsDetailTitle">Select a set</span></h3>
+                <div id="rsDetailActions" style="display:none;gap:6px">
+                  <button type="button" id="rsEditBtn" class="act-btn" style="height:24px;padding:0 10px;font-size:11px">Edit</button>
+                  <button type="button" id="rsDeleteBtn" class="act-btn" style="height:24px;padding:0 10px;font-size:11px;color:var(--crit)">Delete</button>
+                </div>
+              </div>
+              <div id="rsDetailBody" style="padding:12px 14px">
+                <div class="sigil-block"><div class="sigil-text"><h4>No set selected</h4><p>Pick a set on the left, or create a new one.</p></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Add/edit set drawer -->
+          <div id="rsDrawer" class="hidden" style="position:fixed;top:0;right:0;width:460px;height:100vh;background:var(--bg-1);border-left:1px solid var(--border);z-index:50;overflow:auto;box-shadow:-4px 0 24px rgba(0,0,0,.4)">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg-1);z-index:1">
+              <h3 style="margin:0;font-size:14px" id="rsDrawerTitle">New set</h3>
+              <button type="button" id="rsDrawerClose" class="act-btn" style="height:24px;padding:0 8px;font-size:11px">✕ Close</button>
+            </div>
+            <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+              <input type="hidden" id="rsEditId">
+              <label style="font-size:12px;color:var(--fg-2)">
+                Name
+                <input id="rsName" class="fld" style="width:100%;margin-top:4px" placeholder="e.g. Service Accounts" maxlength="64">
+              </label>
+              <label style="font-size:12px;color:var(--fg-2)">
+                Type
+                <select id="rsType" class="fld" style="width:100%;margin-top:4px">
+                  <option value="users">users</option>
+                  <option value="devices">devices</option>
+                  <option value="hosts">hosts</option>
+                  <option value="ips">ips</option>
+                  <option value="domains">domains</option>
+                  <option value="hashes">hashes</option>
+                  <option value="custom">custom</option>
+                </select>
+              </label>
+              <label style="font-size:12px;color:var(--fg-2)">
+                Field <span style="color:var(--fg-4)">(OpenSearch field — required for custom)</span>
+                <input id="rsField" class="fld" style="width:100%;margin-top:4px" placeholder="e.g. TargetUserName, agent_name, src_ip">
+              </label>
+              <label style="font-size:12px;color:var(--fg-2)">
+                Description
+                <textarea id="rsDescription" class="fld" style="width:100%;margin-top:4px;min-height:54px" placeholder="What is this set for?"></textarea>
+              </label>
+              <label style="font-size:12px;color:var(--fg-2)" id="rsSeedWrap">
+                Initial values <span style="color:var(--fg-4)">(comma or newline separated)</span>
+                <textarea id="rsSeed" class="fld" style="width:100%;margin-top:4px;min-height:70px;font-family:var(--font-mono)" placeholder="svc_backup, svc_sql&#10;svc_iis"></textarea>
+              </label>
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button type="button" id="rsSave" class="act-btn primary" style="flex:1;height:32px">Save set</button>
+                <button type="button" id="rsCancel" class="act-btn" style="flex:1;height:32px">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===================== INTEGRATIONS HUB ===================== -->
+        <section id="page-integrations" class="page page-v2">
+          <div class="ag2-header" style="margin-bottom:16px">
+            <div class="ag2-header-left">
+              <h2 class="ag2-title">Integrations <span class="ag2-fleet-badge">API Connectors</span></h2>
+              <p class="ag2-subtitle">Every inbound/outbound API connector in one place — see what's wired up, test it, and jump to its configuration.</p>
+            </div>
+            <div class="ag2-header-right">
+              <button type="button" id="intgRefresh" class="act-btn" style="height:30px;padding:0 14px;font-size:12px">Refresh</button>
+            </div>
+          </div>
+          <div id="intgGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px"></div>
+        </section>
+
+        <!-- ===================== API KEYS (super_admin only) ===================== -->
+        <section id="page-api-keys" class="page page-v2">
+          <div class="ag2-header" style="margin-bottom:16px">
+            <div class="ag2-header-left">
+              <h2 class="ag2-title">API Keys <span class="ag2-fleet-badge">Inbound REST</span></h2>
+              <p class="ag2-subtitle">Let external tools (SOAR, scripts, another SIEM) call the Sentinel API with a bearer token. Each key carries an RBAC role, so it can do exactly what that role can — no more.</p>
+            </div>
+            <div class="ag2-header-right">
+              <button type="button" id="akAddBtn" class="act-btn primary" style="height:30px;padding:0 14px;font-size:12px">+ New key</button>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-body" style="padding:10px 12px;color:var(--fg-3);font-size:12px;line-height:1.6">
+              <b>Usage:</b> send <code>Authorization: Bearer &lt;key&gt;</code> on any <code>/api/…</code> request. A <code>viewer</code> key can read dashboards/alerts/logs; <code>security_analyst</code> adds threat-intel &amp; detection reads; <code>admin</code> can also modify rules, run response actions and manage integrations.
+              <b>Secrets:</b> the full key is shown <b>once</b> at creation — store it safely; only a hash is kept here.
+            </div>
+          </div>
+
+          <!-- One-time secret reveal -->
+          <div id="akReveal" class="hidden card" style="margin-bottom:12px;border:1px solid var(--ok)">
+            <div class="card-body" style="padding:12px 14px">
+              <div style="font-size:12px;color:var(--ok);font-weight:600;margin-bottom:6px">✓ Key created — copy it now, it won't be shown again</div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <code id="akRevealToken" style="flex:1;font-family:var(--font-mono);font-size:12px;background:var(--bg-2);padding:8px 10px;border-radius:6px;word-break:break-all"></code>
+                <button type="button" id="akRevealCopy" class="act-btn" style="height:30px;padding:0 12px;font-size:12px">Copy</button>
+                <button type="button" id="akRevealDismiss" class="act-btn" style="height:30px;padding:0 12px;font-size:12px">Done</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--accent)"></span>KEYS <span id="akCount" style="font-size:11px;color:var(--fg-4);margin-left:6px">0</span></h3>
+            </div>
+            <div class="tbl">
+              <div class="tbl-h" style="grid-template-columns:60px 1fr 130px 120px 150px 150px 120px">
+                <span>Status</span><span>Name</span><span>Role</span><span>Key</span><span>Created</span><span>Last used</span><span>Actions</span>
+              </div>
+              <div id="akBody"></div>
+            </div>
+          </div>
+
+          <!-- New key drawer -->
+          <div id="akDrawer" class="hidden" style="position:fixed;top:0;right:0;width:420px;height:100vh;background:var(--bg-1);border-left:1px solid var(--border);z-index:50;overflow:auto;box-shadow:-4px 0 24px rgba(0,0,0,.4)">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg-1);z-index:1">
+              <h3 style="margin:0;font-size:14px">New API key</h3>
+              <button type="button" id="akDrawerClose" class="act-btn" style="height:24px;padding:0 8px;font-size:11px">✕ Close</button>
+            </div>
+            <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
+              <label style="font-size:12px;color:var(--fg-2)">
+                Name / purpose
+                <input id="akName" class="fld" style="width:100%;margin-top:4px" placeholder="e.g. SOAR pull integration" maxlength="80">
+              </label>
+              <label style="font-size:12px;color:var(--fg-2)">
+                Role
+                <select id="akRole" class="fld" style="width:100%;margin-top:4px">
+                  <option value="viewer">viewer — read dashboards/alerts/logs</option>
+                  <option value="security_analyst">security_analyst — + threat-intel &amp; detection reads</option>
+                  <option value="admin">admin — + modify rules, response, integrations</option>
+                </select>
+              </label>
+              <label style="font-size:12px;color:var(--fg-2)">
+                Expires (optional)
+                <input type="date" id="akExpires" class="fld" style="width:100%;margin-top:4px">
+              </label>
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button type="button" id="akSave" class="act-btn primary" style="flex:1;height:32px">Create key</button>
+                <button type="button" id="akCancel" class="act-btn" style="flex:1;height:32px">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- ===================== RETENTION (super_admin only) ===================== -->
         <section id="page-retention" class="page page-v2">
           <div class="ag2-header" style="margin-bottom:16px">
@@ -1583,6 +1775,138 @@
                 <span role="columnheader">Rule ID</span>
               </div>
               <div id="thExplorerBody"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="page-threat-intel" class="page page-v2">
+          <div class="page-h">
+            <div class="page-h-title">
+              <h1>Threat <span class="accent">Intelligence</span></h1>
+              <p>IOC feed coverage and the indicators that matched in your environment — malicious IPs, domains, file hashes and URLs from VirusTotal, AbuseIPDB, OTX, MISP and the abuse.ch feeds</p>
+            </div>
+            <div class="page-h-actions">
+              <span class="page-h-meta"><b id="tiHitsMeta">0</b><span class="sep">·</span>IOC hits</span>
+              <select id="tiIocType" class="fld">
+                <option value="">All indicators</option>
+                <option value="threat_intel">threat_intel</option>
+                <option value="ioc">ioc</option>
+              </select>
+              <button class="act-btn" id="tiRefreshBtn">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          <!-- KPI row -->
+          <div class="th-kpis">
+            <div class="th-kpi">
+              <div class="th-kpi-top"><span class="th-kpi-ico crit"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5l-8-3z"/><path d="M9 12l2 2 4-4"/></svg></span><span class="th-kpi-lbl">IOC matches</span></div>
+              <div class="th-kpi-val" id="tiKpiHits">—</div>
+              <div class="th-kpi-sub">indicators seen on the fleet</div>
+            </div>
+            <div class="th-kpi">
+              <div class="th-kpi-top"><span class="th-kpi-ico high"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20M4 6h16M4 18h16"/></svg></span><span class="th-kpi-lbl">Indicator types</span></div>
+              <div class="th-kpi-val" id="tiKpiTypes">—</div>
+              <div class="th-kpi-sub">IP · domain · hash · url</div>
+            </div>
+            <div class="th-kpi">
+              <div class="th-kpi-top"><span class="th-kpi-ico ok"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span><span class="th-kpi-lbl">Affected agents</span></div>
+              <div class="th-kpi-val" id="tiKpiAgents">—</div>
+              <div class="th-kpi-sub">hosts with IOC hits</div>
+            </div>
+            <div class="th-kpi">
+              <div class="th-kpi-top"><span class="th-kpi-ico accent"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7V4h16v3M9 20h6M12 4v16"/><path d="M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5l-8-3z"/></svg></span><span class="th-kpi-lbl">Active feeds</span></div>
+              <div class="th-kpi-val" id="tiKpiFeeds">—</div>
+              <div class="th-kpi-sub" id="tiKpiFeedsSub">configured sources</div>
+            </div>
+          </div>
+
+          <!-- IOC hits over time -->
+          <div class="card th-hist-card">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--crit)"></span>IOC hits over time</h3>
+              <div class="th-hist-legend">
+                <span class="th-leg crit"><i></i>Matches</span>
+              </div>
+            </div>
+            <div id="tiHistogram" class="th-hist"></div>
+          </div>
+
+          <!-- Breakdown panels -->
+          <div class="th-panels th-panels--2">
+            <div class="card">
+              <div class="card-h">
+                <h3 class="card-h-title"><span class="dot" style="background:var(--crit)"></span>By indicator type</h3>
+                <span class="card-h-action" id="tiTypeMeta"></span>
+              </div>
+              <div id="tiChartType"></div>
+            </div>
+            <div class="card">
+              <div class="card-h">
+                <h3 class="card-h-title"><span class="dot" style="background:var(--high)"></span>Top affected agents</h3>
+                <span class="card-h-action" id="tiAgentMeta"></span>
+              </div>
+              <div id="tiChartAgent"></div>
+            </div>
+          </div>
+
+          <!-- IOC hits explorer -->
+          <div class="card th-explorer">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--accent)"></span>IOC matches</h3>
+              <span class="card-h-action"><span id="tiHitsShown">0</span> of <span id="tiHitsTotal">0</span></span>
+            </div>
+            <div class="th-explorer-bar">
+              <div class="fld-wrap" style="flex:1">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                <input id="tiHitsSearch" class="fld search" style="width:100%" placeholder="Filter by indicator, rule, agent, group…">
+              </div>
+            </div>
+            <div class="adt" role="table">
+              <div class="adt-row ti-hit-row ti-hit-hrow" role="row">
+                <span role="columnheader">Time</span>
+                <span role="columnheader">Agent</span>
+                <span role="columnheader">Indicator / Rule</span>
+                <span role="columnheader">Groups</span>
+                <span role="columnheader" class="adt-num">Level</span>
+                <span role="columnheader">Rule ID</span>
+              </div>
+              <div id="tiHitsBody"></div>
+            </div>
+            <div class="ti-pager">
+              <button class="act-btn" id="tiPrevBtn" disabled>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m15 18-6-6 6-6"/></svg>Prev
+              </button>
+              <span class="ti-pager-info" id="tiPagerInfo">Page 1</span>
+              <button class="act-btn" id="tiNextBtn">
+                Next<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 6 6 6-6 6"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Feed source configuration -->
+          <div class="card ti-feeds-card">
+            <div class="card-h">
+              <h3 class="card-h-title"><span class="dot" style="background:var(--ok)"></span>Feed sources</h3>
+              <span class="card-h-action" id="tiFeedsMeta"></span>
+            </div>
+            <p class="ti-feeds-note" id="tiFeedsNote">
+              Enable IOC feeds and store their API keys here. WatchTower reads feed config from environment
+              variables, so saving updates this registry and generates the exact env block to apply to your
+              deployment.
+            </p>
+            <div id="tiFeedsList" class="ti-feeds-list"></div>
+            <div id="tiFeedsEnvWrap" class="ti-env-wrap" style="display:none">
+              <div class="ti-env-h">
+                <span>Apply to WatchTower — paste into your compose <code>environment:</code> or <code>.env</code>, then restart the manager</span>
+                <button class="act-btn" id="tiEnvCopyBtn">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  Copy
+                </button>
+              </div>
+              <pre class="ti-env-block" id="tiFeedsEnv"></pre>
             </div>
           </div>
         </section>

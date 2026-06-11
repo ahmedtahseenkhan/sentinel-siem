@@ -85,6 +85,8 @@ const GEO_CONTINENTS = [
     cfgAuditLog:   '/api/admin/audit-log',
     cfgAuditStats: '/api/admin/audit-log/stats',
     logFilters:    '/api/admin/filters',
+    referenceSets: '/api/reference-sets',
+    apiKeys:       '/api/api-keys',
     silentSources: '/api/silent-sources',
     silentThresh:  '/api/silent-sources/thresholds',
     silentRunNow:  '/api/silent-sources/run-now',
@@ -168,6 +170,7 @@ const GEO_CONTINENTS = [
     agents: { title: 'Agent Health', desc: 'Agent status and connectivity' },
     'agent-detail': { title: 'Node Detail', desc: 'Full detail for a single WatchNode agent' },
     'threat-hunting': { title: 'Threat Hunting', desc: 'Top threats and alert patterns' },
+    'threat-intel': { title: 'Threat Intelligence', desc: 'IOC feed coverage and indicator matches' },
     alerts: { title: 'Alerts', desc: 'Recent security alerts' },
     discover: { title: 'Discover', desc: 'Alert table with search and full details' },
     rules: { title: 'Rules', desc: 'Manage rules and add new rule files' },
@@ -188,6 +191,9 @@ const GEO_CONTINENTS = [
     'rule-versions': { title: 'Detection Studio', desc: 'Rule versioning, diff, and validation' },
     identity: { title: 'Identity', desc: 'User identity inventory and risk tracking' },
     ticketing: { title: 'Ticketing', desc: 'Jira and ServiceNow integration for alert escalation' },
+    'reference-sets': { title: 'Reference Sets', desc: 'Named whitelists of users, devices, IPs and custom fields' },
+    integrations: { title: 'Integrations', desc: 'API connectors — notifications, ticketing, threat feeds, cloud, SOAR' },
+    'api-keys': { title: 'API Keys', desc: 'Inbound REST API keys for external tools' },
   };
 
   const DASHBOARD_STORAGE_KEY = 'sentinel_dashboard';
@@ -2160,6 +2166,246 @@ const GEO_CONTINENTS = [
     // Explorer
     _huntExplorerData = listRes.alerts || [];
     filterHuntExplorer();
+  }
+
+  // ── Threat Intelligence page ───────────────────────────────────────────
+  // Dedicated IOC/feed view over /api/threatintel/{summary,hits,feeds}. Shows
+  // which indicators matched in the environment and lets a super_admin manage
+  // feed API keys (persisted dashboard-side; surfaces the WatchTower env block).
+  const TI_PAGE_SIZE = 25;
+  let _tiHitsOffset = 0;
+  let _tiHitsTotal = 0;
+  let _tiHitsData = [];
+  let _tiNameMap = {};
+  let _tiIsSuperAdmin = false;
+
+  function _tiBand(l) { return _levelBand(l); }
+
+  function renderTiHistogram(overTime) {
+    const el = document.getElementById('tiHistogram');
+    if (!el) return;
+    const bins = (overTime || []).map(b => ({ start: Number(b.key), total: b.count || 0 }));
+    if (!bins.length || bins.every(b => b.total === 0)) {
+      el.innerHTML = `<div class="th-hist-empty"><div class="chart-empty-msg">No IOC hits in this window</div><div class="chart-empty-sub">Indicator matches will plot here as feeds ingest and agents report</div></div>`;
+      return;
+    }
+    const max = Math.max(1, ...bins.map(b => b.total));
+    const H = 156;
+    const labelEvery = Math.max(1, Math.ceil(bins.length / 8));
+    const fmtTime = (ms) => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':00'; };
+    const cols = bins.map((b, i) => {
+      const h = (b.total / max) * H;
+      const tip = fmtTime(b.start) + ' — ' + b.total + ' IOC hit' + (b.total === 1 ? '' : 's');
+      const lbl = (i % labelEvery === 0) ? fmtTime(b.start) : '';
+      return `<div class="th-hcol" title="${escapeHtml(tip)}">
+        <div class="th-hbar">${b.total > 0 ? `<i class="th-seg crit" style="height:${h}px"></i>` : ''}</div>
+        <span class="th-hx">${escapeHtml(lbl)}</span>
+      </div>`;
+    }).join('');
+    el.innerHTML = `<div class="th-hist-bars" style="--th-h:${H}px">${cols}</div>`;
+  }
+
+  function renderTiHits(rows, nameMap) {
+    const body = document.getElementById('tiHitsBody');
+    const shown = document.getElementById('tiHitsShown');
+    if (!body) return;
+    if (shown) shown.textContent = rows.length;
+    if (!rows.length) {
+      body.innerHTML = `<div class="adt-empty">No IOC matches found. Indicators appear here once a feed ingests and an event matches.</div>`;
+      return;
+    }
+    body.innerHTML = rows.map(a => {
+      const band = _tiBand(a.level);
+      const ts = a.timestamp ? new Date(a.timestamp) : null;
+      const tlabel = ts ? ts.toLocaleString([], { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+      const agent = escapeHtml(a.agent_name && a.agent_name.trim() ? a.agent_name : resolveAgent(a.agent_id, nameMap));
+      const title = escapeHtml(a.title || a.description || '—');
+      const groups = (a.rule_groups || []).slice(0, 3).map(g => `<span class="th-grp">${escapeHtml(g)}</span>`).join('');
+      const rid = escapeHtml(String(a.rule_id ?? '—'));
+      return `<div class="adt-row ti-hit-row" role="row">
+        <span role="cell" class="th-exp-time">${escapeHtml(tlabel)}</span>
+        <span role="cell" class="th-exp-agent" title="${escapeHtml(String(a.agent_id||''))}">${agent}</span>
+        <span role="cell" class="th-exp-rule" title="${title}">${title}</span>
+        <span role="cell" class="th-exp-groups">${groups || '<span class="th-grp muted">—</span>'}</span>
+        <span role="cell" class="adt-num"><span class="th-lvl ${band}">${escapeHtml(String(a.level ?? '—'))}</span></span>
+        <span role="cell" class="adt-mono">${rid}</span>
+      </div>`;
+    }).join('');
+  }
+
+  function filterTiHits() {
+    const q = (document.getElementById('tiHitsSearch')?.value || '').trim().toLowerCase();
+    let rows = _tiHitsData;
+    if (q) rows = rows.filter(a =>
+      (a.title || '').toLowerCase().includes(q) ||
+      (a.description || '').toLowerCase().includes(q) ||
+      (a.agent_name || '').toLowerCase().includes(q) ||
+      (a.agent_id || '').toLowerCase().includes(q) ||
+      String(a.rule_id || '').includes(q) ||
+      (a.rule_groups || []).join(' ').toLowerCase().includes(q));
+    renderTiHits(rows, _tiNameMap);
+  }
+
+  async function loadTiHitsPage() {
+    const iocType = document.getElementById('tiIocType')?.value || '';
+    const qs = new URLSearchParams({ size: TI_PAGE_SIZE, offset: _tiHitsOffset });
+    if (iocType) qs.set('ioc_type', iocType);
+    const res = await fetchJson('/api/threatintel/hits?' + qs.toString()).catch(() => ({ hits: [], total: 0 }));
+    _tiHitsData = res.hits || [];
+    _tiHitsTotal = res.total || 0;
+    const totalEl = document.getElementById('tiHitsTotal');
+    if (totalEl) totalEl.textContent = _tiHitsTotal;
+    filterTiHits();
+    // Pager state
+    const page = Math.floor(_tiHitsOffset / TI_PAGE_SIZE) + 1;
+    const pages = Math.max(1, Math.ceil(_tiHitsTotal / TI_PAGE_SIZE));
+    const info = document.getElementById('tiPagerInfo');
+    if (info) info.textContent = `Page ${page} of ${pages}`;
+    const prev = document.getElementById('tiPrevBtn');
+    const next = document.getElementById('tiNextBtn');
+    if (prev) prev.disabled = _tiHitsOffset <= 0;
+    if (next) next.disabled = _tiHitsOffset + TI_PAGE_SIZE >= _tiHitsTotal;
+  }
+
+  function renderTiFeeds(feeds) {
+    const list = document.getElementById('tiFeedsList');
+    const meta = document.getElementById('tiFeedsMeta');
+    if (!list) return;
+    const active = feeds.filter(f => f.configured).length;
+    if (meta) meta.textContent = `${active} of ${feeds.length} active`;
+    const note = document.getElementById('tiFeedsNote');
+    if (note && !_tiIsSuperAdmin) {
+      note.textContent = 'Feed sources and their status. Editing feed API keys requires a super-admin account.';
+    }
+    list.innerHTML = feeds.map(f => {
+      const statusCls = f.configured ? 'ok' : (f.enabled ? 'warn' : 'off');
+      const statusTxt = f.configured ? 'Active' : (f.enabled ? 'Needs config' : 'Disabled');
+      const freeTag = f.free ? '<span class="ti-feed-tag free">no key</span>' : '<span class="ti-feed-tag key">API key</span>';
+      const keyField = f.requires_key ? `
+        <label class="ti-feed-fld">
+          <span>API key${f.has_key ? ' <i class="ti-set">set</i>' : ''}</span>
+          <input type="password" class="fld ti-feed-key" data-type="${escapeHtml(f.type)}" placeholder="${f.has_key ? '•••••• (unchanged)' : 'paste API key'}" autocomplete="off" ${_tiIsSuperAdmin ? '' : 'disabled'}>
+        </label>` : '';
+      const urlField = f.requires_url ? `
+        <label class="ti-feed-fld">
+          <span>Endpoint URL</span>
+          <input type="text" class="fld ti-feed-url" data-type="${escapeHtml(f.type)}" value="${escapeHtml(f.url || '')}" placeholder="https://…" autocomplete="off" ${_tiIsSuperAdmin ? '' : 'disabled'}>
+        </label>` : '';
+      return `<div class="ti-feed" data-type="${escapeHtml(f.type)}">
+        <div class="ti-feed-head">
+          <div class="ti-feed-id">
+            <span class="ti-feed-name">${escapeHtml(f.label)}</span>
+            <span class="ti-feed-kind">${escapeHtml(f.kind)}</span>
+            ${freeTag}
+          </div>
+          <div class="ti-feed-rt">
+            <span class="ti-status ${statusCls}">${statusTxt}</span>
+            <label class="ti-switch" title="Enable feed">
+              <input type="checkbox" class="ti-feed-en" data-type="${escapeHtml(f.type)}" ${f.enabled ? 'checked' : ''} ${_tiIsSuperAdmin ? '' : 'disabled'}>
+              <span class="ti-switch-sl"></span>
+            </label>
+          </div>
+        </div>
+        <p class="ti-feed-doc">${escapeHtml(f.doc)}</p>
+        ${(keyField || urlField) ? `<div class="ti-feed-flds">${keyField}${urlField}</div>` : ''}
+        ${_tiIsSuperAdmin ? `<div class="ti-feed-actions"><button class="act-btn ti-feed-save" data-type="${escapeHtml(f.type)}">Save</button></div>` : ''}
+      </div>`;
+    }).join('');
+
+    if (_tiIsSuperAdmin) {
+      list.querySelectorAll('.ti-feed-save').forEach(btn => {
+        btn.addEventListener('click', () => saveTiFeed(btn.getAttribute('data-type'), btn));
+      });
+    }
+  }
+
+  async function saveTiFeed(ftype, btn) {
+    const root = document.querySelector(`.ti-feed[data-type="${CSS.escape(ftype)}"]`);
+    if (!root) return;
+    const enabled = root.querySelector('.ti-feed-en')?.checked || false;
+    const keyEl = root.querySelector('.ti-feed-key');
+    const urlEl = root.querySelector('.ti-feed-url');
+    const body = { type: ftype, enabled };
+    // Only send api_key when the operator typed a new one (blank = keep existing).
+    if (keyEl && keyEl.value.trim()) body.api_key = keyEl.value.trim();
+    if (urlEl) body.url = urlEl.value.trim();
+    const orig = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+      const res = await fetch('/api/threatintel/feeds', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      if (keyEl) keyEl.value = '';
+      if (typeof showToast === 'function') showToast('Feed saved', 'success');
+      await refreshTiFeeds();
+    } catch (e) {
+      if (typeof showToast === 'function') showToast('Save failed: ' + e.message, 'error');
+      else alert('Save failed: ' + e.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = orig; }
+    }
+  }
+
+  async function refreshTiFeeds() {
+    const res = await fetchJson('/api/threatintel/feeds').catch(() => ({ feeds: [] }));
+    const feeds = res.feeds || [];
+    renderTiFeeds(feeds);
+    const active = feeds.filter(f => f.configured).length;
+    const kFeeds = document.getElementById('tiKpiFeeds');
+    if (kFeeds) kFeeds.textContent = active;
+    const kSub = document.getElementById('tiKpiFeedsSub');
+    if (kSub) kSub.textContent = `of ${feeds.length} feeds configured`;
+    // Env block (super_admin only — endpoint returns plaintext keys).
+    if (_tiIsSuperAdmin) {
+      const env = await fetchJson('/api/threatintel/feeds/env').catch(() => null);
+      const wrap = document.getElementById('tiFeedsEnvWrap');
+      const pre = document.getElementById('tiFeedsEnv');
+      if (env && env.env && wrap && pre) {
+        pre.textContent = env.env;
+        wrap.style.display = '';
+      } else if (wrap) {
+        wrap.style.display = 'none';
+      }
+    }
+  }
+
+  async function loadThreatIntelPage() {
+    _tiIsSuperAdmin = (currentUser && currentUser.role === 'super_admin');
+    _tiNameMap = await getAgentNameMap();
+    _tiHitsOffset = 0;
+
+    const [summary] = await Promise.all([
+      fetchJson('/api/threatintel/summary').catch(() => ({})),
+      loadTiHitsPage(),
+      refreshTiFeeds(),
+    ]);
+
+    const setT = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+    const totalHits = summary.total_ioc_hits || 0;
+    setT('tiKpiHits', totalHits);
+    setT('tiHitsMeta', totalHits);
+    setT('tiKpiTypes', (summary.by_ioc_type || []).length);
+    setT('tiKpiAgents', (summary.by_agent || []).length);
+
+    renderTiHistogram(summary.over_time || []);
+
+    const typeRows = (summary.by_ioc_type || []).slice(0, 6).map(b => ({
+      name: b.key || '—', count: b.count || 0, sev: 'crit',
+    }));
+    const agentRows = (summary.by_agent || []).slice(0, 6).map(b => ({
+      name: resolveAgent(b.key, _tiNameMap), count: b.count || 0,
+      sev: (b.count || 0) > 50 ? 'crit' : (b.count || 0) > 10 ? 'high' : 'med',
+      mono: !_tiNameMap[b.key],
+    }));
+    if (typeRows.length) _renderBigbars('tiChartType', typeRows, null, 'tiTypeMeta', 'var(--crit)');
+    else { const e = document.getElementById('tiChartType'); if (e) e.innerHTML = `<div class="chart-empty"><div class="chart-empty-msg">No indicator types yet</div></div>`; }
+    if (agentRows.length) _renderBigbars('tiChartAgent', agentRows, null, 'tiAgentMeta', 'var(--high)');
+    else { const e = document.getElementById('tiChartAgent'); if (e) e.innerHTML = `<div class="chart-empty"><div class="chart-empty-msg">No affected agents yet</div></div>`; }
   }
 
   const ALERTS_PAGE_SIZE = 25;
@@ -5084,6 +5330,7 @@ const GEO_CONTINENTS = [
     'soc': loadSOCPage,
     sca: loadScaPage,
     'threat-hunting': loadThreatHunting,
+    'threat-intel': loadThreatIntelPage,
     'process-tree': loadProcessTreePage,
     alerts: () => { _wireAlertChips(); loadAlerts(); },
     discover: () => {
@@ -5117,11 +5364,20 @@ const GEO_CONTINENTS = [
     'rule-versions': () => loadRuleVersionsPage(),
     identity: () => loadIdentityPage(),
     ticketing: () => loadTicketingPage(),
+    'reference-sets': () => loadReferenceSetsPage(),
+    integrations: () => loadIntegrationsPage(),
+    'api-keys': () => loadApiKeysPage(),
   };
 
   function goToPage(pageId) {
     if (currentUser && currentUser.role !== 'super_admin' && SUPER_ADMIN_ONLY_PAGES.includes(pageId)) {
       goToPage('overview');
+      return;
+    }
+    // Block navigation to sections this role may not view (mirrors server
+    // PAGE_MIN_ROLE). Guards direct links and global-search jumps.
+    if (currentUser && Array.isArray(currentUser.restrictedPages) && currentUser.restrictedPages.indexOf(pageId) !== -1) {
+      if (pageId !== 'overview') goToPage('overview');
       return;
     }
     setNav(pageId);
@@ -5181,12 +5437,18 @@ const GEO_CONTINENTS = [
         return;
       }
       const data = await res.json();
-      currentUser = { username: data.username, role: data.role, can_save_dashboard: data.can_save_dashboard !== false };
+      currentUser = {
+        username: data.username, role: data.role,
+        can_save_dashboard: data.can_save_dashboard !== false,
+        // Pages this role may not view (from server PAGE_MIN_ROLE).
+        restrictedPages: Array.isArray(data.restricted_pages) ? data.restricted_pages : [],
+      };
+      const _restricted = new Set(currentUser.restrictedPages);
       document.querySelectorAll('.nav-item').forEach(el => {
         const page = el.getAttribute('data-page');
-        if (SUPER_ADMIN_ONLY_PAGES.includes(page) && currentUser.role !== 'super_admin') {
-          el.style.display = 'none';
-        }
+        const blocked = _restricted.has(page) ||
+          (SUPER_ADMIN_ONLY_PAGES.includes(page) && currentUser.role !== 'super_admin');
+        if (blocked) el.style.display = 'none';
       });
       const roleLabels = { super_admin: 'Super Admin', administrator: 'Administrator', admin: 'Admin', security_analyst: 'Security Analyst', compliance_officer: 'Compliance Officer' };
       const roleLabel = roleLabels[currentUser.role] || currentUser.role || 'User';
@@ -5217,6 +5479,114 @@ const GEO_CONTINENTS = [
       goToPage(el.getAttribute('data-page'));
     });
   });
+
+  // ── Global command-palette search (top-bar) ────────────────────────────────
+  // Wires #globalSearch (previously a dead element) into a jump-to palette:
+  // matching pages + free-text hand-offs to Discover / Logs / Agents.
+  (function initGlobalSearch() {
+    const input = document.getElementById('globalSearch');
+    const box = document.getElementById('globalSearchResults');
+    if (!input || !box) return;
+
+    let items = [];      // current flat list of {group,icon,label,hint,run}
+    let activeIdx = -1;
+
+    const ICO = {
+      page:  '<svg class="gsearch-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>',
+      alert: '<svg class="gsearch-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h0"/></svg>',
+      log:   '<svg class="gsearch-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>',
+      host:  '<svg class="gsearch-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
+    };
+
+    function pageList() {
+      // Visible nav pages only — respects role-hidden items (display:none).
+      const out = [], seen = {};
+      document.querySelectorAll('.nav-item[data-page]').forEach(el => {
+        if (el.offsetParent === null && el.style.display === 'none') return;
+        const id = el.getAttribute('data-page');
+        if (!id || seen[id]) return;
+        seen[id] = 1;
+        const label = (el.textContent || '').trim().replace(/\s+/g, ' ') || (PAGES[id] && PAGES[id].title) || id;
+        out.push({ id, label });
+      });
+      return out;
+    }
+
+    function build(q) {
+      q = (q || '').trim();
+      const lower = q.toLowerCase();
+      const out = [];
+      // 1. Matching pages
+      pageList()
+        .filter(p => !lower || p.label.toLowerCase().includes(lower) || p.id.includes(lower))
+        .slice(0, 6)
+        .forEach(p => out.push({ group: 'Pages', icon: ICO.page, label: p.label, hint: 'Open', run: () => goToPage(p.id) }));
+      // 2. Free-text hand-offs
+      if (q) {
+        out.push({ group: 'Search', icon: ICO.alert, label: 'Alerts matching “' + q + '”', hint: 'Discover',
+          run: () => { const el = document.getElementById('discoverSearch'); if (el) el.value = q; goToPage('discover'); } });
+        out.push({ group: 'Search', icon: ICO.log, label: 'Raw logs matching “' + q + '”', hint: 'Logs',
+          run: () => { const el = document.getElementById('logsQuery'); if (el) el.value = q; goToPage('logs'); setTimeout(() => document.getElementById('logsApply')?.click(), 60); } });
+        out.push({ group: 'Search', icon: ICO.host, label: 'Host “' + q + '”', hint: 'Agents',
+          run: () => { goToPage('agents'); setTimeout(() => { const el = document.getElementById('agentsSearch'); if (el) { el.value = q; el.dispatchEvent(new Event('input', { bubbles: true })); } }, 80); } });
+      }
+      return out;
+    }
+
+    function render() {
+      if (!items.length) { box.innerHTML = '<div class="gsearch-empty">No matches</div>'; return; }
+      let html = '', lastGroup = null;
+      items.forEach((it, i) => {
+        if (it.group !== lastGroup) { html += '<div class="gsearch-group">' + it.group + '</div>'; lastGroup = it.group; }
+        html += '<div class="gsearch-item' + (i === activeIdx ? ' active' : '') + '" role="option" data-i="' + i + '">' +
+          it.icon + '<span class="gsearch-label">' + escapeHtml(it.label) + '</span><span class="gsearch-hint">' + escapeHtml(it.hint) + '</span></div>';
+      });
+      box.innerHTML = html;
+      box.querySelectorAll('.gsearch-item').forEach(el => {
+        el.addEventListener('mousedown', (e) => { e.preventDefault(); choose(parseInt(el.getAttribute('data-i'), 10)); });
+      });
+    }
+
+    function openBox() { box.classList.remove('hidden'); input.setAttribute('aria-expanded', 'true'); }
+    function closeBox() { box.classList.add('hidden'); input.setAttribute('aria-expanded', 'false'); activeIdx = -1; }
+
+    function refresh() {
+      items = build(input.value);
+      activeIdx = items.length ? 0 : -1;
+      render();
+      openBox();
+    }
+
+    function choose(i) {
+      const it = items[i];
+      if (!it) return;
+      closeBox();
+      input.value = '';
+      input.blur();
+      try { it.run(); } catch (e) { /* navigation best-effort */ }
+    }
+
+    input.addEventListener('input', refresh);
+    input.addEventListener('focus', refresh);
+    input.addEventListener('keydown', (e) => {
+      if (box.classList.contains('hidden')) { if (e.key === 'ArrowDown') { e.preventDefault(); refresh(); } return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = Math.min(activeIdx + 1, items.length - 1); render(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); activeIdx = Math.max(activeIdx - 1, 0); render(); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (activeIdx >= 0) choose(activeIdx); }
+      else if (e.key === 'Escape') { e.preventDefault(); closeBox(); input.blur(); }
+    });
+    input.addEventListener('blur', () => setTimeout(closeBox, 120));
+
+    // ⌘K / Ctrl-K focuses the palette — but defer to Discover's own ⌘K
+    // (IOC Quick Search) when that page is active so we don't double-bind.
+    document.addEventListener('keydown', (e) => {
+      if (!((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K'))) return;
+      if (document.getElementById('page-discover')?.classList.contains('active')) return;
+      e.preventDefault();
+      input.focus();
+      input.select();
+    });
+  })();
 
   // Only surface the "AI Summary" event-detail tab when an AI backend is
   // actually configured (ANTHROPIC_API_KEY set). Otherwise it would only ever
@@ -5355,6 +5725,29 @@ const GEO_CONTINENTS = [
   document.getElementById('huntTimeRange')?.addEventListener('change', () => loadThreatHunting());
   document.getElementById('huntRefreshBtn')?.addEventListener('click', () => loadThreatHunting());
   document.getElementById('thExplorerSearch')?.addEventListener('input', () => filterHuntExplorer());
+
+  // Threat Intelligence page wiring
+  document.getElementById('tiRefreshBtn')?.addEventListener('click', () => loadThreatIntelPage());
+  document.getElementById('tiIocType')?.addEventListener('change', () => { _tiHitsOffset = 0; loadTiHitsPage(); });
+  document.getElementById('tiHitsSearch')?.addEventListener('input', () => filterTiHits());
+  document.getElementById('tiPrevBtn')?.addEventListener('click', () => {
+    if (_tiHitsOffset <= 0) return;
+    _tiHitsOffset = Math.max(0, _tiHitsOffset - TI_PAGE_SIZE);
+    loadTiHitsPage();
+  });
+  document.getElementById('tiNextBtn')?.addEventListener('click', () => {
+    if (_tiHitsOffset + TI_PAGE_SIZE >= _tiHitsTotal) return;
+    _tiHitsOffset += TI_PAGE_SIZE;
+    loadTiHitsPage();
+  });
+  document.getElementById('tiEnvCopyBtn')?.addEventListener('click', () => {
+    const txt = document.getElementById('tiFeedsEnv')?.textContent || '';
+    if (!txt) return;
+    const btn = document.getElementById('tiEnvCopyBtn');
+    navigator.clipboard?.writeText(txt).then(() => {
+      if (btn) { const o = btn.innerHTML; btn.innerHTML = 'Copied'; setTimeout(() => { btn.innerHTML = o; }, 1500); }
+    }).catch(() => {});
+  });
 
   // Agents auto-refresh (the dropdown was previously decorative)
   window._agentsRefreshTimer = window._agentsRefreshTimer || null;
@@ -7316,6 +7709,347 @@ const GEO_CONTINENTS = [
     if (!confirm('Delete this filter?')) return;
     await fetch(`${API.logFilters}/${id}`, { method: 'DELETE', credentials: 'same-origin' });
     _lfRender();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reference Sets — named whitelists (users / devices / IPs / custom fields).
+  // Master-detail: list of sets on the left, entries + add form on the right.
+  // ---------------------------------------------------------------------------
+  const _rsState = { selectedId: null, sets: [] };
+
+  async function _rsFetchSets() {
+    const data = await fetchJson(API.referenceSets).catch(() => ({ sets: [] }));
+    _rsState.sets = data.sets || [];
+    return _rsState.sets;
+  }
+
+  const _RS_TYPE_COLOR = {
+    users: 'var(--accent)', devices: 'var(--high)', hosts: 'var(--med)',
+    ips: 'var(--ok)', domains: 'var(--low)', hashes: 'var(--crit)', custom: 'var(--fg-3)',
+  };
+
+  function _rsTypeBadge(t) {
+    const c = _RS_TYPE_COLOR[t] || 'var(--fg-3)';
+    return `<span style="display:inline-block;padding:1px 7px;border-radius:9px;background:${c}22;color:${c};font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">${escapeHtml(t)}</span>`;
+  }
+
+  function _rsRenderList() {
+    const el = id => document.getElementById(id);
+    if (el('rsCount')) el('rsCount').textContent = _rsState.sets.length;
+    const list = el('rsList');
+    if (!list) return;
+    if (!_rsState.sets.length) {
+      list.innerHTML = `<div class="sigil-block" style="padding:14px"><div class="sigil-text"><h4>No sets yet</h4><p>Click <strong>+ New set</strong>.</p></div></div>`;
+      return;
+    }
+    list.innerHTML = _rsState.sets.map(s => {
+      const active = String(s.id) === String(_rsState.selectedId);
+      return `<div class="rs-set-row${active ? ' active' : ''}" data-id="${s.id}" style="display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:7px;cursor:pointer;${active ? 'background:rgba(45,212,191,0.1)' : ''}">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12.5px;color:var(--fg-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(s.name)}</div>
+          <div style="font-size:10.5px;color:var(--fg-4);margin-top:2px">${_rsTypeBadge(s.set_type)} ${s.field ? '<span style="font-family:var(--font-mono)">' + escapeHtml(s.field) + '</span>' : ''}</div>
+        </div>
+        <span style="font-size:11px;color:var(--fg-3);font-family:var(--font-mono)">${s.entry_count}</span>
+      </div>`;
+    }).join('');
+    list.querySelectorAll('.rs-set-row').forEach(r => r.addEventListener('click', () => _rsSelect(r.getAttribute('data-id'))));
+  }
+
+  async function _rsSelect(setId) {
+    _rsState.selectedId = setId;
+    _rsRenderList();
+    const set = await fetchJson(`${API.referenceSets}/${setId}`).catch(() => null);
+    _rsRenderDetail(set);
+  }
+
+  function _rsRenderDetail(set) {
+    const el = id => document.getElementById(id);
+    const title = el('rsDetailTitle'), actions = el('rsDetailActions'), body = el('rsDetailBody');
+    if (!body) return;
+    if (!set) {
+      if (title) title.textContent = 'Select a set';
+      if (actions) actions.style.display = 'none';
+      body.innerHTML = `<div class="sigil-block"><div class="sigil-text"><h4>Not found</h4></div></div>`;
+      return;
+    }
+    if (title) title.textContent = set.name;
+    if (actions) actions.style.display = 'flex';
+    const entries = set.entries || [];
+    const rows = entries.length ? entries.map(e => `<div class="tbl-r" style="grid-template-columns:1fr 1fr 60px">
+        <span class="tbl-mono" title="${escapeHtml(e.value)}">${escapeHtml(e.value)}</span>
+        <span style="color:var(--fg-3);font-size:11px">${escapeHtml(e.note || '—')}</span>
+        <span><button type="button" class="act-btn rs-entry-del" data-eid="${e.id}" style="height:22px;padding:0 8px;font-size:11px;color:var(--crit)">Del</button></span>
+      </div>`).join('') : `<div class="sigil-block" style="padding:14px"><div class="sigil-text"><h4>No values yet</h4><p>Add known-good values below.</p></div></div>`;
+    body.innerHTML = `
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px;font-size:11.5px;color:var(--fg-3)">
+        ${_rsTypeBadge(set.set_type)}
+        ${set.field ? '<span>field <code>' + escapeHtml(set.field) + '</code></span>' : '<span style="color:var(--fg-4)">no field mapping</span>'}
+        <span>${entries.length} value${entries.length === 1 ? '' : 's'}</span>
+        ${set.created_by ? '<span>by ' + escapeHtml(set.created_by) + '</span>' : ''}
+      </div>
+      ${set.description ? '<div style="font-size:12px;color:var(--fg-2);margin-bottom:12px">' + escapeHtml(set.description) + '</div>' : ''}
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input id="rsEntryInput" class="fld" style="flex:1;height:30px;font-family:var(--font-mono);font-size:12px" placeholder="Add value(s) — comma or newline separated">
+        <button type="button" id="rsEntryAdd" class="act-btn primary" style="height:30px;padding:0 14px;font-size:12px">Add</button>
+      </div>
+      <div class="tbl">
+        <div class="tbl-h" style="grid-template-columns:1fr 1fr 60px"><span>Value</span><span>Note</span><span></span></div>
+        <div id="rsEntriesBody">${rows}</div>
+      </div>`;
+    body.querySelectorAll('.rs-entry-del').forEach(b => b.addEventListener('click', () => _rsRemoveEntry(set.id, b.getAttribute('data-eid'))));
+    const addBtn = el('rsEntryAdd'), inp = el('rsEntryInput');
+    if (addBtn) addBtn.addEventListener('click', () => _rsAddEntries(set.id, inp.value));
+    if (inp) inp.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) _rsAddEntries(set.id, inp.value); });
+  }
+
+  async function _rsAddEntries(setId, raw) {
+    const values = (raw || '').trim();
+    if (!values) return;
+    const res = await fetch(`${API.referenceSets}/${setId}/entries`, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) { alert('Add failed: ' + (j.error || res.status)); return; }
+    if (j.set) _rsRenderDetail(j.set);
+    await _rsFetchSets(); _rsRenderList();
+  }
+
+  async function _rsRemoveEntry(setId, entryId) {
+    const res = await fetch(`${API.referenceSets}/${setId}/entries/${entryId}`, { method: 'DELETE', credentials: 'same-origin' });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok && j.set) _rsRenderDetail(j.set);
+    await _rsFetchSets(); _rsRenderList();
+  }
+
+  function _rsOpenDrawer(set) {
+    const el = id => document.getElementById(id);
+    el('rsDrawer').classList.remove('hidden');
+    el('rsDrawerTitle').textContent = set ? 'Edit set' : 'New set';
+    el('rsEditId').value = set ? set.id : '';
+    el('rsName').value = set ? set.name : '';
+    el('rsType').value = set ? set.set_type : 'users';
+    el('rsField').value = set ? (set.field || '') : '';
+    el('rsDescription').value = set ? (set.description || '') : '';
+    el('rsSeed').value = '';
+    // Initial-values box only makes sense when creating.
+    if (el('rsSeedWrap')) el('rsSeedWrap').style.display = set ? 'none' : '';
+  }
+
+  function _rsCloseDrawer() {
+    const d = document.getElementById('rsDrawer');
+    if (d) d.classList.add('hidden');
+  }
+
+  async function _rsSave() {
+    const el = id => document.getElementById(id);
+    const id = el('rsEditId').value;
+    const body = {
+      name: el('rsName').value.trim(),
+      set_type: el('rsType').value,
+      field: el('rsField').value.trim(),
+      description: el('rsDescription').value.trim(),
+    };
+    if (!body.name) { alert('Name is required.'); return; }
+    if (body.set_type === 'custom' && !body.field) { alert('A custom set needs a field.'); return; }
+    if (!id) {
+      const seed = el('rsSeed').value.trim();
+      if (seed) body.entries = seed;
+    }
+    const method = id ? 'PUT' : 'POST';
+    const url = id ? `${API.referenceSets}/${id}` : API.referenceSets;
+    const res = await fetch(url, {
+      method, credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) { alert('Save failed: ' + (j.error || res.status)); return; }
+    _rsCloseDrawer();
+    await _rsFetchSets();
+    _rsRenderList();
+    if (j && j.id) _rsSelect(String(j.id));
+  }
+
+  async function _rsDelete() {
+    if (!_rsState.selectedId) return;
+    const set = _rsState.sets.find(s => String(s.id) === String(_rsState.selectedId));
+    if (!confirm(`Delete reference set "${set ? set.name : ''}" and all its values?`)) return;
+    const res = await fetch(`${API.referenceSets}/${_rsState.selectedId}`, { method: 'DELETE', credentials: 'same-origin' });
+    if (!res.ok) { alert('Delete failed.'); return; }
+    _rsState.selectedId = null;
+    await _rsFetchSets();
+    _rsRenderList();
+    _rsRenderDetail(null);
+  }
+
+  let _rsWired = false;
+  async function loadReferenceSetsPage() {
+    await _rsFetchSets();
+    _rsRenderList();
+    if (_rsState.selectedId) _rsSelect(_rsState.selectedId); else _rsRenderDetail(null);
+    if (_rsWired) return;
+    _rsWired = true;
+    const el = id => document.getElementById(id);
+    el('rsAddBtn')      && el('rsAddBtn').addEventListener('click', () => _rsOpenDrawer(null));
+    el('rsDrawerClose') && el('rsDrawerClose').addEventListener('click', _rsCloseDrawer);
+    el('rsCancel')      && el('rsCancel').addEventListener('click', _rsCloseDrawer);
+    el('rsSave')        && el('rsSave').addEventListener('click', _rsSave);
+    el('rsDeleteBtn')   && el('rsDeleteBtn').addEventListener('click', _rsDelete);
+    el('rsEditBtn')     && el('rsEditBtn').addEventListener('click', () => {
+      const set = _rsState.sets.find(s => String(s.id) === String(_rsState.selectedId));
+      if (set) _rsOpenDrawer(set);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Integrations hub — aggregated connector status + deep-links + test.
+  // ---------------------------------------------------------------------------
+  function _intgCard(it) {
+    const state = it.configured === true ? 'ok' : (it.configured === false ? 'off' : 'unknown');
+    const dot = state === 'ok' ? 'var(--ok)' : (state === 'off' ? 'var(--fg-4)' : 'var(--high)');
+    const badge = state === 'ok'
+      ? '<span style="color:var(--ok);font-size:10px;font-weight:600">CONNECTED</span>'
+      : (state === 'off' ? '<span style="color:var(--fg-4);font-size:10px;font-weight:600">NOT CONFIGURED</span>'
+                         : '<span style="color:var(--high);font-size:10px;font-weight:600">UNKNOWN</span>');
+    const cfgBtn = it.configure_page
+      ? `<button type="button" class="act-btn intg-cfg" data-page="${escapeHtml(it.configure_page)}" style="height:26px;padding:0 10px;font-size:11px">Configure →</button>`
+      : '';
+    const testBtn = it.test_path
+      ? `<button type="button" class="act-btn intg-test" data-path="${escapeHtml(it.test_path)}" style="height:26px;padding:0 10px;font-size:11px">Test</button>`
+      : '';
+    return `<div class="card" style="padding:0">
+      <div style="display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border)">
+        <span class="dot" style="background:${dot};width:8px;height:8px;border-radius:50%"></span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;color:var(--fg-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(it.name)}</div>
+          <div style="font-size:10px;color:var(--fg-4);text-transform:uppercase;letter-spacing:.04em;margin-top:1px">${escapeHtml(it.category || '')}</div>
+        </div>
+        ${badge}
+      </div>
+      <div style="padding:10px 14px">
+        <div style="font-size:11.5px;color:var(--fg-3);min-height:16px">${escapeHtml(it.detail || '')}</div>
+        <div style="display:flex;gap:6px;margin-top:10px">${cfgBtn}${testBtn}<span class="intg-test-result" style="font-size:11px;color:var(--fg-3);align-self:center"></span></div>
+      </div>
+    </div>`;
+  }
+
+  async function loadIntegrationsPage() {
+    const grid = document.getElementById('intgGrid');
+    if (!grid) return;
+    grid.innerHTML = '<div style="color:var(--fg-3);font-size:12px;padding:8px">Loading…</div>';
+    const data = await fetchJson('/api/integrations/status').catch(() => ({ integrations: [] }));
+    const items = data.integrations || [];
+    grid.innerHTML = items.length ? items.map(_intgCard).join('')
+      : '<div class="sigil-block"><div class="sigil-text"><h4>No integrations</h4></div></div>';
+    grid.querySelectorAll('.intg-cfg').forEach(b => b.addEventListener('click', () => goToPage(b.getAttribute('data-page'))));
+    grid.querySelectorAll('.intg-test').forEach(b => b.addEventListener('click', async () => {
+      const out = b.parentElement.querySelector('.intg-test-result');
+      b.disabled = true; if (out) out.textContent = 'Testing…';
+      try {
+        const res = await fetch(b.getAttribute('data-path'), { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        const j = await res.json().catch(() => ({}));
+        if (out) out.textContent = res.ok ? '✓ sent' : ('✗ ' + (j.error || res.status));
+        if (out) out.style.color = res.ok ? 'var(--ok)' : 'var(--crit)';
+      } catch (e) { if (out) { out.textContent = '✗ failed'; out.style.color = 'var(--crit)'; } }
+      b.disabled = false;
+    }));
+    const r = document.getElementById('intgRefresh');
+    if (r && !r._wired) { r._wired = true; r.addEventListener('click', loadIntegrationsPage); }
+  }
+
+  // ---------------------------------------------------------------------------
+  // API Keys — inbound bearer tokens (super_admin). Secret shown once.
+  // ---------------------------------------------------------------------------
+  function _akFmtTs(ms) { return ms ? new Date(ms).toLocaleString() : '—'; }
+
+  function _akRowHtml(k) {
+    const cols = 'grid-template-columns:60px 1fr 130px 120px 150px 150px 120px';
+    const badge = k.enabled
+      ? '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:rgba(51,204,153,.15);color:var(--ok);font-size:10px;font-weight:600">ON</span>'
+      : '<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:rgba(140,140,140,.15);color:var(--fg-3);font-size:10px;font-weight:600">OFF</span>';
+    const expired = k.expires_at && Date.now() > k.expires_at;
+    return `<div class="tbl-r" style="${cols}">
+      <span>${badge}</span>
+      <span class="tbl-pri" title="${escapeHtml(k.name)}">${escapeHtml(k.name)}${expired ? ' <span style="color:var(--crit);font-size:10px">(expired)</span>' : ''}</span>
+      <span class="tbl-mono">${escapeHtml(k.role)}</span>
+      <span class="tbl-mono" title="prefix only — secret not stored">${escapeHtml(k.display)}</span>
+      <span class="tbl-mono" style="font-size:11px">${_akFmtTs(k.created_at)}</span>
+      <span class="tbl-mono" style="font-size:11px">${_akFmtTs(k.last_used_at)}</span>
+      <span style="display:flex;gap:4px">
+        <button type="button" class="act-btn ak-toggle" data-id="${k.id}" data-en="${k.enabled ? 1 : 0}" style="height:22px;padding:0 8px;font-size:11px">${k.enabled ? 'Disable' : 'Enable'}</button>
+        <button type="button" class="act-btn ak-del" data-id="${k.id}" style="height:22px;padding:0 8px;font-size:11px;color:var(--crit)">Del</button>
+      </span>
+    </div>`;
+  }
+
+  async function _akRender() {
+    const el = id => document.getElementById(id);
+    const data = await fetchJson(API.apiKeys).catch(() => ({ keys: [] }));
+    const keys = data.keys || [];
+    if (el('akCount')) el('akCount').textContent = keys.length + ' key' + (keys.length === 1 ? '' : 's');
+    const body = el('akBody');
+    if (!body) return;
+    body.innerHTML = keys.length ? keys.map(_akRowHtml).join('')
+      : `<div class="sigil-block"><div class="sigil-text"><h4>No API keys</h4><p>Click <strong>+ New key</strong> to let an external tool call the API.</p></div></div>`;
+    body.querySelectorAll('.ak-toggle').forEach(b => b.addEventListener('click', async () => {
+      await fetch(`${API.apiKeys}/${b.getAttribute('data-id')}/toggle`, {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: b.getAttribute('data-en') !== '1' }),
+      });
+      _akRender();
+    }));
+    body.querySelectorAll('.ak-del').forEach(b => b.addEventListener('click', async () => {
+      if (!confirm('Delete this API key? Any tool using it will immediately lose access.')) return;
+      await fetch(`${API.apiKeys}/${b.getAttribute('data-id')}`, { method: 'DELETE', credentials: 'same-origin' });
+      _akRender();
+    }));
+  }
+
+  function _akOpenDrawer() {
+    const el = id => document.getElementById(id);
+    el('akDrawer').classList.remove('hidden');
+    el('akName').value = ''; el('akRole').value = 'viewer'; el('akExpires').value = '';
+  }
+  function _akCloseDrawer() { document.getElementById('akDrawer')?.classList.add('hidden'); }
+
+  async function _akSave() {
+    const el = id => document.getElementById(id);
+    const name = el('akName').value.trim();
+    if (!name) { alert('Name is required.'); return; }
+    const body = { name, role: el('akRole').value };
+    const exp = el('akExpires').value;
+    if (exp) { const t = Date.parse(exp + 'T23:59:59'); if (!isNaN(t)) body.expires_at = t; }
+    const res = await fetch(API.apiKeys, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) { alert('Create failed: ' + (j.error || res.status)); return; }
+    _akCloseDrawer();
+    // Surface the one-time token.
+    const reveal = el('akReveal'), tok = el('akRevealToken');
+    if (reveal && tok && j.token) { tok.textContent = j.token; reveal.classList.remove('hidden'); }
+    _akRender();
+  }
+
+  let _akWired = false;
+  async function loadApiKeysPage() {
+    await _akRender();
+    if (_akWired) return;
+    _akWired = true;
+    const el = id => document.getElementById(id);
+    el('akAddBtn')       && el('akAddBtn').addEventListener('click', _akOpenDrawer);
+    el('akDrawerClose')  && el('akDrawerClose').addEventListener('click', _akCloseDrawer);
+    el('akCancel')       && el('akCancel').addEventListener('click', _akCloseDrawer);
+    el('akSave')         && el('akSave').addEventListener('click', _akSave);
+    el('akRevealDismiss')&& el('akRevealDismiss').addEventListener('click', () => el('akReveal').classList.add('hidden'));
+    el('akRevealCopy')   && el('akRevealCopy').addEventListener('click', () => {
+      const t = el('akRevealToken').textContent || '';
+      navigator.clipboard?.writeText(t).then(() => { el('akRevealCopy').textContent = 'Copied'; setTimeout(() => el('akRevealCopy').textContent = 'Copy', 1200); });
+    });
   }
 
   let _lfWired = false;
@@ -10316,6 +11050,7 @@ const ACTION_TEMPLATES = {
   create_ticket:   { label: 'Create Ticket',        params: { dashboard_url: 'http://dashboard:5050', summary: 'Alert L{{level}}: {{title}}', priority: 'high' } },
   notify_slack:    { label: 'Notify Slack',         params: { webhook_url: '', message: '🚨 [{{level}}] {{title}} — Agent: {{agent_id}}' } },
   notify_email:    { label: 'Send Email',           params: { to: '', subject: '[Alert] {{title}}' } },
+  webhook:         { label: 'Call Webhook / REST API', params: { url: '', method: 'POST', headers: 'Content-Type:application/json', body: '' } },
   add_to_watchlist:{ label: 'Add to Watchlist',    params: { value: '{{src_ip}}', list: 'blocked_ips' } },
 };
 
