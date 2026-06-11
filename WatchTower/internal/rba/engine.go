@@ -14,9 +14,11 @@
 package rba
 
 import (
+	"context"
 	"fmt"
 	"time"
 
+	"github.com/watchtower/watchtower/internal/aitriage"
 	"github.com/watchtower/watchtower/internal/config"
 	"github.com/watchtower/watchtower/internal/models"
 	"github.com/watchtower/watchtower/internal/store"
@@ -27,6 +29,15 @@ import (
 type Assigner interface {
 	Route(c *models.Case) (assignee, reason string)
 }
+
+// Triager produces a plain-English triage summary for a fired notable.
+// *aitriage.Summarizer satisfies it. Optional — wired via SetTriager.
+type Triager interface {
+	Summarize(ctx context.Context, in aitriage.NotableInput) (string, error)
+}
+
+// triageAlertLimit bounds how many recent alerts we feed the summarizer.
+const triageAlertLimit = 20
 
 const (
 	defaultThreshold  = 100           // risk points to trigger a notable
@@ -40,6 +51,7 @@ type Engine struct {
 	logger   *zap.Logger
 	assigner Assigner
 	casesCfg config.CasesConfig
+	triager  Triager
 }
 
 func NewEngine(st *store.Store, logger *zap.Logger) *Engine {
@@ -48,6 +60,10 @@ func NewEngine(st *store.Store, logger *zap.Logger) *Engine {
 
 // SetAssigner wires the auto-assignment engine (optional).
 func (e *Engine) SetAssigner(a Assigner) { e.assigner = a }
+
+// SetTriager wires the Claude-backed triage summarizer (optional). When set,
+// every fired notable gets an AI summary attached to its case asynchronously.
+func (e *Engine) SetTriager(t Triager) { e.triager = t }
 
 // SetCasesConfig provides the per-priority SLA windows for RBA-created cases.
 func (e *Engine) SetCasesConfig(cfg config.CasesConfig) { e.casesCfg = cfg }
@@ -177,7 +193,56 @@ func (e *Engine) fireNotable(entity *store.RbaEntityRisk, alert *models.Alert, s
 			})
 		}
 		e.logger.Info("rba: auto-created case", zap.Int64("case_id", caseID), zap.String("assignee", c.Assignee))
+
+		// Summarize the notable with Claude and attach it as a case note.
+		// Runs off the alert path — Summarize is a network round-trip and must
+		// not block the engine's OnAlert pipeline.
+		if e.triager != nil {
+			go e.triageCase(caseID, entity.EntityID, entity.EntityType, entity.Threshold, score)
+		}
 	}
+}
+
+// triageCase loads the entity's recent alerts, asks Claude for a triage
+// summary, and writes it onto the case as a note. Best-effort: any failure is
+// logged and the case still stands on its own.
+func (e *Engine) triageCase(caseID int64, entityID, entityType string, threshold, score int) {
+	alerts, err := e.store.ListAlerts(entityID, 0, triageAlertLimit, 0)
+	if err != nil {
+		e.logger.Warn("rba: triage could not load alerts", zap.Int64("case_id", caseID), zap.Error(err))
+		return
+	}
+	lines := make([]aitriage.AlertLine, 0, len(alerts))
+	for _, a := range alerts {
+		lines = append(lines, aitriage.AlertLine{
+			RuleID: a.RuleID,
+			Level:  a.Level,
+			Title:  a.Title,
+			When:   time.UnixMilli(a.Timestamp),
+		})
+	}
+
+	summary, err := e.triager.Summarize(context.Background(), aitriage.NotableInput{
+		EntityID:   entityID,
+		EntityType: entityType,
+		RiskScore:  score,
+		Threshold:  threshold,
+		Alerts:     lines,
+	})
+	if err != nil {
+		e.logger.Warn("rba: AI triage summarization failed", zap.Int64("case_id", caseID), zap.Error(err))
+		return
+	}
+
+	if _, err := e.store.AddCaseNote(&models.CaseNote{
+		CaseID:  caseID,
+		Author:  "ai-triage",
+		Content: "AI triage summary (Claude):\n\n" + summary,
+	}); err != nil {
+		e.logger.Warn("rba: failed to attach triage note", zap.Int64("case_id", caseID), zap.Error(err))
+		return
+	}
+	e.logger.Info("rba: attached AI triage summary", zap.Int64("case_id", caseID))
 }
 
 // riskWeight returns the configured weight for a rule, or derives a default from level.

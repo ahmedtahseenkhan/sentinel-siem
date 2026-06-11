@@ -189,6 +189,27 @@ func (s *Store) UpdateAgentGroup(id, groupID string) error {
 	return err
 }
 
+// AgentGroupIDs returns agent_id → group_id for every agent (empty string when
+// ungrouped). Used by UEBA to compare a host against its same-role peer cohort
+// rather than the whole fleet.
+func (s *Store) AgentGroupIDs() (map[string]string, error) {
+	rows, err := s.pool.Query(context.Background(),
+		"SELECT id, COALESCE(group_id, '') FROM agents")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]string)
+	for rows.Next() {
+		var id, gid string
+		if err := rows.Scan(&id, &gid); err != nil {
+			return nil, err
+		}
+		out[id] = gid
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) CountAgents() (total, active, disconnected int, err error) {
 	rows, err := s.pool.Query(context.Background(),
 		`SELECT status, COUNT(*) FROM agents GROUP BY status`)
@@ -1498,6 +1519,39 @@ func (s *Store) AlertStatsPerEntity(days int) ([]map[string]interface{}, error) 
 		})
 	}
 	return result, rows.Err()
+}
+
+// AlertDailyCountsPerEntity returns, per agent, a map of UTC day key
+// (YYYY-MM-DD) → alert count over the trailing `days` window. Days with no
+// alerts are absent from the inner map (the caller densifies to zero). Used by
+// UEBA to build a per-entity baseline of each host's own daily alert rate.
+func (s *Store) AlertDailyCountsPerEntity(days int) (map[string]map[string]int, error) {
+	cutoff := time.Now().AddDate(0, 0, -days).UnixMilli()
+	rows, err := s.pool.Query(context.Background(), `
+		SELECT
+			agent_id,
+			to_char(date_trunc('day', to_timestamp(timestamp/1000.0) AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
+			COUNT(*) AS cnt
+		FROM alerts
+		WHERE timestamp > $1
+		GROUP BY agent_id, day`, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]map[string]int)
+	for rows.Next() {
+		var agentID, day string
+		var cnt int
+		if err := rows.Scan(&agentID, &day, &cnt); err != nil {
+			return nil, err
+		}
+		if out[agentID] == nil {
+			out[agentID] = make(map[string]int)
+		}
+		out[agentID][day] = cnt
+	}
+	return out, rows.Err()
 }
 
 // === Identity operations ===

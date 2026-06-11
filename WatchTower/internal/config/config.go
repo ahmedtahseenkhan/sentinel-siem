@@ -25,6 +25,31 @@ type Config struct {
 	Notifier    NotifierConfig    `yaml:"notifier"`
 	Enrich      EnrichConfig      `yaml:"enrich"`
 	Cases       CasesConfig       `yaml:"cases"`
+	AITriage    AITriageConfig    `yaml:"ai_triage"`
+	UEBA        UEBAConfig        `yaml:"ueba"`
+}
+
+// UEBAConfig tunes the UEBA analyzer's statistical thresholds. Zero/omitted
+// fields fall back to built-in defaults, so a partial block is fine — e.g. a
+// noisy site can raise spike_sigma to 3.0 without setting anything else.
+type UEBAConfig struct {
+	SpikeSigma         float64 `yaml:"spike_sigma"`          // z-score to flag a spike (default 2.0)
+	MinSamples         int     `yaml:"min_samples"`          // min baseline samples before flagging (default 3)
+	EntityBaselineDays int     `yaml:"entity_baseline_days"` // per-entity self-baseline window (default 56)
+	ExfilThresholdMB   int     `yaml:"exfil_threshold_mb"`   // hourly egress that triggers exfil (default 100)
+	BruteForceFailMin  int     `yaml:"brute_force_fail_min"` // failures before a success = brute force (default 3)
+}
+
+// AITriageConfig configures Claude-powered triage summaries written onto
+// auto-created RBA Risk Notable cases. Disabled by default. The summarizer
+// runs asynchronously off the alert path, so latency does not affect ingest.
+type AITriageConfig struct {
+	Enabled     bool   `yaml:"enabled"`
+	Provider    string `yaml:"provider"`     // "claude" (default) or "ollama" (local, free)
+	APIKey      string `yaml:"api_key"`      // claude: falls back to ANTHROPIC_API_KEY; ollama: optional bearer
+	BaseURL     string `yaml:"base_url"`     // ollama only; default http://localhost:11434/v1
+	Model       string `yaml:"model"`        // default: claude-opus-4-8 (claude) / llama3.1 (ollama)
+	TimeoutSecs int    `yaml:"timeout_secs"` // default: 30 (claude) / 60 (ollama)
 }
 
 // EnrichConfig groups alert-enrichment sources called between rule match

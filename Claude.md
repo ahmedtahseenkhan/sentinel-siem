@@ -141,6 +141,9 @@ The platform is built using a modern, microservices-oriented architecture divide
 | Cloud connectors | ✅ | AWS GuardDuty + CloudTrail (real SigV4, S3 polling), Azure Activity, GCP Audit (works off-GCE via JWT), O365 Mgmt API, Google Workspace Admin Reports, Microsoft Defender Graph Security |
 | Threat-intel integration | ✅ | 7 sources: AbuseIPDB, OTX, plaintext, Feodo Tracker, MalwareBazaar, URLhaus, MISP. CDB Manager is race-safe with field-normalization and CIDR support |
 | VirusTotal alert enrichment | ✅ | Rate-limited + TTL-cached, attaches to `Alert.Enrichment["virustotal"]` |
+| UEBA anomaly detection | ✅ | [internal/ueba/](WatchTower/internal/ueba/) — runs hourly. Cross-entity 2σ spike + brute-force/exfil/first-seen-process/risk scores, PLUS per-entity self-baseline (8wk, day-of-week-seasonal with daily fallback, `entity_alert_spike`) and peer-GROUP outlier detection (host vs same `group_id` cohort, `peer_group_spike`). Thresholds tunable via `ueba` config (`spike_sigma`, `min_samples`, `entity_baseline_days`, `exfil_threshold_mb`, `brute_force_fail_min`). Anomalies surface as first-class alerts (synthetic rule IDs `92xxx`) and accrue RBA risk via the engine's `EmitAlert` pipeline |
+| Risk-Based Alerting (RBA) | ✅ | [internal/rba/](WatchTower/internal/rba/) — accumulates per-entity risk across alerts, fires a Risk Notable + auto-creates a case past threshold (decays over 24h) |
+| AI triage summaries | ✅ | [internal/aitriage/](WatchTower/internal/aitriage/) — on a fired RBA notable, an LLM writes a WHAT/WHY/NEXT-STEP summary onto the case (async, off the alert path). Config `ai_triage.provider`: `claude` (Anthropic SDK, `claude-opus-4-8`) or `ollama` (free/local, OpenAI-compatible, alert data stays on-network). Disabled by default |
 | Container/Docker collection | ✅ | |
 | In-product dashboards | ✅ | Flask + Chart.js; per-framework compliance endpoints |
 | Config audit log | ✅ | |

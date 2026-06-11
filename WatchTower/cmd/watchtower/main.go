@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/watchtower/watchtower/internal/aitriage"
 	"github.com/watchtower/watchtower/internal/assign"
 	"github.com/watchtower/watchtower/internal/audit"
 	"github.com/watchtower/watchtower/internal/casegen"
@@ -174,6 +175,38 @@ func main() {
 	rbaEngine.SetCasesConfig(cfg.Cases)
 	eng.SetRBAHook(rbaEngine)
 
+	// AI triage: summarize fired Risk Notables with an LLM and attach the
+	// summary to the auto-created case. Runs async off the alert path.
+	// Provider "ollama" keeps alert data local (free, self-hosted); "claude"
+	// (default) uses the Anthropic API.
+	if cfg.AITriage.Enabled {
+		timeout := time.Duration(cfg.AITriage.TimeoutSecs) * time.Second
+		switch strings.ToLower(cfg.AITriage.Provider) {
+		case "ollama":
+			triager := aitriage.NewOllamaSummarizer(
+				cfg.AITriage.BaseURL, cfg.AITriage.Model, cfg.AITriage.APIKey, timeout, logger)
+			rbaEngine.SetTriager(triager)
+			logger.Info("ai triage enabled",
+				zap.String("provider", "ollama"),
+				zap.String("base_url", cfg.AITriage.BaseURL),
+				zap.String("model", cfg.AITriage.Model))
+		default: // "claude" or empty
+			apiKey := cfg.AITriage.APIKey
+			if apiKey == "" {
+				apiKey = os.Getenv("ANTHROPIC_API_KEY")
+			}
+			if apiKey == "" {
+				logger.Warn("ai_triage (claude) enabled but no API key set (ai_triage.api_key or ANTHROPIC_API_KEY) — disabling")
+			} else {
+				triager := aitriage.NewSummarizer(apiKey, cfg.AITriage.Model, timeout, logger)
+				rbaEngine.SetTriager(triager)
+				logger.Info("ai triage enabled",
+					zap.String("provider", "claude"),
+					zap.String("model", cfg.AITriage.Model))
+			}
+		}
+	}
+
 	// VirusTotal alert enrichment. Synchronous on the alert hot path, but
 	// rate-limited + TTL-cached so a busy ruleset can't burn the daily quota.
 	if cfg.Enrich.VirusTotal.Enabled && cfg.Enrich.VirusTotal.APIKey != "" {
@@ -290,8 +323,11 @@ func main() {
 	uebaCollector := ueba.NewEventCollector()
 	eng.SetUebaHook(uebaCollector)
 
-	// UEBA analyzer (runs hourly)
+	// UEBA analyzer (runs hourly). Wire the engine as alert emitter so detected
+	// anomalies surface as first-class alerts and accrue RBA entity risk.
 	uebaAnalyzer := ueba.NewAnalyzer(st, logger, uebaCollector)
+	uebaAnalyzer.SetEmitter(eng)
+	uebaAnalyzer.SetConfig(cfg.UEBA)
 	go uebaAnalyzer.Start(ctx)
 
 	// API server

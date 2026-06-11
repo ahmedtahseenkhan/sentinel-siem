@@ -278,6 +278,16 @@ func (e *Engine) generateAlert(event *models.Event, rule *models.Rule) {
 		MitreAttack: rule.MitreAttack,
 	}
 
+	e.EmitAlert(event, a)
+}
+
+// EmitAlert pushes a pre-built alert through the full downstream pipeline
+// (dedup → enrich → store → forward → playbook → RBA → notify → case → stream),
+// skipping rule matching. Subsystems that detect threats outside the rule
+// engine — currently UEBA anomaly detection — call this so their findings
+// surface as first-class alerts and accumulate entity risk via RBA. The event
+// may be a synthetic carrier holding entity context for the downstream hooks.
+func (e *Engine) EmitAlert(event *models.Event, a *models.Alert) {
 	if e.deduper.ShouldSuppress(a) {
 		e.logger.Debug("alert suppressed by dedup",
 			zap.Int("rule_id", a.RuleID),
