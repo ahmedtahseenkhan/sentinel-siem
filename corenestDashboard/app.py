@@ -403,8 +403,9 @@ def deploy_page():
 
 @app.route("/deploy/agent/<platform>")
 def deploy_download(platform):
-    if _check_login() is None:
-        return redirect(url_for("login"))
+    # Unauthenticated on purpose: the one-line installer curls this on a brand-new
+    # endpoint that has no dashboard session. The agent binary is not a secret
+    # (enrollment is gated by the enroll token), same rationale as /deploy/install.sh.
     from flask import send_from_directory, abort, make_response
     mapping = {
         "windows": ("SentinelAgent.zip", "SentinelAgent.zip"),
