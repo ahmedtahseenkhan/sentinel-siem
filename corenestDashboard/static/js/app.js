@@ -3147,8 +3147,18 @@ const GEO_CONTINENTS = [
     ]);
     const agentSelect = document.getElementById('discoverAgent');
     if (agentSelect) {
-      const _agRaw = Array.isArray(agentsRes) ? agentsRes : (agentsRes?.agents || agentsRes?.data || []);
-      const agentList = Array.isArray(_agRaw) ? _agRaw : [];
+      // /api/agents returns the {data:{affected_items:[...]}} envelope. The old
+      // code grabbed agentsRes.data (the OBJECT) — never an array — so the agent
+      // list was always empty. Dig into affected_items, tolerating bare-array
+      // and {data:[]} / {agents:[]} shapes too.
+      const _d = agentsRes && agentsRes.data;
+      const agentList =
+          Array.isArray(agentsRes)                  ? agentsRes
+        : Array.isArray(agentsRes?.agents)          ? agentsRes.agents
+        : (_d && Array.isArray(_d.affected_items))  ? _d.affected_items
+        : Array.isArray(_d)                         ? _d
+        : Array.isArray(agentsRes?.affected_items)  ? agentsRes.affected_items
+        : [];
       // Build id→hostname map for column rendering
       agentList.forEach(a => {
         const id = a.id || a.agent_id || '';
