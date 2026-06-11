@@ -24,6 +24,7 @@ SERVER=""
 TOKEN="sentinel-enroll-secret-2024"
 GROUP="default"
 BIN_URL=""
+DASH_PORT="5050"   # Sentinel dashboard port (serves the agent binary + this script)
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -31,6 +32,7 @@ while [[ $# -gt 0 ]]; do
         --token)  TOKEN="$2";  shift 2 ;;
         --group)  GROUP="$2";  shift 2 ;;
         --bin-url) BIN_URL="$2"; shift 2 ;;
+        --dashboard-port) DASH_PORT="$2"; shift 2 ;;
         *) echo "Unknown arg: $1"; exit 1 ;;
     esac
 done
@@ -45,9 +47,11 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# Default binary location: served from the same Sentinel server.
+# Default binary location: the dashboard serves it at /deploy/agent/linux on the
+# same port this installer was fetched from (5050 by default). Override the port
+# with --dashboard-port, or the whole URL with --bin-url.
 if [[ -z "$BIN_URL" ]]; then
-    BIN_URL="http://${SERVER}:8080/agents/watchnode-linux-amd64"
+    BIN_URL="http://${SERVER}:${DASH_PORT}/deploy/agent/linux"
 fi
 
 log()  { echo "[$(date +%H:%M:%S)] $*"; }
