@@ -4401,7 +4401,7 @@ def api_tickets_list():
 
 @app.route("/api/tickets", methods=["POST"])
 def api_tickets_create():
-    """Create a ticket in the configured provider (Jira or ServiceNow)."""
+    """Create a native ticket (opens a WatchTower case)."""
     try:
         from ticketing import create_ticket
         body      = request.get_json(force=True) or {}

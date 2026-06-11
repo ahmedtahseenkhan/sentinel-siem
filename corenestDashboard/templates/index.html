@@ -1994,6 +1994,7 @@
                 <button type="button" class="act-btn" id="discoverDetailTagBtn" style="font-size:11px;padding:3px 8px" title="Tag this event">Tag</button>
                 <button type="button" class="act-btn" id="discoverDetailCorrelateBtn" style="font-size:11px;padding:3px 8px" title="Find related events">Correlate</button>
                 <button type="button" class="act-btn" id="discoverDetailViewRule" style="font-size:11px;padding:3px 8px" title="View originating detection rule">View Rule</button>
+                <button type="button" class="act-btn primary" id="discoverDetailRaiseTicket" style="font-size:11px;padding:3px 8px" title="Raise a ticket from this alert">Raise Ticket</button>
                 <button type="button" id="discoverDetailClose" class="agent-detail-close" aria-label="Close">×</button>
               </div>
             </div>
@@ -4447,8 +4448,8 @@ CLOUD_SYNC_INTERVAL=15m</pre>
         <section id="page-ticketing" class="page page-v2">
           <div class="ag2-header">
             <div class="ag2-header-left">
-              <h2 class="ag2-title">Ticketing <span class="ag2-fleet-badge">Jira · ServiceNow</span></h2>
-              <p class="ag2-subtitle">Create and track tickets in Jira or ServiceNow from alerts and cases</p>
+              <h2 class="ag2-title">Ticketing <span class="ag2-fleet-badge">Built-in</span></h2>
+              <p class="ag2-subtitle">Raise and track tickets from alerts and cases — backed by the built-in case engine (priority · SLA · auto-assignment · comments · audit). No external ITSM required.</p>
             </div>
             <div class="ag2-header-right">
               <button class="act-btn primary" onclick="showCreateTicketModal()">
@@ -4460,23 +4461,25 @@ CLOUD_SYNC_INTERVAL=15m</pre>
 
           <div class="card" style="margin-bottom:12px">
             <div class="card-h">
-              <h3 class="card-h-title"><span class="dot" style="background:var(--accent)"></span>PROVIDER CONFIGURATION</h3>
-              <button onclick="testTicketConnection()" class="act-btn">Test Connection</button>
+              <h3 class="card-h-title"><span class="dot" style="background:var(--ok)"></span>TICKET SYSTEM</h3>
+              <button onclick="testTicketConnection()" class="act-btn">Create test ticket</button>
             </div>
             <div class="card-body" style="padding:12px 16px">
               <div id="ticketConfigStatus" style="margin-bottom:10px">Loading…</div>
-              <div style="padding:10px 14px;background:var(--bg-2);border-radius:6px;font-size:11px;color:var(--fg-3);font-family:var(--font-mono);line-height:1.7">
-                <code>TICKETING_PROVIDER=jira</code> → <code>JIRA_URL</code>, <code>JIRA_EMAIL</code>, <code>JIRA_TOKEN</code>, <code>JIRA_PROJECT</code><br>
-                <code>TICKETING_PROVIDER=servicenow</code> → <code>SNOW_INSTANCE_URL</code>, <code>SNOW_USERNAME</code>, <code>SNOW_PASSWORD</code>
+              <div style="padding:10px 14px;background:var(--bg-2);border-radius:6px;font-size:11.5px;color:var(--fg-3);line-height:1.7">
+                Tickets are native <b>WatchTower cases</b> — every ticket carries a priority-based <b>SLA</b>, is
+                <b>auto-assigned</b> from the on-call roster, moves through an <b>open → in-progress → resolved → closed</b>
+                workflow, supports <b>comments</b>, and records a full <b>audit trail</b>. Manage them in depth on the
+                <a href="#" data-page="cases" style="color:var(--accent)">Cases</a> page.
               </div>
             </div>
           </div>
 
           <div class="card">
-            <div class="card-h"><h3 class="card-h-title"><span class="dot" style="background:var(--low)"></span>RECENT TICKETS</h3></div>
+            <div class="card-h"><h3 class="card-h-title"><span class="dot" style="background:var(--low)"></span>TICKET QUEUE</h3></div>
             <div class="tbl">
-              <div class="tbl-h" style="grid-template-columns:110px 1fr 90px 100px 80px 80px 120px 130px 60px">
-                <span>Ticket ID</span><span>Summary</span><span>Priority</span><span>Provider</span><span>Alert</span><span>Case</span><span>Created By</span><span>Created</span><span></span>
+              <div class="tbl-h" style="grid-template-columns:110px 1fr 90px 110px 130px 70px 70px 120px 60px">
+                <span>Ticket ID</span><span>Summary</span><span>Priority</span><span>Status</span><span>Assignee</span><span>Alert</span><span>Case</span><span>Created</span><span></span>
               </div>
               <div id="ticketsTableBody"></div>
             </div>

@@ -3029,6 +3029,30 @@ const GEO_CONTINENTS = [
       if (ruleId) { closeDiscoverDetail(); goToPage('rules'); setTimeout(() => { const el = document.getElementById('rulesSearch'); if (el) { el.value = String(ruleId); el.dispatchEvent(new Event('input')); } }, 200); }
       else showDiscoverToast('No rule ID for this event');
     }, { once: true });
+    // Raise a native ticket straight from the alert — pre-fill summary, a
+    // structured description, and map the rule level to a ticket priority.
+    document.getElementById('discoverDetailRaiseTicket')?.addEventListener('click', () => {
+      const s = alert.source || {};
+      const title = s.title || s.rule_description || alert.rule_description || 'Security alert';
+      const agent = s.agent_name || alert.agent_name || '';
+      const lvl   = s.rule_level != null ? s.rule_level : alert.rule_level;
+      const ruleId = s.rule_id || alert.rule_id;
+      const summary = title + (agent ? ' on ' + agent : '');
+      const desc = [
+        'Raised from a Discover alert.',
+        title  ? 'Detection: ' + title : '',
+        ruleId ? 'Rule ID: ' + ruleId : '',
+        agent  ? 'Agent: ' + agent : '',
+        (lvl != null) ? 'Level: ' + lvl : '',
+        s.srcip || s.src_ip ? 'Source IP: ' + (s.srcip || s.src_ip) : '',
+        s.timestamp ? 'Time: ' + new Date(s.timestamp).toLocaleString() : '',
+      ].filter(Boolean).join('\n');
+      closeDiscoverDetail();
+      showCreateTicketModal(typeof ruleId === 'number' ? ruleId : '', '', summary);
+      const d = document.getElementById('ticketDesc'); if (d) d.value = desc;
+      const p = document.getElementById('ticketPriority');
+      if (p) p.value = (lvl >= 12 ? 'critical' : lvl >= 8 ? 'high' : lvl >= 4 ? 'medium' : 'low');
+    }, { once: true });
   }
 
   function setDiscoverDetailTab(tab) {
@@ -10171,27 +10195,15 @@ async function loadTicketConfig() {
   const res = await fetch('/api/tickets/config').then(r => r.json()).catch(() => ({}));
   const el = document.getElementById('ticketConfigStatus');
   if (!el) return;
-
-  const providerLabel = { jira: 'Jira', servicenow: 'ServiceNow', none: 'None' };
-  const label = providerLabel[res.provider] || res.provider;
-
-  if (res.provider === 'none') {
-    el.innerHTML = `<span style="color:#f59e0b">⚠ No provider configured. Set TICKETING_PROVIDER in .env</span>`;
-    return;
-  }
-
-  const statusColor = res.configured ? '#10b981' : '#ef4444';
-  const statusText  = res.configured ? '✓ Configured' : '✗ Missing credentials';
-  const details = res.provider === 'jira'
-    ? `URL: ${res.url || '—'} &nbsp;·&nbsp; Email: ${res.email || '—'} &nbsp;·&nbsp; Project: ${res.project || '—'}`
-    : `URL: ${res.url || '—'} &nbsp;·&nbsp; User: ${res.username || '—'} &nbsp;·&nbsp; Table: ${res.table || '—'}`;
-
+  // Native ticketing is always ready — no external provider/credentials.
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:12px">
-      <span style="font-size:20px">${res.provider === 'jira' ? '🟦' : '🟩'}</span>
+      <span style="display:inline-flex;width:34px;height:34px;border-radius:8px;background:rgba(16,185,129,0.15);align-items:center;justify-content:center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>
+      </span>
       <div>
-        <div style="font-weight:600;font-size:13px">${label} <span style="color:${statusColor};font-size:12px">${statusText}</span></div>
-        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${details}</div>
+        <div style="font-weight:600;font-size:13px">Built-in ticket queue <span style="color:#10b981;font-size:12px">✓ Ready</span></div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Backed by WatchTower cases${res.url ? ' · ' + escHtml(res.url) : ''}</div>
       </div>
     </div>`;
 }
@@ -10202,40 +10214,45 @@ async function loadTickets() {
   const tbody = document.getElementById('ticketsTableBody');
   if (!tbody) return;
 
-  const tktW = 'grid-template-columns:110px 1fr 90px 100px 80px 80px 120px 130px 60px';
+  const tktW = 'grid-template-columns:110px 1fr 90px 110px 130px 70px 70px 120px 60px';
   if (!tickets.length) {
-    tbody.innerHTML = `<div class="sigil-block"><div class="sigil-text"><h4>No tickets created yet</h4><p>Create tickets from alerts or cases to track them in Jira or ServiceNow</p></div></div>`;
+    tbody.innerHTML = `<div class="sigil-block"><div class="sigil-text"><h4>No tickets yet</h4><p>Raise a ticket from an alert or case — each becomes a tracked case with SLA &amp; auto-assignment.</p></div></div>`;
     return;
   }
 
   const priorityColor = { critical:'var(--crit)', high:'var(--high)', medium:'var(--med)', low:'var(--fg-4)' };
+  const statusColor = { open:'var(--high)', in_progress:'var(--accent)', 'in-progress':'var(--accent)', resolved:'var(--ok)', closed:'var(--fg-4)' };
+  const fmtStatus = s => (s || 'open').replace('_',' ');
 
-  tbody.innerHTML = tickets.map(t => `
+  tbody.innerHTML = tickets.map(t => {
+    const sc = statusColor[(t.status||'open').toLowerCase()] || 'var(--fg-4)';
+    return `
     <div class="tbl-r" style="${tktW}">
       <span>${t.ticket_url
-        ? `<a href="${escHtml(t.ticket_url)}" target="_blank" style="color:var(--accent);font-weight:600;font-size:11px;font-family:var(--font-mono)">${escHtml(t.ticket_id)}</a>`
+        ? `<a href="${escHtml(t.ticket_url)}" style="color:var(--accent);font-weight:600;font-size:11px;font-family:var(--font-mono)">${escHtml(t.ticket_id)}</a>`
         : `<span class="tbl-mono">${escHtml(t.ticket_id)}</span>`}</span>
       <span class="tbl-pri">${escHtml(t.summary)}</span>
-      <span style="color:${priorityColor[t.priority]||'var(--fg-4)'};font-weight:600;font-size:11px;text-transform:uppercase">${t.priority}</span>
-      <span class="tbl-mono">${t.provider}</span>
+      <span style="color:${priorityColor[t.priority]||'var(--fg-4)'};font-weight:600;font-size:11px;text-transform:uppercase">${escHtml(t.priority||'—')}</span>
+      <span><span class="pill" style="color:${sc};background:${sc}22;border:1px solid ${sc}44;text-transform:capitalize">${escHtml(fmtStatus(t.status))}</span></span>
+      <span class="tbl-mono" style="font-size:11px">${escHtml(t.assignee || 'unassigned')}</span>
       <span class="tbl-muted">${t.alert_id ? '#'+t.alert_id : '—'}</span>
       <span class="tbl-muted">${t.case_id  ? '#'+t.case_id  : '—'}</span>
-      <span class="tbl-mono">${escHtml(t.created_by||'—')}</span>
       <span class="tbl-time">${t.created_at ? new Date(t.created_at).toLocaleString() : '—'}</span>
-      <span>${t.ticket_url ? `<a href="${escHtml(t.ticket_url)}" target="_blank" class="tbl-link">Open ↗</a>` : ''}</span>
-    </div>`).join('');
+      <span>${t.ticket_url ? `<a href="${escHtml(t.ticket_url)}" class="tbl-link">Open ↗</a>` : ''}</span>
+    </div>`;
+  }).join('');
 }
 
 async function testTicketConnection() {
   const btn = event?.target;
-  if (btn) btn.textContent = 'Testing…';
+  if (btn) btn.textContent = 'Creating…';
   const res = await fetch('/api/tickets/test', {method:'POST'}).then(r => r.json()).catch(() => ({}));
-  if (btn) btn.textContent = 'Test Connection';
+  if (btn) btn.textContent = 'Create test ticket';
   if (res?.data?.ticket_id) {
-    alert(`✓ Success! Created test ticket: ${res.data.ticket_id}\nURL: ${res.data.ticket_url}`);
+    alert(`✓ Test ticket created: ${res.data.ticket_id}\nOpen it on the Cases page.`);
     await loadTickets();
   } else {
-    alert(`✗ Failed: ${res?.error || 'Unknown error. Check provider credentials.'}`);
+    alert(`✗ Failed to create test ticket: ${res?.error || 'is the manager (cases API) reachable?'}`);
   }
 }
 
