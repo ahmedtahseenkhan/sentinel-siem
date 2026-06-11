@@ -390,6 +390,55 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("WATCHTOWER_CASES_SLA_LOW"); v != "" {
 		cfg.Cases.SLA.Low = v
 	}
+
+	// AI triage (LLM summaries on RBA notables). Disabled unless explicitly on.
+	if v := os.Getenv("WATCHTOWER_AI_TRIAGE_ENABLED"); v != "" {
+		cfg.AITriage.Enabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv("WATCHTOWER_AI_TRIAGE_PROVIDER"); v != "" {
+		cfg.AITriage.Provider = v
+	}
+	if v := os.Getenv("WATCHTOWER_AI_TRIAGE_API_KEY"); v != "" {
+		cfg.AITriage.APIKey = v
+	}
+	if v := os.Getenv("WATCHTOWER_AI_TRIAGE_BASE_URL"); v != "" {
+		cfg.AITriage.BaseURL = v
+	}
+	if v := os.Getenv("WATCHTOWER_AI_TRIAGE_MODEL"); v != "" {
+		cfg.AITriage.Model = v
+	}
+	if v := os.Getenv("WATCHTOWER_AI_TRIAGE_TIMEOUT_SECS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.AITriage.TimeoutSecs = n
+		}
+	}
+
+	// UEBA tunable thresholds (zero/unset → built-in defaults).
+	if v := os.Getenv("WATCHTOWER_UEBA_SPIKE_SIGMA"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
+			cfg.UEBA.SpikeSigma = f
+		}
+	}
+	if v := os.Getenv("WATCHTOWER_UEBA_MIN_SAMPLES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.UEBA.MinSamples = n
+		}
+	}
+	if v := os.Getenv("WATCHTOWER_UEBA_ENTITY_BASELINE_DAYS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.UEBA.EntityBaselineDays = n
+		}
+	}
+	if v := os.Getenv("WATCHTOWER_UEBA_EXFIL_THRESHOLD_MB"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.UEBA.ExfilThresholdMB = n
+		}
+	}
+	if v := os.Getenv("WATCHTOWER_UEBA_BRUTE_FORCE_FAIL_MIN"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.UEBA.BruteForceFailMin = n
+		}
+	}
 }
 
 // NotifierConfig controls outbound alert delivery to Slack/Teams/email/webhook.
