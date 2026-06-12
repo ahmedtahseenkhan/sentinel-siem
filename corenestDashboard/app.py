@@ -4119,10 +4119,16 @@ def api_geo_map_data():
 
         countries = sorted(by_country.values(), key=lambda x: x["count"], reverse=True)
 
+        from config import SOC_LAT, SOC_LNG, SOC_LABEL
+        soc = None
+        if SOC_LAT is not None and SOC_LNG is not None:
+            soc = {"lat": SOC_LAT, "lng": SOC_LNG, "label": SOC_LABEL}
+
         return jsonify({
             "points":    points,
             "countries": countries[:20],
             "total_ips": len(points),
+            "soc":       soc,
         })
 
     except Exception as e:

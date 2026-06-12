@@ -6,7 +6,13 @@ function escapeHtml(s) {
   return div.innerHTML;
 }
 
-const GEO_CONTINENTS = [
+// Real world coastline (Natural Earth 110m) in equirectangular projection fit
+// to the 1000×500 viewBox — loaded from static/js/world_land.js so it aligns
+// exactly with the marker projection in loadGeoMap(). The crude blob paths
+// below are a fallback only if that asset fails to load.
+const GEO_CONTINENTS = (typeof window !== 'undefined' && Array.isArray(window.WORLD_LAND_PATHS) && window.WORLD_LAND_PATHS.length)
+  ? window.WORLD_LAND_PATHS
+  : [
   "M 70 110 L 130 80 L 200 70 L 260 90 L 300 130 L 290 170 L 240 200 L 200 220 L 180 250 L 200 280 L 170 290 L 130 270 L 100 240 L 80 200 L 70 160 Z",
   "M 240 290 L 280 290 L 310 320 L 320 360 L 310 400 L 290 430 L 260 450 L 240 440 L 230 410 L 230 370 L 245 340 L 250 310 Z",
   "M 460 110 L 510 100 L 540 110 L 560 130 L 545 155 L 510 165 L 480 160 L 460 140 Z",
@@ -9815,11 +9821,17 @@ async function loadGeoMap() {
         return { x: projX(lng), y: projY(p.lat), s: sevOf(p.max_level || 0) };
       })
       .filter(o => Number.isFinite(o.x) && Number.isFinite(o.y));
-    const target  = [180, 220];
+    // Converge arcs on the configured SOC location (SOC_LAT/SOC_LNG), projected
+    // the same way as the markers. Falls back to a stylized point if unset.
+    const soc = res.soc;
+    const target = (soc && Number.isFinite(projX(soc.lng)) && Number.isFinite(projY(soc.lat)))
+      ? [projX(soc.lng), projY(soc.lat)]
+      : [180, 220];
     let html = '';
     if (origins.length) {
       html += `<circle cx="${target[0]}" cy="${target[1]}" r="32" fill="url(#v2tgtGlow)"/>`;
       html += `<circle cx="${target[0]}" cy="${target[1]}" r="5" fill="var(--accent)" stroke="#04201d" stroke-width="1.5"/>`;
+      if (soc && soc.label) html += `<title>${escapeHtml(soc.label)}</title>`;
       origins.forEach(o => {
         const mx = (o.x + target[0]) / 2, my = Math.min(o.y, target[1]) - 70;
         const cls = `v2-geo-arc${o.s !== 'crit' ? ' ' + o.s : ''}`;

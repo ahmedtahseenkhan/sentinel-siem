@@ -43,6 +43,19 @@ def _verify_password(plain: str, stored: str) -> bool:
     return plain == stored
 
 # WatchTower (Manager) REST API — default port 9400
+# SOC home location for the Threat Map "Your SOC" marker (the convergence point
+# of the attack arcs). Set SOC_LAT / SOC_LNG to your operations centre's
+# coordinates; leave unset to hide the marker rather than show a wrong spot.
+def _opt_float(name):
+    v = os.getenv(name, "").strip()
+    try:
+        return float(v) if v != "" else None
+    except ValueError:
+        return None
+SOC_LAT = _opt_float("SOC_LAT")
+SOC_LNG = _opt_float("SOC_LNG")
+SOC_LABEL = os.getenv("SOC_LABEL", "Your SOC")
+
 WATCHTOWER_URL = os.getenv("WATCHTOWER_URL", "http://localhost:9400")
 WATCHTOWER_API_KEY = os.getenv("WATCHTOWER_API_KEY", "")
 
