@@ -6242,3 +6242,40 @@ kbd { display:inline-block; padding:1px 5px; border-radius:3px; border:1px solid
 @media (max-width: 480px) {
   .ov2-kpi-row { grid-template-columns: 1fr; }
 }
+
+/* ── Logs page: Table ↔ Raw-log view toggle + raw rows (Wazuh-style) ───────── */
+.logs-view-toggle { display: inline-flex; gap: 2px; background: var(--bg-2, #14161b); border: 1px solid var(--border); border-radius: 7px; padding: 2px; }
+.logs-view-tab {
+  appearance: none; border: none; background: none; cursor: pointer;
+  font-size: 11px; font-family: inherit; color: var(--fg-3, #8b8e96);
+  padding: 3px 12px; border-radius: 5px; transition: background .12s, color .12s;
+}
+.logs-view-tab:hover { color: var(--fg-1, #e6e7ea); }
+.logs-view-tab.active { background: var(--accent); color: #04201d; font-weight: 600; }
+html[data-theme="light"] .logs-view-tab.active { color: #fff; }
+
+.logs-raw-row { border-bottom: 1px solid var(--border); }
+.logs-raw-head {
+  display: grid; grid-template-columns: 18px 150px 110px 1fr; gap: 10px;
+  align-items: baseline; padding: 8px 12px; cursor: pointer;
+}
+.logs-raw-head:hover { background: rgba(255,255,255,0.025); }
+html[data-theme="light"] .logs-raw-head:hover { background: rgba(0,0,0,0.025); }
+.logs-raw-caret { appearance: none; border: none; background: none; cursor: pointer; color: var(--fg-4, #5E6068); font-size: 11px; padding: 0; line-height: 1.5; }
+.logs-raw-ts  { font-size: 11px; color: var(--fg-3, #8b8e96); white-space: nowrap; font-family: var(--font-mono, monospace); }
+.logs-raw-src { font-size: 10.5px; color: var(--fg-4, #5E6068); font-family: var(--font-mono, monospace); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.logs-raw-line {
+  font-family: var(--font-mono, monospace); font-size: 11.5px; color: var(--fg-1, #cdd0d6);
+  white-space: pre-wrap; word-break: break-word; line-height: 1.5;
+}
+.logs-raw-detail { padding: 4px 12px 12px 40px; }
+.logs-raw-detail.hidden { display: none; }
+.logs-raw-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.logs-field-chip {
+  font-family: var(--font-mono, monospace); font-size: 10.5px;
+  background: var(--bg-2, #14161b); border: 1px solid var(--border); border-radius: 4px;
+  padding: 2px 7px; color: var(--fg-2, #b4b6bd); max-width: 100%;
+  white-space: pre-wrap; word-break: break-word;
+}
+.logs-field-chip b { color: var(--accent); font-weight: 600; }
+html[data-theme="light"] .logs-field-chip { background: #f3f4f6; }

@@ -6835,10 +6835,26 @@ const GEO_CONTINENTS = (typeof window !== 'undefined' && Array.isArray(window.WO
     if (el('logsPrev')) el('logsPrev').disabled = _logsOffset === 0;
     if (el('logsNext')) el('logsNext').disabled = (_logsOffset + size) >= total;
 
-    const tbody = el('logsBody');
+    _logsRenderInto(el('logsBody'), hits);
+  }
+
+  // Current Logs listing view: 'table' (structured columns) or 'raw' (the raw
+  // log line shown inline, Wazuh-style, expandable to all fields).
+  let _logsView = 'table';
+
+  function _logsRenderInto(tbody, hits) {
     if (!tbody) return;
+    // The structured-column header only makes sense in table view.
+    const header = tbody.parentElement && tbody.parentElement.querySelector('.tbl-h');
+    if (header) header.style.display = (_logsView === 'raw') ? 'none' : '';
+    if (!hits.length) {
+      tbody.innerHTML = `<div class="sigil-block"><div class="sigil-text"><h4>No events found</h4><p>Try widening the time range, removing filters, or clearing the search query.</p></div></div>`;
+      return;
+    }
+    if (_logsView === 'raw') { _logsRenderRaw(tbody, hits); return; }
+
     const cols = 'grid-template-columns:160px 130px 110px 80px 1fr 90px';
-    tbody.innerHTML = hits.length ? hits.map((h, i) => {
+    tbody.innerHTML = hits.map((h, i) => {
       const ts = h.timestamp ? new Date(h.timestamp).toLocaleString() : '—';
       const agent = escapeHtml(_logsAgent(h));
       const src = escapeHtml(_logsSource(h));
@@ -6852,15 +6868,62 @@ const GEO_CONTINENTS = (typeof window !== 'undefined' && Array.isArray(window.WO
         <span class="tbl-pri" title="${summary}">${summary}</span>
         <span><button type="button" class="act-btn logs-view-btn" data-idx="${i}" style="height:22px;padding:0 8px;font-size:11px">View</button></span>
       </div>`;
-    }).join('') : `<div class="sigil-block"><div class="sigil-text"><h4>No events found</h4><p>Try widening the time range, removing filters, or clearing the search query.</p></div></div>`;
-
-    // Wire detail buttons
+    }).join('');
     tbody.querySelectorAll('.logs-view-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const idx = parseInt(btn.getAttribute('data-idx'), 10);
-        _logsShowDetail(_logsLastHits[idx]);
+        _logsShowDetail(_logsLastHits[parseInt(btn.getAttribute('data-idx'), 10)]);
       });
     });
+  }
+
+  // Raw view — each event shows its raw log line directly (no click needed),
+  // with a caret that expands the full flattened field set as Wazuh-style chips.
+  function _logsRenderRaw(tbody, hits) {
+    tbody.innerHTML = hits.map((h, i) => {
+      const ts  = h.timestamp ? new Date(h.timestamp).toLocaleString() : '—';
+      const raw = escapeHtml(_logsRawLine(h));
+      const src = escapeHtml(_logsSource(h));
+      return `<div class="logs-raw-row" data-idx="${i}">
+        <div class="logs-raw-head">
+          <button type="button" class="logs-raw-caret" aria-label="Expand">▸</button>
+          <span class="logs-raw-ts">${ts}</span>
+          <span class="logs-raw-src">${src}</span>
+          <span class="logs-raw-line">${raw}</span>
+        </div>
+        <div class="logs-raw-detail hidden"></div>
+      </div>`;
+    }).join('');
+    tbody.querySelectorAll('.logs-raw-row').forEach(row => {
+      const head  = row.querySelector('.logs-raw-head');
+      const det   = row.querySelector('.logs-raw-detail');
+      const caret = row.querySelector('.logs-raw-caret');
+      head.addEventListener('click', (e) => {
+        if (e.target.closest('.logs-raw-detail')) return;
+        const open = !det.classList.contains('hidden');
+        if (open) { det.classList.add('hidden'); caret.textContent = '▸'; return; }
+        const idx = parseInt(row.getAttribute('data-idx'), 10);
+        det.innerHTML = _logsChips(_logsLastHits[idx], idx);
+        det.classList.remove('hidden'); caret.textContent = '▾';
+        const more = det.querySelector('.logs-raw-detailbtn');
+        if (more) more.addEventListener('click', (ev) => { ev.stopPropagation(); _logsShowDetail(_logsLastHits[idx]); });
+      });
+    });
+  }
+
+  // Flattened field chips for one event, Wazuh discover-style.
+  function _logsChips(hit) {
+    const flat = flattenSource(hit);
+    const keys = Object.keys(flat)
+      .filter(k => flat[k] != null && flat[k] !== '' && !_LOGS_NOISE.test(k))
+      .sort();
+    if (!keys.length) return '<div style="font-size:11px;color:var(--fg-3);padding:6px 0">No structured fields on this event.</div>';
+    const chips = keys.map(k => {
+      let v = String(flat[k]);
+      if (v.length > 240) v = v.slice(0, 240) + '…';
+      return `<span class="logs-field-chip"><b>${escapeHtml(k)}:</b> ${escapeHtml(v)}</span>`;
+    }).join('');
+    return `<div class="logs-raw-chips">${chips}</div>
+      <div style="margin-top:8px"><button type="button" class="act-btn logs-raw-detailbtn" style="height:22px;padding:0 10px;font-size:11px">Full detail / decode →</button></div>`;
   }
 
   // Curated SOC field order: [label, [candidate source keys, first present wins]].
@@ -7081,6 +7144,17 @@ const GEO_CONTINENTS = (typeof window !== 'undefined' && Array.isArray(window.WO
     });
     el('logsSource') && el('logsSource').addEventListener('change', apply);
     el('logsPageSize') && el('logsPageSize').addEventListener('change', apply);
+    // Table ↔ Raw-log view toggle. Re-renders the current page in place (no
+    // refetch) so switching is instant.
+    const setLogsView = (v) => {
+      _logsView = v;
+      const tb = el('logsViewTable'), rw = el('logsViewRaw');
+      if (tb) { tb.classList.toggle('active', v === 'table'); tb.setAttribute('aria-selected', v === 'table'); }
+      if (rw) { rw.classList.toggle('active', v === 'raw');   rw.setAttribute('aria-selected', v === 'raw'); }
+      _logsRenderInto(el('logsBody'), _logsLastHits || []);
+    };
+    el('logsViewTable') && el('logsViewTable').addEventListener('click', () => setLogsView('table'));
+    el('logsViewRaw') && el('logsViewRaw').addEventListener('click', () => setLogsView('raw'));
     el('logsPrev') && el('logsPrev').addEventListener('click', () => {
       const { size } = _logsParams();
       if (_logsOffset >= size) { _logsOffset -= size; reloadLogs(); }
