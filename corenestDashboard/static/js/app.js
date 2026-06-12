@@ -5449,6 +5449,7 @@ const GEO_CONTINENTS = (typeof window !== 'undefined' && Array.isArray(window.WO
         // Pages this role may not view (from server PAGE_MIN_ROLE).
         restrictedPages: Array.isArray(data.restricted_pages) ? data.restricted_pages : [],
       };
+      window.currentUser = currentUser;  // expose for top-level handlers (case assignment, etc.)
       const _restricted = new Set(currentUser.restrictedPages);
       document.querySelectorAll('.nav-item').forEach(el => {
         const page = el.getAttribute('data-page');
@@ -9292,6 +9293,7 @@ async function openCaseDetail(id) {
   document.getElementById('detailCasePriority').style.cssText = `background:${priorityColor[c.priority]||'#666'}22;color:${priorityColor[c.priority]||'#aaa'};padding:3px 10px;border-radius:4px;font-size:11px;font-weight:600;text-transform:uppercase`;
   document.getElementById('detailCaseAssignee').textContent = c.assignee ? `Assigned to: ${c.assignee}` : 'Unassigned';
   document.getElementById('detailStatusSelect').value = c.status;
+  await _populateAssigneeSelect(c.assignee);
 
   const tagsRow = document.getElementById('detailCaseTagsRow');
   const tagsEl  = document.getElementById('detailCaseTags');
@@ -9358,6 +9360,56 @@ async function updateCaseStatus() {
   });
   await openCaseDetail(_currentCaseId);
   await loadCases();
+}
+
+// Fill the assignee dropdown from the SOC roster (+ the current analyst), and
+// select whoever the case is currently assigned to.
+async function _populateAssigneeSelect(current) {
+  const sel = document.getElementById('detailAssigneeSelect');
+  if (!sel) return;
+  const me = (window.currentUser && window.currentUser.username) || '';
+  let engs = [];
+  try { engs = (await fetch('/api/soc/engineers').then(r => r.json()).catch(() => ({}))).data || []; } catch (e) {}
+  // Build a de-duplicated set of candidate assignees: roster sam_accounts, the
+  // current user, and whoever's already assigned (so it round-trips).
+  const names = [];
+  const seen = new Set();
+  const add = n => { n = (n || '').trim(); if (n && !seen.has(n)) { seen.add(n); names.push(n); } };
+  if (me) add(me);
+  engs.forEach(e => add(e.sam_account || e.name));
+  add(current);
+  let html = '<option value="">Unassigned</option>';
+  html += names.map(n => `<option value="${escHtml(n)}"${n === current ? ' selected' : ''}>${escHtml(n)}${n === me ? ' (me)' : ''}</option>`).join('');
+  sel.innerHTML = html;
+  sel.value = current || '';
+  // If the roster is empty, hint where to add analysts.
+  if (!engs.length) {
+    sel.title = 'No SOC roster yet — add analysts on the SOC Workflow page for auto-assignment.';
+  }
+}
+
+async function _putCaseAssignee(assignee) {
+  if (!_currentCaseId) return;
+  await fetch(`/api/cases/${_currentCaseId}`, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ assignee })
+  });
+  await openCaseDetail(_currentCaseId);
+  if (typeof loadCases === 'function') await loadCases();
+  if (typeof loadTickets === 'function') { try { await loadTickets(); } catch (e) {} }
+}
+
+async function updateCaseAssignee() {
+  const sel = document.getElementById('detailAssigneeSelect');
+  if (!sel) return;
+  await _putCaseAssignee(sel.value || '');
+}
+
+async function assignCaseToMe() {
+  const me = (window.currentUser && window.currentUser.username) || '';
+  if (!me) { alert('Could not determine the current user.'); return; }
+  await _putCaseAssignee(me);
 }
 
 async function loadCaseNotes(id) {
@@ -11008,7 +11060,18 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── Ticketing Integration ─────────────────────────────────────────────────────
 
 async function loadTicketingPage() {
-  await Promise.all([loadTicketConfig(), loadTickets()]);
+  await Promise.all([loadTicketConfig(), loadTickets(), _ticketRosterNudge()]);
+}
+
+// Show the empty-roster warning when no SOC analysts exist, so it's obvious
+// why tickets stay unassigned.
+async function _ticketRosterNudge() {
+  const nudge = document.getElementById('ticketRosterNudge');
+  if (!nudge) return;
+  try {
+    const engs = (await fetch('/api/soc/engineers').then(r => r.json()).catch(() => ({}))).data || [];
+    nudge.style.display = engs.length ? 'none' : 'block';
+  } catch (e) { /* leave hidden on error */ }
 }
 
 async function loadTicketConfig() {
@@ -11048,8 +11111,8 @@ async function loadTickets() {
     const sc = statusColor[(t.status||'open').toLowerCase()] || 'var(--fg-4)';
     return `
     <div class="tbl-r" style="${tktW}">
-      <span>${t.ticket_url
-        ? `<a href="${escHtml(t.ticket_url)}" style="color:var(--accent);font-weight:600;font-size:11px;font-family:var(--font-mono)">${escHtml(t.ticket_id)}</a>`
+      <span>${t.case_id
+        ? `<a href="#" onclick="event.preventDefault();openTicketCase(${t.case_id})" style="color:var(--accent);font-weight:600;font-size:11px;font-family:var(--font-mono)">${escHtml(t.ticket_id)}</a>`
         : `<span class="tbl-mono">${escHtml(t.ticket_id)}</span>`}</span>
       <span class="tbl-pri">${escHtml(t.summary)}</span>
       <span style="color:${priorityColor[t.priority]||'var(--fg-4)'};font-weight:600;font-size:11px;text-transform:uppercase">${escHtml(t.priority||'—')}</span>
@@ -11058,10 +11121,17 @@ async function loadTickets() {
       <span class="tbl-muted">${t.alert_id ? '#'+t.alert_id : '—'}</span>
       <span class="tbl-muted">${t.case_id  ? '#'+t.case_id  : '—'}</span>
       <span class="tbl-time">${t.created_at ? new Date(t.created_at).toLocaleString() : '—'}</span>
-      <span>${t.ticket_url ? `<a href="${escHtml(t.ticket_url)}" class="tbl-link">Open ↗</a>` : ''}</span>
+      <span>${t.case_id ? `<a href="#" onclick="event.preventDefault();openTicketCase(${t.case_id})" class="tbl-link">Open ↗</a>` : ''}</span>
     </div>`;
   }).join('');
 }
+
+// A ticket IS a WatchTower case — open the Cases page and pop its detail drawer.
+function openTicketCase(caseId) {
+  if (window.goToPage) goToPage('cases');
+  if (caseId && window.openCaseDetail) setTimeout(() => openCaseDetail(caseId), 80);
+}
+window.openTicketCase = openTicketCase;
 
 async function testTicketConnection() {
   const btn = event?.target;

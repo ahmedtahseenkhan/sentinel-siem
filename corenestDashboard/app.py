@@ -3853,7 +3853,7 @@ def api_cases_list():
 def api_cases_create():
     try:
         from watchtower_client import watchtower_request
-        user = session.get("username", "anonymous")
+        user = session.get("user", "anonymous")
         body = request.get_json(force=True) or {}
         body.setdefault("created_by", user)
         res = watchtower_request("/api/v1/cases", method="POST", json_body=body)
@@ -3876,7 +3876,7 @@ def api_cases_update(case_id):
         from watchtower_client import watchtower_request
         body = request.get_json(force=True) or {}
         # Stamp who made the change so the case audit trail is accurate.
-        body.setdefault("actor", session.get("username", "anonymous"))
+        body.setdefault("actor", session.get("user", "anonymous"))
         res = watchtower_request(f"/api/v1/cases/{case_id}", method="PUT", json_body=body)
         return jsonify(res or {})
     except Exception as e:
@@ -3904,7 +3904,7 @@ def api_cases_notes_list(case_id):
 def api_cases_notes_add(case_id):
     try:
         from watchtower_client import watchtower_request
-        user = session.get("username", "anonymous")
+        user = session.get("user", "anonymous")
         body = request.get_json(force=True) or {}
         body.setdefault("author", user)
         res = watchtower_request(f"/api/v1/cases/{case_id}/notes", method="POST", json_body=body)
@@ -3925,7 +3925,7 @@ def api_cases_evidence_list(case_id):
 def api_cases_evidence_add(case_id):
     try:
         from watchtower_client import watchtower_request
-        user = session.get("username", "anonymous")
+        user = session.get("user", "anonymous")
         body = request.get_json(force=True) or {}
         body.setdefault("added_by", user)
         res = watchtower_request(f"/api/v1/cases/{case_id}/evidence", method="POST", json_body=body)
@@ -4449,7 +4449,7 @@ def api_rv_save():
     try:
         from watchtower_client import watchtower_request
         body = request.get_json(force=True) or {}
-        body.setdefault("author", session.get("username", "analyst"))
+        body.setdefault("author", session.get("user", "analyst"))
         res = watchtower_request("/api/v1/rule-versions", method="POST", json_body=body)
         return jsonify(res or {}), 201
     except Exception as e:
@@ -4511,7 +4511,7 @@ def api_tickets_create():
         priority  = body.get("priority", "medium")
         alert_id  = body.get("alert_id")
         case_id   = body.get("case_id")
-        user      = session.get("username", "anonymous")
+        user      = session.get("user", "anonymous")
 
         ticket = create_ticket(
             summary=summary,
@@ -4536,7 +4536,7 @@ def api_tickets_test():
             summary="[TEST] Sentinel SIEM — Ticketing Integration Test",
             description="This is an automated test ticket from Sentinel SIEM. You can safely close this ticket.",
             priority="low",
-            created_by=session.get("username", "system"),
+            created_by=session.get("user", "system"),
         )
         return jsonify({"data": ticket, "message": f"Test ticket created: {ticket['ticket_id']}"})
     except ValueError as e:

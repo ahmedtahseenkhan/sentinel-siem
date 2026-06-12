@@ -4790,15 +4790,21 @@ CLOUD_SYNC_INTERVAL=15m</pre>
           <div class="card" style="margin-bottom:12px">
             <div class="card-h">
               <h3 class="card-h-title"><span class="dot" style="background:var(--ok)"></span>TICKET SYSTEM</h3>
-              <button onclick="testTicketConnection()" class="act-btn">Create test ticket</button>
+              <button onclick="testTicketConnection()" class="act-btn" style="opacity:.75;font-size:11px" title="Diagnostic only — creates one sample [TEST] ticket to confirm the cases API is reachable">Test connectivity</button>
             </div>
             <div class="card-body" style="padding:12px 16px">
               <div id="ticketConfigStatus" style="margin-bottom:10px">Loading…</div>
+              <!-- Empty-roster nudge: shown by JS when the SOC roster has no analysts -->
+              <div id="ticketRosterNudge" style="display:none;margin-bottom:10px;padding:9px 13px;background:var(--high)18;border:1px solid var(--high)44;border-radius:6px;font-size:11.5px;color:var(--fg-2);line-height:1.6">
+                ⚠ <b>No analysts in the SOC roster</b> — new tickets land in the <b>unassigned queue</b> and can't be auto-assigned.
+                Add analysts (with tier + shifts) on the <a href="#" data-page="soc" style="color:var(--accent)">SOC Workflow</a> page,
+                or assign each ticket by hand from its detail drawer.
+              </div>
               <div style="padding:10px 14px;background:var(--bg-2);border-radius:6px;font-size:11.5px;color:var(--fg-3);line-height:1.7">
                 Tickets are native <b>WatchTower cases</b> — every ticket carries a priority-based <b>SLA</b>, is
-                <b>auto-assigned</b> from the on-call roster, moves through an <b>open → in-progress → resolved → closed</b>
-                workflow, supports <b>comments</b>, and records a full <b>audit trail</b>. Manage them in depth on the
-                <a href="#" data-page="cases" style="color:var(--accent)">Cases</a> page.
+                <b>auto-assigned</b> from the on-call roster (set one up on <a href="#" data-page="soc" style="color:var(--accent)">SOC Workflow</a>),
+                moves through an <b>open → in-progress → resolved → closed</b> workflow, supports <b>comments</b>, and records a full
+                <b>audit trail</b>. Manage them in depth on the <a href="#" data-page="cases" style="color:var(--accent)">Cases</a> page.
               </div>
             </div>
           </div>
@@ -5096,7 +5102,7 @@ CLOUD_SYNC_INTERVAL=15m</pre>
           </div>
 
           <!-- Quick status change -->
-          <div style="display:flex;gap:8px;margin-bottom:20px">
+          <div style="display:flex;gap:8px;margin-bottom:12px">
             <select id="detailStatusSelect" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:6px;font-size:12px">
               <option value="open">Open</option>
               <option value="investigating">Investigating</option>
@@ -5105,6 +5111,15 @@ CLOUD_SYNC_INTERVAL=15m</pre>
               <option value="false_positive">False Positive</option>
             </select>
             <button onclick="updateCaseStatus()" class="btn btn-primary" style="font-size:12px;padding:6px 14px">Update Status</button>
+          </div>
+
+          <!-- Assignment -->
+          <div style="display:flex;gap:8px;margin-bottom:20px;align-items:center;flex-wrap:wrap">
+            <select id="detailAssigneeSelect" style="background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);padding:6px 10px;border-radius:6px;font-size:12px;min-width:170px">
+              <option value="">Unassigned</option>
+            </select>
+            <button onclick="updateCaseAssignee()" class="btn btn-primary" style="font-size:12px;padding:6px 14px">Assign</button>
+            <button onclick="assignCaseToMe()" class="btn" style="font-size:12px;padding:6px 12px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-primary);border-radius:6px;cursor:pointer">Assign to me</button>
           </div>
 
           <!-- Description -->
