@@ -4119,10 +4119,14 @@ def api_geo_map_data():
 
         countries = sorted(by_country.values(), key=lambda x: x["count"], reverse=True)
 
-        from config import SOC_LAT, SOC_LNG, SOC_LABEL
+        # SOC marker location is purely cosmetic — never let it block the data.
         soc = None
-        if SOC_LAT is not None and SOC_LNG is not None:
-            soc = {"lat": SOC_LAT, "lng": SOC_LNG, "label": SOC_LABEL}
+        try:
+            from config import SOC_LAT, SOC_LNG, SOC_LABEL
+            if SOC_LAT is not None and SOC_LNG is not None:
+                soc = {"lat": SOC_LAT, "lng": SOC_LNG, "label": SOC_LABEL}
+        except Exception:
+            soc = None
 
         return jsonify({
             "points":    points,
